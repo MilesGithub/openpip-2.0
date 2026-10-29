@@ -169,3 +169,8 @@ empty duplicates of about 8,200 proteins, and the HuRI dataset is attached to
 those duplicates rather than to the original proteins (BUG-034). By decision,
 the data is not merged: HuRI and HI-III interactions stay separate. New
 uploads no longer create duplicates.
+
+`migration/migrate_legacy.py` cannot load seven tables into the current
+schema. With `--reset` it leaves them empty, together with some tables that
+refer to them (BUG-052). Run it only on a new installation that you have
+backed up; see the migration guide.

@@ -48,6 +48,25 @@ Each fix gets a regression test.
   `/media/avatars/../uploads/private.csv` serves a private upload; the
   `openpip/urls.py` regex is checked before `serve()` normalises `..`. nginx
   likely blocks it today. Reject paths containing `..` / pin to the subdirectory.
+- [ ] **BUG-052 — `migrate_legacy.py` cannot load seven tables, and `--reset`
+  then leaves them empty (checked on a scratch database built by 2.0's
+  migrations; the script itself was not run).** 2.0 added or renamed required
+  columns in `admin_settings`, `organism`, `interaction`, `dataset`,
+  `interaction_network`, `data_file` and `external_link`. The script copies
+  only same-named columns (`migration/migrate_legacy.py:102-117`), so those
+  inserts fail with a NOT NULL error. With `--reset`:
+  - each TRUNCATE ... CASCADE is committed before the insert (`:126-130`), and
+    the loop moves on after a failure (`:195-203`), so a failed table stays
+    empty;
+  - the cascade also empties `interaction_participant`, `user_datasets`,
+    `user_interaction_networks` and `user_protein`, which the script never
+    reloads;
+  - foreign-key triggers are off (`:129`), so later tables load rows that
+    point at missing parents.
+
+  `docs/operator-guide/migrating.md` warns operators. Possible fix: fill the
+  missing columns from an explicit map, and run the whole reload in one
+  transaction.
 
 ### Medium
 
