@@ -3,8 +3,8 @@
 Research-only due diligence on the first candidate datasets and the reference
 sources they need, as the brief's licensing gate asks (brief §7). It feeds
 milestone RD and Phase 4 in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md),
-and open questions C1 and C5, and B12, B13, B14, C13 and C14 (decided on
-2026-10-29), in
+and open questions C1, C5 and C15, and B12, B13, B14, C13 and C14 (decided
+on 2026-10-29), in
 [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
 
 **Status: research only, 2026-10-29.**
@@ -33,6 +33,8 @@ checked each claim. Section 7 lists what that check changed.
 | **Costanzo et al. 2016**, yeast SGA (N1) | Good for genetic interactions: ε against a multiplicative null, a P-value, and a sign. Raw files hold every tested pair; rows are allele-level (deletion, temperature-sensitive, DAmP) | Pair-wise 11-column file in a 385–521 MB zip, about 23 million double mutants, plus matrix and similarity files | Systematic ORF names, and strain or allele names. Needs an SGD reference release (RF1b), the yeast identity namespace (D7), the taxon choice (559292 or 4932) and allele parsing | Dryad copy under **CC0**: internal use, public view and redistribution permitted. Other copies carry no licence or an MIT statement | High |
 | **Horlbeck et al. 2018**, human CRISPRi (N1) | Good for genetic interactions: a gene-level GI score against a quadratic-fit null, positive "buffering", negative "synergistic"; 472 × 472 genes in K562 and Jurkat; full matrices | Mendeley Data zips (145 MB and 94 MB) of processed maps; raw reads in GEO | 2018 gene symbols; needs only the HGNC release (RF1a), with previous-symbol resolution (TMEM261 is now DMAC1). No protein mapping | Mendeley copy under **CC BY 4.0**: all scopes permitted with attribution and a note of changes | Medium |
 | **Helwak et al. 2013**, CLASH (N2) | Good for miRNA–target binding: each AGO1 chimera is a direct binding observation, never evidence of repression. 18,514 interactions, with base-pairing class, seed type and folding energy; AGO1 in one cell line only | Three small text supplements (Data S1 4.4 MB, the main file); processed GEO files from a different pipeline | Frozen references: miRBase release 15 names to map to MIMAT accessions, and Ensembl release 60 transcripts to map through stable-id history, with binding sites tied to old transcript sequences. Needs mature-miRNA and transcript reference releases | Article **CC BY 4.0**, which likely but not certainly covers the supplements; GEO places no NCBI restrictions | Medium |
+| **HuRI**, Luck et al. 2020 (R2 alternative) | Good for binary protein interactions: yeast two-hybrid, nine screens, every pair retested in quadruplicate; physical association, never direct contact. Positives only; a pair not detected is not a negative | TSVs of Ensembl gene pairs, and PSI-MI files with "isoform-specific ORF, transcript and protein identifiers" *(format unverified)*. No sizes, dates or checksums | The TSVs are gene-only, so R2 needs the PSI-MI file; its identifiers decide feasibility. Not isoform-specific, so isoform accessions map to entries through verified links (B12) | Portal: **CC BY 4.0**, unchanged since April 2020. All scopes with attribution; no ShareAlike | Medium |
+| **OpenCell**, Cho et al. 2022 | Good co-complex IP-MS evidence from endogenously tagged baits in HEK293T, with p-values, enrichment and stoichiometries. Few transcription factors among its baits | Portal CSV and XLSX built from the preprint's Table S4; 29,922 interactions | Baits are gene-only in the interactions file and need a join to a second file; prey protein groups can span several entries | **No licence for the called list.** The deposits (CC0, CC BY 4.0) hold raw data and statistics, not the calls; the preprint is CC BY-NC-ND 4.0 | Medium; terms unresolved |
 
 **Recommendations.**
 
@@ -46,10 +48,19 @@ checked each claim. Section 7 lists what that check changed.
    set by an NDEx curator. One short question to the BioPlex team, whether
    that waiver is authorised and covers the website files, could settle it.
    As decided (C14), a short inquiry is drafted in Appendix A and goes out
-   only with your approval, and an alternative publication-specific protein
-   interaction dataset is researched in parallel. Scientifically, BioPlex is
-   co-complex association evidence (B14), and its isoform accessions map to
-   UniProt entries through verified links (B12).
+   only with your approval. Scientifically, BioPlex is co-complex association
+   evidence (B14), and its isoform accessions map to UniProt entries through
+   verified links (B12).
+
+   **The alternative researched in parallel, HuRI, is the better R2 lead
+   (§2.6).** Its portal states CC BY 4.0, it is the brief's first priority,
+   and binary yeast two-hybrid evidence fits "interaction partners of a
+   transcription factor's protein" without over-claiming direct contact. Its
+   decisive unknown is the identifiers in its PSI-MI file, which only a dry
+   run can settle. A second lead: IntAct's PSICQUIC service appears to hold
+   both HuRI and BioPlex 3.0, and IntAct licenses all its data under CC BY
+   4.0 *(to verify)*; such a copy would arrive with UniProt identifiers and
+   PSI-MI types, through M1. OpenCell is not recommended for R2 now.
 3. **RF1a: HGNC is a strong reference.** Its data are CC0, its ids are
    stable, and it gives NCBI Gene and Ensembl cross-references. For the
    gene-to-protein mapping, HGNC's UniProt column is the lead candidate,
@@ -689,6 +700,145 @@ files.
 supplements; where to get miRBase release 15; whether the GEO files reproduce
 the 18,514 set; whether to flag the weak-energy component.
 
+### 2.6 Alternatives for R2: HuRI and OpenCell
+
+Researched in parallel, as decided in C14, under the same rules and with the
+same adversarial check.
+
+#### HuRI, the Human Reference Interactome (Luck et al. 2020): recommended
+
+**Publication.** Luck K, Kim D-K, Lambourne L, Spirohn K, Begg BE, et al. "A
+reference map of the human binary protein interactome." *Nature*
+2020;580(7803):402–408. DOI 10.1038/s41586-020-2188-x; PMID 32296183; PMCID
+PMC7169983 (author manuscript). The article is subscription content, and the
+bioRxiv preprint is CC BY-NC-ND 4.0; neither governs the portal's data. The
+owner is among the paper's authors and is listed as a portal contact, which
+bears on who records its approvals (open question C15).
+
+**Data and version.** https://interactome-atlas.org/download lists HuRI
+(52,569 interactions) as `HuRI.tsv` and `HuRI.psi`, beside HI-union (64,006),
+Lit-BM (13,441) and earlier CCSB maps. No sizes, dates, versions, checksums
+or column definitions are published, and the paper calls the dataset
+HI-III-20 while the portal calls it HI-III-19. The published files are plain
+links with no click-through: the "Publication Moratorium" text addresses
+unpublished data, ends on publication, and is hidden on the page.
+
+**Licence, as stated.** The Download page, under "Terms of use": "The data
+and web portal are made available to the public under the CC BY 4.0
+license. Users of the web portal or its data should cite the web portal and
+the HuRI publication." It is plain text, with no link, SPDX id or date;
+Wayback snapshots show it absent in December 2019 and unchanged from
+2020-04-15, a week after publication, to 2026.
+
+**What it permits** (a reading for your review): all four scopes, with CC BY
+4.0 attribution: cite the portal and Luck et al. 2020, a licence notice, a
+link, and a note of changes. No ShareAlike, so `share_alike` is `no`. The
+acknowledgements the portal asks for (CCSB, NHGRI/NIH, the Ellison
+Foundation, the DFCI Strategic Initiative, the download date) can go in the
+attribution text as a courtesy. Under C13, a combined export of HuRI with
+TRRUST is still refused.
+
+**Contents.** Binary yeast two-hybrid screening of hORFeome v9.1 (17,408
+protein-coding genes): "we performed nine screens of Space III, followed by
+pairwise verification by quadruplicate retesting and sequence confirmation",
+with three assay versions. Samples of every screen were validated in MAPPIT,
+and of screens 1–6 also in GPCA. The dataset "contains 52,569 verified PPIs
+involving 8,275 proteins", estimated to be 2–11% of the binary interactome.
+One ORF was screened per gene. The files hold positives only *(to confirm in
+a dry run)*: a pair inside the screened space that was not detected is not a
+negative result. Explicit negatives exist only in supplementary benchmark
+and validation tables, which stay out of R2; thresholded MAPPIT and GPCA
+calls would be `not_significant`, never `tested_absent` (B13).
+
+**Organism and identifiers.** Human. The TSVs give pairs of Ensembl gene ids
+(GENCODE 27, Ensembl 90). The PSI-MI files carry "isoform-specific ORF,
+transcript and protein identifiers", in an undocumented format: third-party
+code suggests UniProt accessions with `-N` suffixes, or Ensembl protein and
+transcript ids *(unverified)*.
+
+**Mapping plan.**
+
+1. The TSVs are gene-only, so under B4 they cannot form protein edges. R2
+   would use `HuRI.psi`, after a dry run confirms its identifiers and that
+   it holds 52,569 pairs.
+2. HuRI screened one ORF per gene and does not analyse isoform specificity,
+   so under B12's principle it is protein-product evidence: the adapter
+   declares it not isoform-specific, and each isoform accession maps to its
+   entry through a verified `isoform_of` link, keeping the original
+   identifier.
+3. If its participants are Ensembl protein or transcript ids only, new
+   cross-reference namespaces and an approved release stating their UniProt
+   links would be needed; otherwise those rows are reported.
+4. Import HuRI only, never HI-union beside it (HI-union contains HuRI).
+   Exclude Lit-BM, a literature aggregate whose upstream terms are unchecked.
+
+**Fit with the typed model.** `physical_interaction` at level
+`physical_association` (MI:0915), the level IMEx curation gives yeast
+two-hybrid, never direct interaction: "NO interaction occurring 'in vivo' –
+in a cell or cell lysate – can be called 'direct'". The level must be
+stated by the file: if `HuRI.psi` states MI:0915, D20 applies as it stands;
+a file that states no type would stay unspecified unless you extend the B14
+exception to binary assays. Detection: two-hybrid prey pooling approach
+(MI:1112, under MI:0018), no spoke expansion, so binary and co-complex
+evidence stay apart. The portal's confidence score is a model fitted to the
+MAPPIT and GPCA results from six features, one of them network degree, and
+its direction is ambiguous as documented, so it is never a default filter.
+
+**For milestone RD.** Clearer terms than BioPlex, and binary evidence suits
+"partners of a transcription factor's protein". Smaller: 8,275 proteins
+against BioPlex 293T's 14,586. Transcription-factor coverage must be measured
+in the dry run.
+
+**Difficulty: medium.** The PSI-MI file's identifiers are the decisive
+unknown; the rest is a single study, one assay family and positives only.
+
+**Also found.**
+
+- The portal's home, About and Contact pages carry injected gambling spam;
+  the Download page, which holds the terms, does not. Its maintainers should
+  know.
+- The IntAct copy the paper names (IM-25472) was not found in IntAct's FTP
+  listings, yet IntAct's PSICQUIC service returned 162,719 rows for the
+  paper's PubMed id, and 197,362 for BioPlex 3.0's *(to verify)*. IntAct
+  states that CC BY 4.0 "apply to all IntAct data".
+
+#### OpenCell (Cho et al. 2022): not recommended for R2 now
+
+**Publication.** Cho NH, Cheveralls KC, Brunner AD, et al. "OpenCell:
+Endogenous tagging for the cartography of human cellular organization."
+*Science* 2022;375(6585):eabi6983. DOI 10.1126/science.abi6983; PMID
+35271311; PMCID PMC9119736 (author manuscript). Not open access at the
+publisher; the preprint is CC BY-NC-ND 4.0.
+
+**Contents.** Co-complex IP-MS: 1,260 endogenously split-mNeonGreen-tagged
+baits in HEK293T, in triplicate, giving "29,922 interactions between 5292
+proteins", each with a t-test p-value, an enrichment and two
+stoichiometries, called with dynamic per-bait FDR curves (1% and 5% tiers).
+No negatives. Transcription factors are explicitly under-represented among
+the baits, being "difficult to detect at endogenous levels".
+
+**Identifiers.** The interactions file names baits only by gene symbol and
+Ensembl gene id, so a bait's protein would need a join to a second file of
+the release; preys are MaxQuant protein groups, isoforms included, and a
+group spanning several entries is ambiguous.
+
+**Licence.** No licence for the called interaction list. The portal shows
+only "© 2021-2022 The Chan Zuckerberg Biohub"; Biohub's general terms of use
+(May 2026) say "for research and informational purposes only" and grant no
+redistribution; and the portal file is built from the preprint's Table S4,
+whose preprint is CC BY-NC-ND 4.0. The deposits are clear but hold no calls:
+PRIDE PXD024909 and PXD029191 are CC0, and figshare 16755205 (the enrichment
+and p-value statistics) is CC BY 4.0. BioGRID's curated copy (29,754
+interactions) is under its MIT statement.
+
+**Fit.** Under D20's decided B14 exception (a single study whose quoted
+assay is co-complex purification), `physical_interaction` at `association`,
+"co-complex association (IP-MS)".
+
+**Assessment.** A good scientific complement to BioPlex in the same cell
+line (683 shared baits), but not an R2 replacement: no licence for the
+called list, gene-only baits and few transcription factors.
+
 ## 3. Reference sources
 
 ### 3.1 HGNC: human gene reference (RF1a)
@@ -804,9 +954,12 @@ unreachable on 2026-10-29, so file names and columns are unverified.
 - **R2** cannot reach public view with BioPlex until C14 is settled; the NDEx
   CC0 field makes a short confirmation from the BioPlex team the likeliest
   route. Until then, milestone RD can run on a private stack only if you
-  judge internal use acceptable. An alternative source is being researched
-  in parallel (C14). Its rows are co-complex association evidence (B14), and
-  its isoform accessions map to entries through verified links (B12).
+  judge internal use acceptable. Its rows are co-complex association
+  evidence (B14), and its isoform accessions map to entries through verified
+  links (B12). **HuRI is the recommended alternative (§2.6)**: CC BY 4.0,
+  binary evidence, and a dry run of its PSI-MI file decides feasibility.
+  IntAct copies of HuRI and BioPlex 3.0, under CC BY 4.0, are a second lead
+  to verify.
 - **N2** needs mature-miRNA (miRBase) and transcript (Ensembl) reference
   releases, and a source for miRBase release 15, before Helwak can be
   imported.
@@ -834,8 +987,13 @@ These are in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md), marked **Decided**
 - **C13.** TRRUST keeps its CC BY-SA 4.0 attribution per release, and no
   combined export includes it until ShareAlike has been evaluated.
 - **C14.** The inquiry to the BioPlex team is drafted in Appendix A and is
-  not sent without your approval; an alternative dataset is researched in
-  parallel.
+  not sent without your approval. The alternatives were researched (§2.6):
+  HuRI is recommended.
+
+One new question follows from the alternatives:
+
+- **C15.** The owner co-authored HuRI and is listed as a portal contact, so
+  who should record HuRI's approvals?
 
 ## 6. Sources
 
@@ -888,6 +1046,23 @@ Ensembl stable-id and archive pages, and https://ftp.ensembl.org/pub/release-60/
 https://www.ndexbio.org/v2/network/{id}/summary for the three DOIs
 10.18119/N9RP5D, 10.18119/N9N012 and 10.18119/N9H887.
 
+**HuRI:** https://interactome-atlas.org/download, /about/ and /faq/;
+https://www.nature.com/articles/s41586-020-2188-x; the Europe PMC record and
+full text for PMC7169983; the Supplementary Information and Supplementary
+Tables Guide PDFs; https://www.biorxiv.org/content/10.1101/605451v1;
+https://intact-portal.gitbook.io/intact-portal-doc/docs/curation-manual/interaction
+and /about/license-privacy; the IntAct FTP listings under
+https://ftp.ebi.ac.uk/pub/databases/intact/current/; the Wayback CDX record
+for interactome-atlas.org/download; https://www.gencodegenes.org/human/releases.html.
+
+**OpenCell:** https://pubmed.ncbi.nlm.nih.gov/35271311/; the Europe PMC and
+Crossref records; https://www.biorxiv.org/content/10.1101/2021.03.29.437450v2
+and its supplementary material; https://github.com/czbiohub-sf/opencell-portal-pub;
+the PRIDE API records for PXD024909 and PXD029191;
+https://api.figshare.com/v2/articles/16755205;
+https://registry.opendata.aws/czb-opencell/; https://biohub.org/terms-of-use/;
+https://downloads.thebiogrid.org/; IntAct's PSICQUIC count service.
+
 **References:** https://www.genenames.org/about/license/ and the HGNC
 download, archive and help pages; the UniProt help pages through
 https://rest.uniprot.org/help/ and the UniProt FTP READMEs;
@@ -929,6 +1104,16 @@ confirmed most claims and changed these:
 - **Helwak:** CC BY 4.0 applies to the version of record from 2013-07-16
   (Crossref). miRBase release 15 is not on the miRBase website, while
   Ensembl release 60 is still on the Ensembl FTP.
+
+- **HuRI:** the check found that the published files are not behind any
+  click-through and that the moratorium text is hidden; dated the CC BY
+  statement through Wayback snapshots; found the documented confidence-score
+  model; corrected that GPCA covered screens 1–6 only; and placed the
+  thresholded validation calls under `not_significant` (B13).
+- **OpenCell:** the check found Biohub's general terms of use, BioGRID's MIT
+  statement for its curated copy, and IntAct's announcement of OpenCell as a
+  featured dataset, though PSICQUIC returned no rows for it; it also noted
+  that B14 already decides OpenCell's type.
 
 Claims that rest only on pages that blocked the checker on 2026-10-29 (some
 PMC, GEO and publisher pages) stay marked *(unverified)*.
