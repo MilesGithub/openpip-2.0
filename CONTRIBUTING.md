@@ -48,11 +48,16 @@ cd backend
 venv/bin/pytest                         # needs the Postgres container running
 venv/bin/ruff check .
 venv/bin/black --check .
+venv/bin/python manage.py makemigrations --check --dry-run
 ```
 
 pytest creates and discards its own test database. Parity tests, which compare
 against the original openPIP, are excluded by default. Run them with
 `pytest -m parity`.
+
+pytest's header shows the database engine (`database: postgresql` or
+`database: sqlite`). Without `DATABASE_URL` it runs on SQLite, says so at the
+end, and skips the tests marked `postgres`.
 
 ### Frontend
 
@@ -62,6 +67,10 @@ npx vitest run       # npm run test starts watch mode
 npm run lint
 npm run build        # type-checks, then builds
 ```
+
+On a busy machine some tests can overrun their 5 s limit. CI runs one file at
+a time and allows 20 s per test:
+`npx vitest run --no-file-parallelism --testTimeout=20000`.
 
 ### Documentation
 
@@ -83,6 +92,20 @@ change, or `pytest` fails.
 
 Write docs for what the code does now. Check each claim against the code or a
 running portal, and use real responses in examples.
+
+### Continuous integration
+
+Every push and pull request runs these checks in GitHub Actions
+(`.github/workflows/ci.yml`):
+
+- the backend tests on PostgreSQL 16 and Redis 7, then ruff, black and the
+  migration check;
+- the frontend lint, Vitest (one file at a time, 20 s per test) and build;
+- `mkdocs build --strict`.
+
+A CI run stops if the tests would use any database other than PostgreSQL, or
+if it selects the parity tests. On a fork, enable workflows once in the
+repository's Actions tab.
 
 ## Making a change
 
