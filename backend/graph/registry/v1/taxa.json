@@ -1,0 +1,29 @@
+[
+  {
+    "taxid": 9606,
+    "scientific_name": "Homo sapiens",
+    "common_name": "human",
+    "rank": "species",
+    "parent": null,
+    "merged_into": null,
+    "label_source": "NCBI Taxonomy, efetch db=taxonomy id=9606, checked 2026-10-29"
+  },
+  {
+    "taxid": 7227,
+    "scientific_name": "Drosophila melanogaster",
+    "common_name": "fruit fly",
+    "rank": "species",
+    "parent": null,
+    "merged_into": null,
+    "label_source": "NCBI Taxonomy, efetch db=taxonomy id=7227, checked 2026-10-29"
+  },
+  {
+    "taxid": 32630,
+    "scientific_name": "synthetic construct",
+    "common_name": "",
+    "rank": "species",
+    "parent": null,
+    "merged_into": null,
+    "label_source": "NCBI Taxonomy, efetch db=taxonomy id=32630, checked 2026-10-29"
+  }
+]

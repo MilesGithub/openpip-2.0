@@ -82,6 +82,12 @@ No version has been tagged yet. Everything below is in development towards
   stops if the tests would use any database other than PostgreSQL, or if it
   selects the parity tests.
 
+**Typed relationship graph**
+
+- Groundwork tables for typed entities and identifiers, behind
+  `TYPED_GRAPH_ENABLED` (off by default). Existing pages, APIs and data are
+  unchanged.
+
 ### Fixed
 
 From the October 2026 audit (see `docs/BUGS.md` for details):

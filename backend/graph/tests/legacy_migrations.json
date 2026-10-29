@@ -1,0 +1,92 @@
+{
+  "admin": [
+    "0001_initial",
+    "0002_logentry_remove_auto_add",
+    "0003_logentry_add_action_flag_choices"
+  ],
+  "admin_panel": [
+    "0001_initial",
+    "0002_adminsettings_logo",
+    "0003_adminsettings_nav_extras",
+    "0004_adminsettings_example_types",
+    "0005_sitetext_sitetext_site_text_key_locale_uniq",
+    "0006_home_prose_to_site_text",
+    "0007_adminsettings_show_subcellular_location_and_more",
+    "0008_adminsettings_horizontal_filter_bar",
+    "0009_adminsettings_nav_style_overrides",
+    "0010_adminsettings_canvas_background_color",
+    "0011_adminsettings_protein_link"
+  ],
+  "auth": [
+    "0001_initial",
+    "0002_alter_permission_name_max_length",
+    "0003_alter_user_email_max_length",
+    "0004_alter_user_username_opts",
+    "0005_alter_user_last_login_null",
+    "0006_require_contenttypes_0002",
+    "0007_alter_validators_add_error_messages",
+    "0008_alter_user_username_max_length",
+    "0009_alter_user_last_name_max_length",
+    "0010_alter_group_name_max_length",
+    "0011_update_proxy_permissions",
+    "0012_alter_user_first_name_max_length"
+  ],
+  "contenttypes": [
+    "0001_initial",
+    "0002_remove_content_type_name"
+  ],
+  "core": [
+    "0001_initial",
+    "0002_user_security_questions",
+    "0003_user_orcid_id",
+    "0004_remove_user_orcid_id",
+    "0005_user_affiliation_user_avatar_user_bio_user_position_and_more",
+    "0006_user_discoverable_user_user_email_unique_nonblank"
+  ],
+  "datasets": [
+    "0001_initial",
+    "0002_uploadfiles_file_size_uploadfiles_show",
+    "0003_fix_audit_data",
+    "0004_dataset_citation_and_about"
+  ],
+  "interactions": [
+    "0001_initial",
+    "0002_add_search_indexes",
+    "0003_remove_interaction_interaction_removed_idx_and_more",
+    "0004_interactionnetwork_created_at",
+    "0005_restore_search_indexes",
+    "0006_interactionparticipant_and_more",
+    "0007_interaction_negative",
+    "0008_interaction_interaction_type",
+    "0009_interactionnetwork_note"
+  ],
+  "proteins": [
+    "0001_initial",
+    "0002_fix_annotation_identifier_type",
+    "0003_fix_annotation_type_nullable",
+    "0004_add_search_indexes",
+    "0005_organism_scientific_name",
+    "0006_organism_taxonomy_id_unique"
+  ],
+  "sessions": [
+    "0001_initial"
+  ],
+  "sharing": [
+    "0001_initial",
+    "0002_comment_edited",
+    "0003_savedview_note_public_link"
+  ],
+  "token_blacklist": [
+    "0001_initial",
+    "0002_outstandingtoken_jti_hex",
+    "0003_auto_20171017_2007",
+    "0004_auto_20171017_2013",
+    "0005_remove_outstandingtoken_jti",
+    "0006_auto_20171017_2113",
+    "0007_auto_20171017_2214",
+    "0008_migrate_to_bigautofield",
+    "0010_fix_migrate_to_bigautofield",
+    "0011_linearizes_history",
+    "0012_alter_outstandingtoken_user"
+  ]
+}

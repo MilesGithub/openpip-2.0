@@ -54,6 +54,7 @@ Read by `backend/openpip/settings/`.
 | `REDIS_URL` | unset | Redis connection, used as the Celery job queue and as the cache that stores rate-limit counters. Compose sets it to `redis://redis:6379/0`. Without it, rate limits are counted separately in each worker process. |
 | `ALLOWED_HOSTS` | derived from `PUBLIC_URL` (development allows any host) | Optional override: comma-separated host names the site may be reached by. Set it only if the site has more names than `PUBLIC_URL`'s. |
 | `CSRF_TRUSTED_ORIGINS` | derived from `PUBLIC_URL` | Optional override: comma-separated origins trusted for form posts to the Django admin. |
+| `TYPED_GRAPH_ENABLED` | off | Turns on the typed relationship graph, which is still being built and adds nothing visible yet. While it is off, `manage.py graph_sync_registry`, which loads the graph's registries, refuses to run. `1`, `true`, `yes` or `on` turns it on. |
 
 ### Variables used only by Docker Compose
 
