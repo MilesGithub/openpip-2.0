@@ -74,6 +74,14 @@ No version has been tagged yet. Everything below is in development towards
   operator guide and a complete API reference that tests keep in step with the
   code. Its examples show the portal's own address.
 
+**Development**
+
+- Continuous integration in GitHub Actions. Every push and pull request runs
+  the backend tests on PostgreSQL 16, ruff, black and the migration check, the
+  frontend lint, tests and build, and the strict documentation build. A run
+  stops if the tests would use any database other than PostgreSQL, or if it
+  selects the parity tests.
+
 ### Fixed
 
 From the October 2026 audit (see `docs/BUGS.md` for details):

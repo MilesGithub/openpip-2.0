@@ -5,6 +5,7 @@ in both directions, so a variable or endpoint cannot be added, renamed or
 removed without the docs failing here first.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -14,9 +15,11 @@ from django.conf import settings
 REPO = Path(settings.BASE_DIR).parent
 DOCS = REPO / "docs"
 
-# Containers only mount backend/, so these run from a full checkout.
+# Containers only mount backend/, so these run from a full checkout. CI always
+# has one, so there they run, and fail if docs/ is missing, instead of skipping.
+IN_CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
 pytestmark = pytest.mark.skipif(
-    not DOCS.is_dir(), reason="needs the full repository checkout"
+    not DOCS.is_dir() and not IN_CI, reason="needs the full repository checkout"
 )
 
 

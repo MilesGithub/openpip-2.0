@@ -1,0 +1,152 @@
+# The checks CONTRIBUTING.md lists, run on every push and pull request.
+#
+# The backend tests run on PostgreSQL 16 and Redis 7, as the portals do. The
+# settings would otherwise fall back silently to SQLite, so backend/conftest.py
+# stops a CI run that is not on PostgreSQL, and one that selects the parity
+# tests, which read a live database and call the original openPIP site.
+#
+# Pushes to main include merges from upstream, so those are checked as well. A
+# branch with an open pull request is checked twice: at its head, and merged
+# with main.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a branch or pull request cancels its run in progress. Every
+# run on main has a group of its own, so every push to main is checked.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest on PostgreSQL, ruff, black, migrations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: openpip
+          POSTGRES_USER: openpip
+          POSTGRES_PASSWORD: openpip
+        ports:
+          - 5432:5432
+        # Over TCP: the image's start-up server listens on the socket only, so a
+        # socket check can pass before the real server accepts connections.
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U openpip -d openpip"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DJANGO_SETTINGS_MODULE: openpip.settings.dev
+      DATABASE_URL: postgres://openpip:openpip@localhost:5432/openpip
+      REDIS_URL: redis://localhost:6379/0
+      # Not a secret. At least 32 bytes, because login tokens are signed with it
+      # (HS256) and PyJWT warns about shorter keys.
+      SECRET_KEY: ci-only-signing-key-not-a-secret-0123456789
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      # The whole repository, not only backend/: the docs contract tests compare
+      # the code with docs/, and fail in CI if it is missing. No later step
+      # needs git credentials.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        id: deps
+        run: pip install -r requirements.txt
+      - name: Confirm the tests will run on PostgreSQL
+        run: >-
+          python manage.py shell -c
+          "from django.db import connection;
+          print('database vendor:', connection.vendor);
+          assert connection.vendor == 'postgresql'"
+      # pytest.ini deselects the parity tests (-m "not parity").
+      - name: pytest
+        run: pytest -ra
+      # The checks below do not depend on pytest, so they still run, and
+      # report, when it fails.
+      - name: ruff
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: ruff check .
+      - name: black
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: black --check .
+      - name: Migrations match the models
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python manage.py makemigrations --check --dry-run
+
+  frontend:
+    name: Frontend (lint, Vitest, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Matches the frontend image (node:20-alpine). Vite 8 needs 20.19 or later.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        id: deps
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      # One file at a time, with 20 s per test instead of 5 s: on a busy machine
+      # some jsdom tests overrun 5 s even serially. A hung test still fails.
+      # Vitest and the build still run, and report, when lint fails.
+      - name: Vitest
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: npx vitest run --no-file-parallelism --testTimeout=20000
+      - name: Type-check and build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: npm run build
+
+  docs:
+    name: Documentation (mkdocs build --strict)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+      - name: Install MkDocs
+        run: pip install -r docs/requirements.txt
+      - name: Build the site, failing on any warning
+        run: mkdocs build --strict
