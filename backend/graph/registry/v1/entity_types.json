@@ -1,0 +1,29 @@
+[
+  {
+    "slug": "gene",
+    "label": "Gene",
+    "definition": "A gene of one organism, as the nomenclature authority for that organism defines it: HGNC for human genes. Not its transcripts or its protein products, which are separate entities joined to it only by reference relationships that a release states.",
+    "taxon_policy": "required",
+    "identity_scheme": "identifier",
+    "assembly_required": false,
+    "display_token": ""
+  },
+  {
+    "slug": "protein",
+    "label": "Protein (UniProtKB entry)",
+    "definition": "A UniProtKB entry: the entry-level record for the protein products of a gene in one organism, identified by its entry accession (P04637). It is not any one isoform, and its displayed canonical sequence is not taken to be one; an isoform's own record is a protein_isoform.",
+    "taxon_policy": "required",
+    "identity_scheme": "identifier",
+    "assembly_required": false,
+    "display_token": ""
+  },
+  {
+    "slug": "protein_isoform",
+    "label": "Protein isoform",
+    "definition": "One isoform's own record, identified by the entry accession followed by a dash and a number (P04637-2, and P04637-1 too). Never merged into its entry: the two are joined only by an isoform_of relationship that a UniProt reference release states.",
+    "taxon_policy": "required",
+    "identity_scheme": "identifier",
+    "assembly_required": false,
+    "display_token": ""
+  }
+]

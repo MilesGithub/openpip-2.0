@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "admin_panel",
     "psicquic",
     "sharing",
+    "graph",
 ]
 
 MIDDLEWARE = [
@@ -194,3 +195,8 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_TRACK_STARTED = True
 CELERY_RESULT_EXPIRES = 3600  # 1 hour
+
+# The typed relationship graph (backend/graph). Off by default: while it is off
+# its commands refuse to write. The app is installed and migrated either way,
+# so the migration state never depends on the switch.
+TYPED_GRAPH_ENABLED = env.bool("TYPED_GRAPH_ENABLED", default=False)

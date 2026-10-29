@@ -31,6 +31,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-django-insecure-dev-key-change-me}
       ALLOWED_HOSTS: localhost,127.0.0.1,backend
       REDIS_URL: redis://redis:6379/0
+      TYPED_GRAPH_ENABLED: ${TYPED_GRAPH_ENABLED-}
     depends_on:
       db:
         condition: service_healthy
@@ -53,6 +54,7 @@ services:
       DATABASE_URL: postgres://openpip:${DB_PASSWORD:-openpip_dev}@db:5432/openpip
       SECRET_KEY: ${SECRET_KEY:-django-insecure-dev-key-change-me}
       REDIS_URL: redis://redis:6379/0
+      TYPED_GRAPH_ENABLED: ${TYPED_GRAPH_ENABLED-}
     depends_on:
       db:
         condition: service_healthy

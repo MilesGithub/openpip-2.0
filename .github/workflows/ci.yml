@@ -100,6 +100,20 @@ jobs:
       - name: Migrations match the models
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: python manage.py makemigrations --check --dry-run
+      # On the job's own database, not pytest's: migrate, load the registries
+      # and check them against the JSON, then take each new app back to zero,
+      # in reverse dependency order, and forward again. The switch is on for
+      # this step only.
+      - name: Typed graph migrations forward, back and forward again
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        env:
+          TYPED_GRAPH_ENABLED: "1"
+        run: |
+          python manage.py migrate
+          python manage.py graph_sync_registry
+          python manage.py graph_sync_registry --check
+          python manage.py migrate graph zero
+          python manage.py migrate
 
   frontend:
     name: Frontend (lint, Vitest, build)
