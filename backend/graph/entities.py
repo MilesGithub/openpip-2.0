@@ -13,13 +13,19 @@ here, in one tested place:
   introduced it, the first writer, and only a draft or staged release with an
   effective `internal` approval introduces any (a synthetic one needs none,
   and introduces synthetic constructs only).
+
+The entity type and namespace rows these rules read are read again inside
+the write's transaction, under a shared lock (graph.models.share_lock), so a
+registry sync cannot change their rules before the entity is written; a
+release is locked before them.
 """
 
-from django.db import transaction
+from django.db import router, transaction
 
 from .approvals import INTERNAL, is_effective
 from .identity import identity_key, normalize, scope_key, uniprot_entity_type
 from .models import (
+    SYNTHETIC_TAXON,
     Entity,
     EntityIdentifier,
     EntityStatus,
@@ -31,6 +37,7 @@ from .models import (
     Scope,
     Taxon,
     TaxonPolicy,
+    share_lock,
 )
 from .preconditions import locked_release, require_switch
 
@@ -42,11 +49,9 @@ NON_PRIMARY_ROLES = (
     IdentifierRole.ALIAS,
     IdentifierRole.SYMBOL,
 )
-# NCBI Taxonomy's "synthetic construct" (taxa.json): the only taxon whose
-# entities a synthetic release introduces.
-SYNTHETIC_TAXON = 32630
 # A release introduces entities while it is imported, and until it is
-# published.
+# published. A synthetic one introduces synthetic constructs only
+# (SYNTHETIC_TAXON, NCBI Taxonomy's "synthetic construct").
 INTRODUCING = (ReleaseStatus.DRAFT, ReleaseStatus.STAGED)
 
 
@@ -139,6 +144,16 @@ def create_entity(
     """
     if release is not None:
         require_switch(ReleaseProvenanceError, "no release introduces entities")
+    with transaction.atomic():
+        if release is not None:
+            release = locked_release(release, ReleaseProvenanceError)
+        using = router.db_for_write(Entity)
+        share_lock(EntityType, using, [_key(entity_type, EntityType)])
+        share_lock(IdentifierNamespace, using, [_key(namespace, IdentifierNamespace)])
+        return _create(entity_type, label, taxon, namespace, value, release)
+
+
+def _create(entity_type, label, taxon, namespace, value, release) -> Entity:
     entity_type = _row(EntityType, entity_type, "entity type")
     namespace = _row(IdentifierNamespace, namespace, "namespace")
     taxon = _taxon(taxon)
@@ -177,31 +192,30 @@ def create_entity(
         return _get_or_insert(
             entity_type, label, taxon, namespace, value, lookup, version, scope, key
         )
-    with transaction.atomic():
-        release = _introducing(release, taxon)
-        status = (
-            EntityStatus.ACTIVE
-            if release.kind == ReleaseKind.REFERENCE
-            else EntityStatus.PROVISIONAL
-        )
-        return _get_or_insert(
-            entity_type,
-            label,
-            taxon,
-            namespace,
-            value,
-            lookup,
-            version,
-            scope,
-            key,
-            created_by_release=release,
-            status=status,
-        )
+    _check_introducing(release, taxon)
+    status = (
+        EntityStatus.ACTIVE
+        if release.kind == ReleaseKind.REFERENCE
+        else EntityStatus.PROVISIONAL
+    )
+    return _get_or_insert(
+        entity_type,
+        label,
+        taxon,
+        namespace,
+        value,
+        lookup,
+        version,
+        scope,
+        key,
+        created_by_release=release,
+        status=status,
+    )
 
 
-def _introducing(release, taxon):
-    """The release, locked, once it may introduce an entity of this taxon."""
-    release = locked_release(release, ReleaseProvenanceError)
+def _check_introducing(release, taxon):
+    """Refuse unless the release, locked by the caller, may introduce an
+    entity of this taxon."""
     if release.status not in INTRODUCING:
         raise ReleaseProvenanceError(
             f"Release {release.pk} is {release.status}: only a draft or staged "
@@ -220,7 +234,6 @@ def _introducing(release, taxon):
             f"Release {release.pk} has no effective internal approval, so it "
             "introduces no entities. Nothing was written."
         )
-    return release
 
 
 def _get_or_insert(
@@ -341,12 +354,20 @@ def add_identifier(entity, namespace, value, role) -> EntityIdentifier:
     return identifier
 
 
+def _key(value, model):
+    """The registry row's key a caller gave, as a row or a slug; None for
+    anything else, which _row refuses."""
+    pk = value.pk if isinstance(value, model) else value
+    return pk if isinstance(pk, str) else None
+
+
 def _row(model, value, what):
-    if isinstance(value, model):
-        return value
+    """The row as stored, read again when a row is given: none of its
+    attributes is trusted."""
+    pk = value.pk if isinstance(value, model) else value
     try:
-        return model.objects.get(pk=value)
-    except model.DoesNotExist:
+        return model.objects.get(pk=pk)
+    except (model.DoesNotExist, ValueError, TypeError):
         raise ValueError(f"Unknown {what} {value!r}.") from None
 
 

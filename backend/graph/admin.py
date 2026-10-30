@@ -4,6 +4,15 @@ admin, for staff, while the switch is on.
 Source files, import runs, source records and entities are not registered:
 they hold third-party data, which only the visibility service may show
 (graph.visibility), so they wait for AD1's admin, which reads through it.
+So do relationships, their evidence assertions and the assertions'
+participants, methods, publications, scores and contexts.
+
+The registries are shown: taxa, entity types, identifier namespaces and the
+registry version, relationship types and score types, all loaded from their
+JSON, and the vocabulary terms. A term holds a CURIE and the label a commit
+stated for it, recorded only by the commit of a synthetic release or of one
+with an effective internal approval (graph.terms), which is what staff may
+see.
 
 Registering does not depend on the switch, so the admin's URLs never do;
 each page asks it. While TYPED_GRAPH_ENABLED is off the app is absent from
@@ -11,10 +20,11 @@ the admin and every one of its pages is refused, to superusers too. While it
 is on, Django's staff permissions apply, narrowed where a record's rules
 allow less:
 
-- the registries come only from their JSON (graph_sync_registry), releases
-  change only through graph.releases and G5's commands, and decisions only
-  through graph.approvals, so they are shown and never edited here, as is
-  the due-diligence history;
+- the registries come only from their JSON (graph_sync_registry), terms
+  only from a commit (graph.terms), releases change only through
+  graph.releases and G5's commands, and decisions only through
+  graph.approvals, so they are shown and never edited here, as is the
+  due-diligence history;
 - a publication's identifiers are graph.publications' to set, normalized and
   merged across co-referent identifiers, so only its citation text is edited
   here, and none is added;
@@ -47,11 +57,14 @@ from .models import (
     IdentifierNamespace,
     Publication,
     RegistryState,
+    RelationshipType,
     ReleaseLicence,
     ReleasePublication,
+    ScoreType,
     SourceDataset,
     SourceDatasetPublication,
     Taxon,
+    Term,
     UsageApproval,
 )
 from .preconditions import typed_graph_enabled
@@ -194,6 +207,68 @@ class IdentifierNamespaceAdmin(ViewOnlyAdmin):
 @admin.register(RegistryState)
 class RegistryStateAdmin(ViewOnlyAdmin):
     list_display = ("version", "synced_at")
+
+
+@admin.register(RelationshipType)
+class RelationshipTypeAdmin(ViewOnlyAdmin):
+    list_display = (
+        "slug",
+        "label",
+        "family",
+        "orientation",
+        "polarity",
+        "self_pairs_allowed",
+        "is_reference",
+    )
+    list_filter = ("family", "orientation", "polarity", "is_reference")
+
+
+@admin.register(ScoreType)
+class ScoreTypeAdmin(ViewOnlyAdmin):
+    list_display = (
+        "slug",
+        "label",
+        "value_kind",
+        "direction",
+        "range_min",
+        "range_max",
+        "comparable_across_datasets",
+    )
+    list_filter = ("value_kind", "direction", "comparable_across_datasets")
+    search_fields = ("slug", "label")
+
+
+# ── Vocabulary terms: recorded by commits ───────────────────────────────────
+
+
+@admin.register(Term)
+class TermAdmin(ViewOnlyAdmin):
+    # The release by dataset and version, as elsewhere here, rather than by
+    # row id.
+    fields = (
+        "curie",
+        "ontology",
+        "label",
+        "label_from",
+        "definition",
+        "obsolete",
+        "ontology_release",
+        "created_at",
+    )
+    readonly_fields = fields
+    list_display = ("curie", "label", "ontology", "label_from", "obsolete")
+    list_filter = ("ontology", "obsolete")
+    list_select_related = ("label_release__dataset",)
+    search_fields = ("curie", "label")
+
+    @admin.display(
+        description="label stated by release", ordering="label_release__dataset__slug"
+    )
+    def label_from(self, term):
+        # None, shown as the admin's empty value, once the draft release that
+        # stated the label is deleted.
+        release = term.label_release
+        return release_label(release) if release is not None else None
 
 
 # ── Catalogue ───────────────────────────────────────────────────────────────

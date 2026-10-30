@@ -6,12 +6,24 @@
 
 The sync creates missing rows and is all or nothing. On existing rows it
 updates descriptive fields: labels, definitions, display tokens, URL templates
-and authority references. Every other field shapes stored data (a namespace's
-case policy decides each lookup in it), so a change to one is applied only
-while no stored row uses that registry row, and is refused, naming the rows,
-once one does: a change that would re-key data needs a deliberate re-key.
-Rows missing from the JSON are reported and never deleted. Nothing is
-written while TYPED_GRAPH_ENABLED is off.
+and authority references, and a relationship type's role labels and PSI-MI
+anchors. Every other field shapes stored data (a namespace's case policy
+decides each lookup in it, a relationship type's orientation which pairs are
+one relationship, a score type's range which values are valid), so a change to
+one, many-to-many fields included, is applied only while no stored row uses
+that registry row, and is refused, naming the rows, once one does: a change
+that would re-key data needs a deliberate re-key. Rows missing from the JSON
+are reported and never deleted. Nothing is written while TYPED_GRAPH_ENABLED
+is off.
+
+Writers that validate against a registry row hold it in shared mode until
+they commit (graph.models.share_lock). The sync therefore plans again inside
+its write transaction: it locks every row it will change, in key order and
+registry by registry, and only then reads it again and counts the rows that
+use it. Whichever of a sync and a writer locks second sees the other's
+result. The lock is FOR NO KEY UPDATE, which a writer's shared lock waits
+for but a foreign-key check does not, so a row a writer only references (a
+taxon, checked when it commits) never joins a cycle.
 """
 
 from functools import partial
@@ -26,14 +38,32 @@ from graph.models import (
     Entity,
     EntityIdentifier,
     EntityType,
+    EvidenceScore,
     IdentifierNamespace,
     RegistryState,
+    Relationship,
+    RelationshipType,
+    ScoreType,
     Taxon,
 )
 
 TAXON_DESCRIPTIVE = {"scientific_name", "common_name", "rank", "label_source"}
 TYPE_DESCRIPTIVE = {"label", "definition", "display_token"}
 NAMESPACE_DESCRIPTIVE = {"label", "url_template", "authority"}
+RELATIONSHIP_TYPE_DESCRIPTIVE = {
+    "label",
+    "definition",
+    "subject_role_label",
+    "object_role_label",
+    "display_token",
+    "psi_mi_anchors",
+}
+SCORE_TYPE_DESCRIPTIVE = {"label", "definition", "defining_document"}
+# Each registry's many-to-many fields: the JSON lists slugs.
+MANY_TO_MANY = {
+    IdentifierNamespace: ("allowed_entity_types",),
+    RelationshipType: ("allowed_subject_types", "allowed_object_types"),
+}
 # How many of the stored rows that block a change a refusal lists by id.
 SHOWN_IDS = 10
 
@@ -82,6 +112,44 @@ def namespace_fields(entry) -> dict:
     return fields
 
 
+def relationship_type_fields(entry) -> dict:
+    return {
+        field: entry[field]
+        for field in (
+            "label",
+            "definition",
+            "family",
+            "orientation",
+            "polarity",
+            "subject_role_label",
+            "object_role_label",
+            "identity_qualifiers",
+            "self_pairs_allowed",
+            "psi_mi_anchors",
+            "display_token",
+            "is_reference",
+        )
+    }
+
+
+def score_type_fields(entry) -> dict:
+    return {
+        field: entry[field]
+        for field in (
+            "label",
+            "definition",
+            "value_kind",
+            "direction",
+            "range_min",
+            "range_max",
+            "unit",
+            "null_model",
+            "defining_document",
+            "comparable_across_datasets",
+        )
+    }
+
+
 def _users(queryset, noun, nouns):
     """The stored rows that depend on a registry row, as a phrase, or None."""
     count = queryset.count()
@@ -110,10 +178,29 @@ def namespace_users(slug):
     )
 
 
-class Plan:
-    """What a sync would do, and what it would refuse."""
+def relationship_type_users(slug):
+    return _users(
+        Relationship.objects.filter(relationship_type_id=slug),
+        "relationship",
+        "relationships",
+    )
 
-    def __init__(self):
+
+def score_type_users(slug):
+    return _users(
+        EvidenceScore.objects.filter(score_type_id=slug),
+        "evidence score",
+        "evidence scores",
+    )
+
+
+class Plan:
+    """What a sync would do, and what it would refuse. With `lock`, as the
+    sync plans inside its write transaction: each row it will change is
+    locked before it is read again and its users are counted."""
+
+    def __init__(self, lock=False):
+        self.lock = lock
         self.lines = []
         self.writes = []
         self.refusals = []
@@ -124,29 +211,34 @@ class Plan:
         return not (self.writes or self.refusals or self.missing)
 
     def add_registry(self, kind, model, entries, key, fields_of, descriptive, users):
-        many = "allowed_entity_types" if model is IdentifierNamespace else None
-        rows = model.objects.all()
-        if many:
-            rows = rows.prefetch_related(many)
-        existing = {row.pk: row for row in rows}
-        for entry in entries:
-            pk, values = entry[key], fields_of(entry)
-            wanted = set(entry[many]) if many else None
+        many = MANY_TO_MANY.get(model, ())
+        entries = [
+            (entry[key], fields_of(entry), {name: set(entry[name]) for name in many})
+            for entry in entries
+        ]
+        existing = _rows(model, many)
+        locked = set()
+        if self.lock:
+            locked = {
+                pk
+                for pk, values, wanted in entries
+                if pk in existing and _changes(existing[pk], values, wanted, many)
+            }
+            _lock(model, locked)
+            existing = _rows(model, many)
+        for pk, values, wanted in entries:
             row = existing.pop(pk, None)
             if row is None:
                 self.lines.append(f"create {kind} {pk}")
-                self.writes.append(partial(_create, model, pk, values, many, wanted))
+                self.writes.append(partial(_create, model, pk, values, wanted))
                 continue
-            changes = {
-                field: (getattr(row, field), value)
-                for field, value in values.items()
-                if getattr(row, field) != value
-            }
-            if many:
-                current = {related.pk for related in getattr(row, many).all()}
-                if current != wanted:
-                    changes[many] = (sorted(current), sorted(wanted))
+            changes = _changes(row, values, wanted, many)
             if not changes:
+                continue
+            if self.lock and pk not in locked:
+                self.refusals.append(
+                    f"refused: {kind} {pk} changed while this sync ran; run it again"
+                )
                 continue
             structural = sorted(set(changes) - descriptive)
             blocked_by = users(pk) if structural else None
@@ -158,32 +250,71 @@ class Plan:
                 else:
                     self.lines.append(f"update {change}")
             update = {
-                field: new for field, (_, new) in changes.items() if field != many
+                field: new for field, (_, new) in changes.items() if field not in many
             }
-            self.writes.append(
-                partial(_update, model, pk, update, many, wanted, many in changes)
-            )
+            relinked = {name: wanted[name] for name in many if name in changes}
+            self.writes.append(partial(_update, model, pk, update, relinked))
         for pk in sorted(existing):
             self.missing.append(
                 f"missing from the JSON: {kind} {pk} (kept; the sync never deletes)"
             )
 
 
-def _create(model, pk, values, many, wanted):
-    row = model.objects.create(pk=pk, **values)
+def _rows(model, many) -> dict:
+    rows = model.objects.all()
     if many:
-        getattr(row, many).set(sorted(wanted))
+        rows = rows.prefetch_related(*many)
+    return {row.pk: row for row in rows}
 
 
-def _update(model, pk, values, many, wanted, many_changed):
+def _changes(row, values, wanted, many) -> dict:
+    """{field: (stored, wanted)} for each field the JSON changes."""
+    changes = {
+        field: (getattr(row, field), value)
+        for field, value in values.items()
+        if getattr(row, field) != value
+    }
+    for name in many:
+        current = {related.pk for related in getattr(row, name).all()}
+        if current != wanted[name]:
+            changes[name] = (sorted(current), sorted(wanted[name]))
+    return changes
+
+
+def _lock(model, pks):
+    """Lock these rows, in key order, until the sync commits: FOR NO KEY
+    UPDATE, the lock its own updates take, since the sync never changes a
+    key. It conflicts with a writer's shared lock (share_lock) but not with
+    the key-share lock a foreign-key check takes at commit, so a writer that
+    only references a changed row (an entity its taxon) never waits on the
+    sync in a cycle."""
+    list(
+        model.objects.select_for_update(no_key=True)
+        .filter(pk__in=sorted(pks))
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+
+
+def _create(model, pk, values, wanted):
+    row = model.objects.create(pk=pk, **values)
+    for name, slugs in wanted.items():
+        getattr(row, name).set(sorted(slugs))
+
+
+def _update(model, pk, values, relinked):
     if values:
         model.objects.filter(pk=pk).update(**values)
-    if many_changed:
-        getattr(model.objects.get(pk=pk), many).set(sorted(wanted))
+    if relinked:
+        row = model.objects.get(pk=pk)
+        for name, slugs in relinked.items():
+            getattr(row, name).set(sorted(slugs))
 
 
-def plan_sync(loaded: registry.Registry) -> Plan:
-    plan = Plan()
+def plan_sync(loaded: registry.Registry, *, lock=False) -> Plan:
+    """What the sync would do. With `lock`, inside the write transaction, the
+    rows it will change are locked first (Plan)."""
+    plan = Plan(lock=lock)
     plan.add_registry(
         "taxon",
         Taxon,
@@ -211,6 +342,24 @@ def plan_sync(loaded: registry.Registry) -> Plan:
         NAMESPACE_DESCRIPTIVE,
         namespace_users,
     )
+    plan.add_registry(
+        "relationship type",
+        RelationshipType,
+        loaded.relationship_types,
+        "slug",
+        relationship_type_fields,
+        RELATIONSHIP_TYPE_DESCRIPTIVE,
+        relationship_type_users,
+    )
+    plan.add_registry(
+        "score type",
+        ScoreType,
+        loaded.score_types,
+        "slug",
+        score_type_fields,
+        SCORE_TYPE_DESCRIPTIVE,
+        score_type_users,
+    )
     database = registry.registry_state().database
     if database != registry.REGISTRY_VERSION:
         plan.lines.append(
@@ -232,8 +381,8 @@ def _record_version():
 class Command(BaseCommand):
     help = (
         "Load the typed-graph registries (taxa, entity types, identifier "
-        "namespaces) from backend/graph/registry/. Refuses while "
-        "TYPED_GRAPH_ENABLED is off."
+        "namespaces, relationship types, score types) from "
+        "backend/graph/registry/. Refuses while TYPED_GRAPH_ENABLED is off."
     )
 
     def add_arguments(self, parser):
@@ -291,6 +440,14 @@ class Command(BaseCommand):
             self.stdout.write(f"No changes: the registry is at version {version}.")
             return
         with transaction.atomic():
+            # Planned again under the locks: a writer that held a row first
+            # has committed, and what it stored is counted now.
+            plan = plan_sync(loaded, lock=True)
+            if plan.refusals:
+                raise CommandError(
+                    "Stored data depend on these fields, so nothing was written:\n"
+                    + "\n".join(plan.refusals)
+                )
             for write in plan.writes:
                 write()
             if _record_version not in plan.writes:

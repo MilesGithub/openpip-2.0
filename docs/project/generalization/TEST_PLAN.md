@@ -238,10 +238,18 @@ Each group maps to the essential tests in brief §9.
   one, enforced by the `subject_id <= object_id` check.
 - The same endpoints can carry several relationship types.
 - A qualifier key distinguishes site-specific claims from site-agnostic ones
-  (P2).
+  (P2). Until then no type declares an identity qualifier, and a
+  relationship with any key but `''` is refused (G3).
 - Self-pairs are allowed only where the type allows them.
 - Endpoint types are validated against the type: `encodes` runs from a gene
   to a protein, and `mirna_binding` from a mature miRNA (N2).
+- An endpoint that is `merged` or `retired` is refused (G3).
+- Two batches that create the same relationships in opposite orders never
+  deadlock: missing relationships are created in canonical order (G3, on
+  PostgreSQL).
+- A registry sync and a commit that use the same relationship or score type
+  serialize, and whichever locks second sees the other's result (G3, on
+  PostgreSQL).
 
 ### 5.3 Evidence semantics (G3's summary module; G6 on the fixture; M1)
 
@@ -253,11 +261,18 @@ Each group maps to the essential tests in brief §9.
 - The check constraints reject an effect together with a genetic sign, and
   any effect or sign on an assertion that is not `supported`.
 - A source effect written as "negative" is rejected.
+- One encoding per polarity (G3): an effect only on types with effect
+  polarity, a sign only on types with sign polarity, and `not_applicable` is
+  never stored. A sign needs a score of a signed type with a null model on
+  the same assertion, and one that disagrees with the score's value is
+  refused.
 - A measurement below the source's threshold is `not_significant`: it keeps
   its score, its measured sign in the score's raw value, the threshold and
   its statistics, carries no `genetic_sign`, is hidden by default, and never
   counts as support or as absence. It never becomes `tested_absent`, which
-  needs an explicit negative result from the source (N1, B13).
+  needs an explicit negative result from the source (N1, B13). In G3 the
+  threshold is the criterion the result failed, in `qualifiers["threshold"]`,
+  and a result whose scores meet every stated criterion is refused.
 
 **Basis and method.** Evidence basis and assertion method are independent
 fields. A literature-curated experimental result is `experimental` plus
@@ -281,7 +296,21 @@ fields. A literature-curated experimental result is `experimental` plus
   supporting assertions summarized, never a level derived from the PSI-MI
   term at read time. An association-only edge with one tested-absent
   direct-interaction row still reads "association", and an edge with only
-  tested-absent evidence shows "tested for: …".
+  tested-absent evidence shows "tested for: …". A level that rests only on
+  openPIP's assignment (B14) is flagged (`level_assigned`, G3), never at
+  `not_stated`.
+- The sets of architecture §4.5 (G3): a release set that
+  `visible_release_ids` did not issue is refused, and the summary reads only
+  assertions of the set's releases whose stored status is `published`,
+  `superseded` or `staged`, so a stale set naming a release since withdrawn
+  or returned to draft contributes nothing. Outcome counts are over every
+  filter but the outcome filter, so a shown edge shows the evidence against
+  it. Effect, sign and level filters leave other types' assertions alone;
+  effect and sign filters also leave assertions that are not supported
+  alone, since none carries either, so an effect or sign filter keeps the
+  evidence against an edge in its outcome counts, and covers a requested
+  outcome other than `supported`. Summaries are `None` without covered
+  support.
 - The effect summary is `mixed` only with both activating and inhibiting
   present. It is `activating` with activating plus unknown, and `unknown` when
   nothing is stated or every effect is unknown. `effect_counts` always
@@ -296,7 +325,11 @@ fields. A literature-curated experimental result is `experimental` plus
   - otherwise each (origin, detection methods, outcome) key counts once,
     where the origin is the `reported_in` publication or, without one, the
     source dataset. One experiment imported through two releases counts
-    once, and both records remain;
+    once, and both records remain. In G3 records of one origin and outcome
+    whose method sets intersect, or of which one names none, are one
+    observation, and so are records linked through others; disjoint methods
+    in one paper count twice, as does one method named at two PSI-MI
+    depths, until V1;
   - evidence without a publication is never merged across datasets, and a
     restatement in a later release of the same dataset does not count again;
   - one evidence group, scoped to its release, counts once;
@@ -320,7 +353,13 @@ match for every context.
   the same release creates nothing, and the same key with different content in
   a committed release is an error.
 - **Assertion keys** are content-derived. Reordering the claims a mapping
-  extracts changes no key. A staged release is re-imported under a new
+  extracts changes no key. In G3 idempotency is per record: recording a
+  record's claims again is a no-op only when they give exactly its stored
+  assertions, and one claim more or less, or the same key with other
+  content, is refused (`ClaimConflict`) with nothing written. Keys come
+  from each claim's key part and the identifiers the record states for its
+  papers, so a publication gaining a PMID between two identical calls
+  changes nothing. A staged release is re-imported under a new
   adapter or mapping version by discarding it back to draft and importing it
   again; a published release is never re-mapped in place.
 - **Entity creation.** Without `--create-entities`, an import creates no
@@ -518,11 +557,21 @@ identifiers.
 ### 5.8 Interaction types and the MITAB adapter (M1; V1 on demand)
 
 - M1's explicit list maps each accepted PSI-MI interaction type to its D20
-  level, and its tests pin the list. Colocalization (MI:0403) and genetic
-  interaction (MI:0208) never map to a physical type, and an unlisted type is
-  rejected with a reason.
+  level, and its tests pin the list. It is a subset of G3's crosswalk
+  (`graph.terms.PHYSICAL_INTERACTION_LEVELS`), whose tests pin its anchors,
+  MI:0195 at `direct_interaction`, and the terms it leaves out. Colocalization
+  (MI:0403 and its subtree, which contains MI:2364 proximity) and genetic
+  interaction (MI:2402 and its subtree, which contains MI:0208) never map to
+  a physical type, and an unlisted type is rejected with a reason.
 - Terms are never invented: an unknown CURIE is stored only with the source's
-  own label, and is flagged.
+  own label, and is flagged. In G3 a term is recorded only by a commit that
+  may record evidence, never by a dry run or an unapproved release; it
+  keeps its first label, and a later label, or one that disagrees with the
+  crosswalk's, is reported and never written. A crosswalk term keeps the
+  crosswalk's label, and names the release that supplied it only when that
+  release stated it; no write path names a release past draft. A label is
+  shown (`term_label`) only while the release that supplied it is visible
+  to the caller and not synthetic (D12).
 - The record-level MITAB adapter (M1) gives one assertion per row and
   publication from the repository's IntAct sample
   (`backend/psicquic/tests/fixtures/intact_tab28_sample.tsv`), with no
@@ -532,6 +581,8 @@ identifiers.
   mixed into another file.
 - Every physical assertion stores the D20 level from its adapter's list
   (`interaction_level`), and `canonical_tsv_v1` has its own pinned list (G4).
+  A level above `association` needs a stated interaction type, and
+  `association` without one is assigned by openPIP and flagged (G3).
 - If V1 is built: the loaded PSI-MI release gives the expected subtree
   (MI:0407 is under MI:0915, which is under MI:0914), and the crosswalk
   agrees with M1's list.

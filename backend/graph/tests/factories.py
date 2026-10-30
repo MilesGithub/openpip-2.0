@@ -1,6 +1,8 @@
+import copy
 import datetime
 import hashlib
 import json
+from typing import NamedTuple
 
 import factory
 from django.conf import settings
@@ -8,7 +10,10 @@ from django.utils import timezone
 from graph.identity import normalize, scope_key
 from graph.models import (
     ApprovalScope,
+    AssertionMethod,
+    AssertionParticipant,
     CasePolicy,
+    ContextFacet,
     DataSource,
     DataSourceKind,
     DatasetRelease,
@@ -19,21 +24,41 @@ from graph.models import (
     Entity,
     EntityIdentifier,
     EntityType,
+    EvidenceAssertion,
+    EvidenceBasis,
+    EvidenceContext,
+    EvidenceMethod,
+    EvidencePublication,
+    EvidencePublicationRole,
+    EvidenceScore,
     FileRole,
     IdentifierNamespace,
     IdentifierRole,
     ImportMode,
     ImportRun,
+    ImportState,
+    MethodRole,
+    Orientation,
+    Outcome,
+    ParticipantSide,
     Permission,
+    Polarity,
     Publication,
     PublicationRole,
     RecordKeyBasis,
     RecordStatus,
+    Relationship,
+    RelationshipFamily,
+    RelationshipType,
     ReleaseLicence,
     ReleasePublication,
     ReleaseStatus,
     ReleaseTaxon,
+    ResolutionBasis,
     Scope,
+    ScoreDirection,
+    ScoreType,
+    ScoreValueKind,
     ShareAlike,
     SourceDataset,
     SourceDatasetPublication,
@@ -41,9 +66,11 @@ from graph.models import (
     SourceRecord,
     Taxon,
     TaxonPolicy,
+    Term,
     UsageApproval,
     VersionPolicy,
 )
+from graph.terms import ontology_of
 
 
 class TaxonFactory(factory.django.DjangoModelFactory):
@@ -450,3 +477,352 @@ def approve(release, *scopes, decided_by=None):
         )
         for scope in scopes
     ]
+
+
+# ── Relationships and evidence ──────────────────────────────────────────────
+# Written directly, through the record rules but past graph.claims, so tests
+# can set up any state; the rules are what the tests exercise.
+
+# Names for the taxa entity_of() asks for, as taxa.json has them.
+KNOWN_TAXA = {
+    9606: "Homo sapiens",
+    7227: "Drosophila melanogaster",
+    32630: "synthetic construct",
+}
+
+
+def taxon_of(taxid):
+    """The taxon, the registry's own when it has been synced."""
+    return TaxonFactory(
+        taxid=taxid, scientific_name=KNOWN_TAXA.get(taxid, f"Testus {taxid}")
+    )
+
+
+def entity_of(type_slug="gene", taxid=9606, **fields):
+    """An entity of this type and taxon, written directly: a human gene
+    unless told otherwise."""
+    return EntityFactory(
+        entity_type=EntityTypeFactory(slug=type_slug), taxon=taxon_of(taxid), **fields
+    )
+
+
+def _allow(rel_type, name, create, slugs):
+    """Set a relationship type's allowed entity types (slugs). Left as they
+    are when none are given and the type has some, as a registry row does."""
+    if not create:
+        return
+    manager = getattr(rel_type, name)
+    if slugs is None:
+        if manager.exists():
+            return
+        slugs = ["gene"]
+    for slug in slugs:
+        EntityTypeFactory(slug=slug)
+    manager.set(slugs)
+
+
+class RelationshipTypeFactory(factory.django.DjangoModelFactory):
+    """A relationship type: a test-only directed regulation of a gene by a
+    gene, with effect polarity, unless told otherwise. A registry type is
+    reused by its slug, its allowed types as they are unless given."""
+
+    class Meta:
+        model = RelationshipType
+        django_get_or_create = ("slug",)
+        # Setting the many-to-manys below needs no second save.
+        skip_postgeneration_save = True
+
+    slug = factory.Sequence(lambda n: f"test_relationship_{n}")
+    label = factory.LazyAttribute(lambda o: o.slug)
+    definition = "Test only."
+    family = RelationshipFamily.REGULATION
+    orientation = Orientation.DIRECTED
+    polarity = Polarity.EFFECT
+    subject_role_label = "subject"
+    object_role_label = "object"
+    self_pairs_allowed = True
+
+    @factory.post_generation
+    def allowed_subject_types(self, create, extracted, **kwargs):
+        _allow(self, "allowed_subject_types", create, extracted)
+
+    @factory.post_generation
+    def allowed_object_types(self, create, extracted, **kwargs):
+        _allow(self, "allowed_object_types", create, extracted)
+
+
+class ScoreTypeFactory(factory.django.DjangoModelFactory):
+    """A score type: a test-only continuous, unordered stats: type unless
+    told otherwise. A registry type is reused by its slug."""
+
+    class Meta:
+        model = ScoreType
+        django_get_or_create = ("slug",)
+
+    slug = factory.Sequence(lambda n: f"stats:test_{n}")
+    label = factory.LazyAttribute(lambda o: o.slug)
+    definition = "Test only."
+    value_kind = ScoreValueKind.CONTINUOUS
+    direction = ScoreDirection.UNORDERED
+    defining_document = "docs/project/generalization/TEST_PLAN.md"
+
+
+class TermFactory(factory.django.DjangoModelFactory):
+    """A vocabulary term written directly, reused by its CURIE: a test-only
+    PSI-MI CURIE (MI:9000 and up, which PSI-MI has not assigned) unless told
+    otherwise."""
+
+    class Meta:
+        model = Term
+        django_get_or_create = ("curie",)
+
+    curie = factory.Sequence(lambda n: f"MI:{9000 + n % 1000:04d}")
+    ontology = factory.LazyAttribute(lambda o: ontology_of(o.curie))
+    label = factory.Sequence(lambda n: f"test term {n}")
+
+
+# Test-only registry rows (spec §8). No genetic_interaction type exists until
+# N1, so these exercise sign polarity and the self-pair rule.
+
+
+def genetic_type():
+    """A symmetric gene-gene genetic type with genetic_sign polarity."""
+    return RelationshipTypeFactory(
+        slug="test_genetic",
+        label="Test genetic interaction",
+        family=RelationshipFamily.GENETIC,
+        orientation=Orientation.SYMMETRIC,
+        polarity=Polarity.GENETIC_SIGN,
+        allowed_subject_types=["gene"],
+        allowed_object_types=["gene"],
+        self_pairs_allowed=False,
+    )
+
+
+def protein_pair_type():
+    """A symmetric protein-protein type without self-pairs."""
+    return RelationshipTypeFactory(
+        slug="test_protein_pair",
+        label="Test protein pair",
+        family=RelationshipFamily.ASSOCIATION,
+        orientation=Orientation.SYMMETRIC,
+        polarity=Polarity.NONE,
+        allowed_subject_types=["protein"],
+        allowed_object_types=["protein"],
+        self_pairs_allowed=False,
+    )
+
+
+def signed_score_type():
+    """stats:test_gi: a signed, continuous score with a null model."""
+    return ScoreTypeFactory(
+        slug="stats:test_gi",
+        value_kind=ScoreValueKind.CONTINUOUS,
+        direction=ScoreDirection.SIGNED,
+        null_model="The product of the two single mutants' fitness.",
+    )
+
+
+def p_value_score_type():
+    """stats:test_p: a p-value."""
+    return ScoreTypeFactory(
+        slug="stats:test_p",
+        value_kind=ScoreValueKind.P_VALUE,
+        direction=ScoreDirection.LOWER_IS_STRONGER,
+        range_min=0,
+        range_max=1,
+    )
+
+
+class RelationshipFactory(factory.django.DjangoModelFactory):
+    """A relationship written directly, through its guard: a test-only
+    directed regulation between two human genes unless told otherwise.
+    ordered follows the type, and a symmetric type's endpoints are put in
+    canonical order, lower entity id first."""
+
+    class Meta:
+        model = Relationship
+
+    relationship_type = factory.SubFactory(
+        RelationshipTypeFactory, slug="test_regulation"
+    )
+    subject = factory.SubFactory(EntityFactory)
+    object = factory.SubFactory(EntityFactory)
+    ordered = factory.LazyAttribute(
+        lambda o: o.relationship_type.orientation != Orientation.SYMMETRIC
+    )
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        subject, obj = kwargs.get("subject"), kwargs.get("object")
+        if not kwargs.get("ordered") and subject and obj and subject.pk > obj.pk:
+            kwargs["subject"], kwargs["object"] = obj, subject
+        return super()._create(model_class, *args, **kwargs)
+
+
+def commit_run(release):
+    """The release's running commit run, started if it has none (a release
+    has at most one open commit run)."""
+    run = (
+        ImportRun.objects.filter(
+            release=release, mode=ImportMode.COMMIT, state=ImportState.RUNNING
+        )
+        .order_by("pk")
+        .first()
+    )
+    return run or ImportRunFactory(release=release, file=None, mode=ImportMode.COMMIT)
+
+
+def release_file(release):
+    """The release's first file, or a new one: files are added only while
+    no one has decided on the release."""
+    return release.files.order_by("pk").first() or SourceFileFactory(release=release)
+
+
+def mapped_record(release, run=None, **fields):
+    """A record of the release written by its commit run: mapped unless told
+    otherwise."""
+    fields.setdefault("status", RecordStatus.MAPPED)
+    return SourceRecordFactory(
+        release=release,
+        file=release_file(release),
+        import_run=run or commit_run(release),
+        **fields,
+    )
+
+
+class EvidenceRelease(NamedTuple):
+    release: DatasetRelease
+    run: ImportRun
+    file: SourceFile
+    records: list
+
+
+def evidence_release(*, records=1, synthetic=False, approved=True, **fields):
+    """A draft release ready for evidence: a file, a running commit run that
+    reads it, and `records` mapped source records that run wrote.
+
+    A non-synthetic release gets an open-terms snapshot and confirmed due
+    diligence, and with approved=True an effective internal approval,
+    recorded after its file, since files are fixed once anyone decides. A
+    synthetic one needs no approval. Other fields go to the release.
+    """
+    if synthetic:
+        release = DatasetReleaseFactory(is_synthetic=True, **fields)
+    else:
+        release = approvable_release(**fields)
+    file = SourceFileFactory(release=release)
+    run = ImportRunFactory(release=release, file=file, mode=ImportMode.COMMIT)
+    rows = [mapped_record(release, run) for _ in range(records)]
+    if approved and not synthetic:
+        approve(release, ApprovalScope.INTERNAL)
+    return EvidenceRelease(release, run, file, rows)
+
+
+# The criterion a test-only not-significant result failed: p below 0.05.
+FAILED_CRITERION = {
+    "threshold": [{"score_type": "stats:test_p", "operator": "<", "value": "0.05"}]
+}
+
+
+class EvidenceAssertionFactory(factory.django.DjangoModelFactory):
+    """A supported, experimental, manually asserted assertion, written
+    directly through its guard. Unless told otherwise: of a new relationship
+    (RelationshipFactory), from a new mapped record of a new draft release,
+    written by that release's running commit run (started if it has none).
+    A physical-family relationship's assertion needs its interaction_level
+    given. A not-significant one states the criterion it failed
+    (FAILED_CRITERION)."""
+
+    class Meta:
+        model = EvidenceAssertion
+
+    relationship = factory.SubFactory(RelationshipFactory)
+    release = factory.SubFactory(DatasetReleaseFactory)
+    import_run = factory.LazyAttribute(lambda o: commit_run(o.release))
+    source_record = factory.LazyAttribute(
+        lambda o: mapped_record(o.release, o.import_run)
+    )
+    assertion_key = "main"
+    outcome = Outcome.SUPPORTED
+    evidence_basis = EvidenceBasis.EXPERIMENTAL
+    assertion_method = AssertionMethod.MANUAL_ASSERTION
+    qualifiers = factory.LazyAttribute(
+        lambda o: (
+            copy.deepcopy(FAILED_CRITERION)
+            if o.outcome == Outcome.NOT_SIGNIFICANT
+            else {}
+        )
+    )
+
+
+class AssertionParticipantFactory(factory.django.DjangoModelFactory):
+    """The subject of an assertion as the source stated it, unless told
+    otherwise: the relationship's endpoint on that side."""
+
+    class Meta:
+        model = AssertionParticipant
+
+    assertion = factory.SubFactory(EvidenceAssertionFactory)
+    release = factory.SelfAttribute("assertion.release")
+    side = ParticipantSide.SUBJECT
+    entity = factory.LazyAttribute(
+        lambda o: (
+            o.assertion.relationship.subject
+            if o.side == ParticipantSide.SUBJECT
+            else o.assertion.relationship.object
+        )
+    )
+    identifier_as_stated = factory.Sequence(lambda n: f"SYN-{n}")
+    resolution_basis = ResolutionBasis.PRIMARY
+
+
+class EvidenceMethodFactory(factory.django.DjangoModelFactory):
+    """A detection method of an assertion: PSI-MI MI:0018 two hybrid unless
+    told otherwise."""
+
+    class Meta:
+        model = EvidenceMethod
+
+    assertion = factory.SubFactory(EvidenceAssertionFactory)
+    release = factory.SelfAttribute("assertion.release")
+    term = factory.SubFactory(TermFactory, curie="MI:0018", label="two hybrid")
+    role = MethodRole.DETECTION
+
+
+class EvidencePublicationFactory(factory.django.DjangoModelFactory):
+    """The paper that reports an assertion, unless told otherwise."""
+
+    class Meta:
+        model = EvidencePublication
+
+    assertion = factory.SubFactory(EvidenceAssertionFactory)
+    release = factory.SelfAttribute("assertion.release")
+    publication = factory.SubFactory(PublicationFactory)
+    role = EvidencePublicationRole.REPORTED_IN
+
+
+class EvidenceScoreFactory(factory.django.DjangoModelFactory):
+    """A score of a test-only continuous stats: type, unless told
+    otherwise."""
+
+    class Meta:
+        model = EvidenceScore
+
+    assertion = factory.SubFactory(EvidenceAssertionFactory)
+    release = factory.SelfAttribute("assertion.release")
+    score_type = factory.SubFactory(ScoreTypeFactory, slug="stats:test_value")
+    raw_value = "0.5"
+    value = 0.5
+
+
+class EvidenceContextFactory(factory.django.DjangoModelFactory):
+    """A tissue context of an assertion, unless told otherwise."""
+
+    class Meta:
+        model = EvidenceContext
+
+    assertion = factory.SubFactory(EvidenceAssertionFactory)
+    release = factory.SelfAttribute("assertion.release")
+    facet = ContextFacet.TISSUE
+    raw_value = factory.Sequence(lambda n: f"tissue {n}")

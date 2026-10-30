@@ -16,9 +16,16 @@ preview a staged correction by pinning it, and nothing staged is exported or
 sent out. Drafts and withdrawn releases are never visible. A pinned id that
 names no release, or one the caller may not see, is dropped without a word,
 so existence never shows.
+
+A ReleaseSet is computed for one request and never stored. The services
+that read evidence through one (graph.summary) refuse a set that
+visible_release_ids did not issue, a set derived from an issued one with
+dataclasses.replace() included, and read each release's status again, so a
+set built by hand or kept too long never shows a draft or a withdrawn
+release.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.db import models
 
@@ -51,16 +58,47 @@ _PURPOSE_SCOPES = {
 }
 
 
+# Marks the sets visible_release_ids issues, so that the services that read
+# evidence through one (graph.summary) refuse a set built by hand.
+_ISSUER = object()
+
+
 @dataclass(frozen=True)
 class ReleaseSet:
     """Release ids a caller may use. `superseded` is the subset of `ids`
-    whose status is superseded, for callers to flag."""
+    whose status is superseded, for callers to flag. Computed for one
+    request by visible_release_ids, which marks it as its own, and never
+    stored. The mark plays no part in equality, and neither the constructor
+    nor dataclasses.replace() gives it."""
 
     ids: frozenset
     superseded: frozenset
+    _issued: object = field(default=None, init=False, compare=False, repr=False)
 
 
-NOTHING = ReleaseSet(frozenset(), frozenset())
+def _issue(ids, superseded) -> ReleaseSet:
+    """A set marked as visible_release_ids' own. The mark is set after
+    construction, so neither the constructor nor dataclasses.replace()
+    carries it: a set derived from an issued one is refused like one built
+    by hand."""
+    issued = ReleaseSet(ids, superseded)
+    object.__setattr__(issued, "_issued", _ISSUER)
+    return issued
+
+
+# Selects nothing, so it carries the mark: it lets no one see anything.
+NOTHING = _issue(frozenset(), frozenset())
+
+
+def issued_release_set(releases) -> ReleaseSet:
+    """`releases`, when visible_release_ids issued it. Anything else raises
+    TypeError, a ReleaseSet built by hand included."""
+    if not isinstance(releases, ReleaseSet) or releases._issued is not _ISSUER:
+        raise TypeError(
+            "releases is the ReleaseSet visible_release_ids computed for this "
+            f"request, not {releases!r}."
+        )
+    return releases
 
 
 def is_staff_caller(request) -> bool:
@@ -99,7 +137,7 @@ def visible_release_ids(request, purpose, pinned=None, *, at=None) -> ReleaseSet
             ids.add(row["pk"])
             if row["status"] == ReleaseStatus.SUPERSEDED:
                 superseded.add(row["pk"])
-    return ReleaseSet(frozenset(ids), frozenset(superseded))
+    return _issue(frozenset(ids), frozenset(superseded))
 
 
 def bulk_export_refusals(request, release_ids, *, at=None) -> dict:

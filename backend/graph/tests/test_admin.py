@@ -1,6 +1,7 @@
 """The typed graph in the Django admin (graph/admin.py): absent while the
 switch is off, and, while it is on, the catalogue, licensing and registry
-records under Django's permissions, narrowed by each record's rules."""
+records under Django's permissions, narrowed by each record's rules.
+Relationships and their evidence are not in it."""
 
 import datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ from django.contrib.admin.models import LogEntry
 from django.contrib.admin.utils import flatten_fieldsets, quote
 from django.contrib.auth.models import Permission as AuthPermission
 from django.test import RequestFactory
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from graph import licensing
@@ -20,6 +21,7 @@ from graph.admin import NOTE_WITHOUT_CHANGE, STALE
 from graph.models import (
     DUE_DILIGENCE_COMPLETE_RULE,
     ApprovalScope,
+    AssertionParticipant,
     DataSource,
     DatasetRelease,
     DatasetStatus,
@@ -29,21 +31,30 @@ from graph.models import (
     Entity,
     EntityIdentifier,
     EntityType,
+    EvidenceAssertion,
+    EvidenceContext,
+    EvidenceMethod,
+    EvidencePublication,
+    EvidenceScore,
     IdentifierNamespace,
     ImportRun,
     Permission,
     Publication,
     PublicationRole,
     RegistryState,
+    Relationship,
+    RelationshipType,
     ReleaseLicence,
     ReleaseStatus,
     ReleaseTaxon,
+    ScoreType,
     ShareAlike,
     SourceDataset,
     SourceDatasetPublication,
     SourceFile,
     SourceRecord,
     Taxon,
+    Term,
     UsageApproval,
 )
 from graph.tests.factories import (
@@ -53,13 +64,17 @@ from graph.tests.factories import (
     EntityTypeFactory,
     IdentifierNamespaceFactory,
     PublicationFactory,
+    RelationshipTypeFactory,
     ReleaseTaxonFactory,
+    ScoreTypeFactory,
     SourceDatasetFactory,
     StaffUserFactory,
     TaxonFactory,
+    TermFactory,
     approvable_release,
     approve,
 )
+from graph.tests.test_provenance import advance
 
 COMPLETE = DueDiligenceStatus.COMPLETE
 OPEN = DueDiligenceStatus.OPEN
@@ -69,6 +84,9 @@ REGISTERED = (
     EntityType,
     IdentifierNamespace,
     RegistryState,
+    RelationshipType,
+    ScoreType,
+    Term,
     DataSource,
     SourceDataset,
     Publication,
@@ -78,13 +96,35 @@ REGISTERED = (
     ReleaseLicence,
     UsageApproval,
 )
+# Relationships and the evidence each release states for them, with every
+# part of an assertion: they wait for AD1's admin, behind the visibility
+# service.
+EVIDENCE = (
+    Relationship,
+    EvidenceAssertion,
+    AssertionParticipant,
+    EvidenceMethod,
+    EvidencePublication,
+    EvidenceScore,
+    EvidenceContext,
+)
 # Third-party data, which only the visibility service may show (AD1).
-UNREGISTERED = (Entity, EntityIdentifier, SourceFile, ImportRun, SourceRecord)
+UNREGISTERED = (
+    Entity,
+    EntityIdentifier,
+    SourceFile,
+    ImportRun,
+    SourceRecord,
+    *EVIDENCE,
+)
 VIEW_ONLY = (
     Taxon,
     EntityType,
     IdentifierNamespace,
     RegistryState,
+    RelationshipType,
+    ScoreType,
+    Term,
     DatasetRelease,
     UsageApproval,
     DueDiligenceChange,
@@ -109,9 +149,12 @@ def stored(obj) -> dict:
 
 def one_of_each() -> dict:
     """A row of every registered model: a published release with its
-    dataset, data source, licence snapshot, due diligence and an approval."""
-    release = approvable_release(status=ReleaseStatus.PUBLISHED)
+    dataset, data source, licence snapshot, due diligence and an approval,
+    and a term whose label the release stated while it was a draft."""
+    release = approvable_release()
+    term = TermFactory(label_release=release)
     [approval] = approve(release, ApprovalScope.INTERNAL)
+    advance(release, ReleaseStatus.PUBLISHED)
     record = DueDiligenceRecord.objects.get(dataset=release.dataset)
     return {
         Taxon: TaxonFactory(),
@@ -120,6 +163,9 @@ def one_of_each() -> dict:
         RegistryState: RegistryState.objects.create(
             version="test", synced_at=timezone.now()
         ),
+        RelationshipType: RelationshipTypeFactory(),
+        ScoreType: ScoreTypeFactory(),
+        Term: term,
         DataSource: release.dataset.data_source,
         SourceDataset: release.dataset,
         Publication: PublicationFactory(),
@@ -248,8 +294,26 @@ def test_only_catalogue_licensing_and_registry_models_are_registered():
         model for model in admin.site._registry if model._meta.app_label == "graph"
     }
     assert registered == set(REGISTERED)
-    for model in (*UNREGISTERED, ReleaseTaxon):
+    many_to_many = (
+        RelationshipType.allowed_subject_types.through,
+        RelationshipType.allowed_object_types.through,
+    )
+    for model in (*UNREGISTERED, ReleaseTaxon, *many_to_many):
         assert not admin.site.is_registered(model), model
+
+
+@pytest.mark.parametrize("model", EVIDENCE, ids=name_of)
+def test_relationships_and_evidence_have_no_admin_page(model):
+    assert not admin.site.is_registered(model)
+    with pytest.raises(NoReverseMatch):
+        url(model, "changelist")
+    # Nor are they shown inside another record's page.
+    shown = {
+        inline.model
+        for model_admin in admin.site._registry.values()
+        for inline in model_admin.inlines
+    }
+    assert model not in shown
 
 
 def test_the_graph_admins_pass_django_s_admin_checks():
@@ -329,6 +393,61 @@ def test_a_release_is_shown_without_its_stats_and_with_its_declared_taxa(
     assert "stats" not in shown and "declared_taxa" in shown
     assert b"distinctive_stat_name" not in page.content
     assert f"Testus declaratus ({taxon.taxid})".encode() in page.content
+
+
+def test_a_relationship_type_is_shown_with_the_rules_its_evidence_follows(
+    browser, registry
+):
+    rel_type = RelationshipType.objects.get(slug="transcriptional_regulation")
+    page = browser.get(url(RelationshipType, "change", rel_type.pk))
+    assert page.status_code == 200
+    assert not page.context["adminform"].form.fields
+    shown = set(flatten_fieldsets(page.context["adminform"].fieldsets))
+    assert {
+        "family",
+        "orientation",
+        "polarity",
+        "allowed_subject_types",
+        "allowed_object_types",
+        "self_pairs_allowed",
+        "identity_qualifiers",
+        "psi_mi_anchors",
+        "is_reference",
+    } <= shown
+    assert b"MI:2247" in page.content
+    listing = browser.get(url(RelationshipType, "changelist"))
+    assert {row.pk for row in listing.context["cl"].result_list} == set(
+        RelationshipType.objects.values_list("pk", flat=True)
+    )
+
+
+def test_a_score_type_is_shown_with_its_kind_direction_and_range(browser, registry):
+    score_type = ScoreType.objects.get(slug="synthetic:confidence")
+    page = browser.get(url(ScoreType, "change", score_type.pk))
+    assert page.status_code == 200
+    assert not page.context["adminform"].form.fields
+    shown = set(flatten_fieldsets(page.context["adminform"].fieldsets))
+    assert {
+        "value_kind",
+        "direction",
+        "range_min",
+        "range_max",
+        "null_model",
+        "defining_document",
+    } <= shown
+
+
+def test_a_term_is_shown_with_the_release_that_stated_its_label(browser, switch_on):
+    release = DatasetReleaseFactory(version="v4")
+    term = TermFactory(curie="MI:0018", label="two hybrid", label_release=release)
+    stated = f"{release.dataset.slug}/v4".encode()
+    page = browser.get(url(Term, "change", term.pk))
+    assert page.status_code == 200
+    assert not page.context["adminform"].form.fields
+    assert b"two hybrid" in page.content and stated in page.content
+    listing = browser.get(url(Term, "changelist"), {"q": "hybrid"})
+    assert [row.pk for row in listing.context["cl"].result_list] == ["MI:0018"]
+    assert stated in listing.content
 
 
 @pytest.mark.parametrize("model", (ReleaseLicence, UsageApproval), ids=name_of)

@@ -220,12 +220,22 @@ keys** (decision D5). The models that use them hold real foreign keys with
     allowed entity types or `defines_identity`;
   - for an entity type: its taxon policy or identity scheme;
   - for a relationship type: its orientation, polarity, allowed endpoint types
-    or identity qualifiers.
+    or identity qualifiers; from G3, every field but its label, definition,
+    role labels, display token and PSI-MI anchors, so its family and
+    self-pair rule too;
+  - for a score type (G3): every field but its label, definition and
+    defining document.
 
   Each of these shapes stored rows: `lookup`, the immutable `identity_key` or
   `Relationship.ordered`. A silent change would split one accession into two
   entities, or one pair into two relationships. Such a change goes through a
   deliberate re-key command instead (section 4.2).
+- It decides under locks (G3). Inside its write transaction it plans again:
+  it locks each row it will change (`select_for_update()`, in key order)
+  and only then counts the rows that use it. Every writer that validates
+  against those rows (recording evidence, creating relationships, scores and
+  entities) first holds them in shared mode, so whichever of a sync and a
+  commit comes second sees the other's result.
 - It records the registry version it loaded.
 - The import commands refuse to run when the database's registry version
   differs from the code's, and the status endpoint reports both.
@@ -238,9 +248,9 @@ empty registry tables. The Django admin shows registries read-only.
 | `Taxon` | NCBI taxid (primary key, check > 0), scientific name, common name, rank, `parent` (so a strain can match its species without rewriting either), `merged_into`, the source of the label. PSI-MI's pseudo-taxa (−1 *in vitro* and the rest) are never taxa; they are evidence context |
 | `EntityType` | slug, label, definition, taxon policy (`required` / `optional` / `forbidden`), identity scheme (`identifier` / `coordinates` / `allele` / `source_local`), whether an assembly is required, display token |
 | `IdentifierNamespace` | slug, label, CURIE prefix, allowed entity types (M2M), scope (`global` / `taxon` / `assembly`), fixed taxon for organism-owned nomenclatures, case policy (`exact` / `upper` / `insensitive`), version policy, `defines_identity` (an import run with `--create-entities` may create entities of its types; section 4.1), pattern, URL template, the authority document its rules were copied from |
-| `RelationshipType` | slug, label, a definition saying what the edge claims and what it does not, family, orientation (`symmetric` / `directed` / `role_ordered`), polarity (`none` / `effect` / `genetic_sign`), allowed subject and object types (M2M) with role labels, identity qualifiers, whether self-pairs are allowed, PSI-MI crosswalk anchors, display tokens, `is_reference` (a link between entity layers rather than an evidence-backed claim) |
+| `RelationshipType` | slug, label, a definition saying what the edge claims and what it does not, family (G3's check lists every family of section 4.2, so a later family needs no constraint change), orientation (`symmetric` / `directed` / `role_ordered`), polarity (`none` / `effect` / `genetic_sign`), allowed subject and object types (M2M) with role labels, identity qualifiers (none in G3: every type declares `[]` until P2), whether self-pairs are allowed, PSI-MI crosswalk anchors, display tokens, `is_reference` (a link between entity layers rather than an evidence-backed claim) |
 | `ScoreType` | slug (`<source>:<name>` or `stats:<name>`), label, definition, value kind (`probability`, `p_value`, `q_value`, `rank`, `count`, `continuous`), direction (`higher_is_stronger`, `lower_is_stronger`, `signed`, `unordered`), range, unit, null model, defining document, `comparable_across_datasets` (default false) |
-| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (unique), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …), label, definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1); V1 is what later lets crosswalks and filters work by subtree |
+| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (the primary key, in canonical form such as `MI:0915` or `ECO:0000353`; `graph.terms` accepts the MI and ECO prefixes, and others arrive with the first adapter that maps them), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …; derived from the prefix by code, with no database check, so an ontology is added without a constraint change), label, the release whose commit supplied the label (`label_release`, written only when the term is created, and on every insert path only naming a draft release; a term never changes, so it keeps naming that release after the release moves past draft, and is emptied only if that draft release is deleted), definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one. G3 creates one only inside a commit that may record evidence (a draft release, a running commit run, an effective `internal` approval unless the release is synthetic), race-safely; a term keeps its first label, and a later label that differs, or one that differs from the PSI-MI crosswalk's, is reported and never written. A crosswalk term keeps the crosswalk's label, and `label_release` names the release whose commit created the term only when that commit stated the crosswalk's label; otherwise it stays empty, even after a later release states that label. A label is shown beside real evidence only while the release that supplied it is visible to the caller and not synthetic (D12), so the synthetic demo never labels a term that real evidence names. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1), a subset of G3's PSI-MI physical crosswalk (D20); V1 is what later lets crosswalks and filters work by subtree |
 
 **At most one identity namespace per entity type and taxon.** For each
 entity type and taxon, at most one namespace defines identity:
@@ -267,7 +277,7 @@ PR that adds it, and unverified namespaces are not added.
 | Namespaces, cross-reference only | `ncbigene` (gene) and `ensembl_gene` (gene; version split off). They never define identity; they resolve to a gene only through a cross-reference that an approved release, such as the HGNC reference release, states |
 | Namespaces, symbols (never defining) | Organism-owned symbol namespaces come with the first source that needs them: `hgnc_symbol` (taxon 9606) with RF1a, holding each gene's approved symbol (role `symbol`), previous symbols (`secondary`) and alias symbols (`alias`); `flybase_symbol` (taxon 7227, case-exact) later *(verify both)*. Symbols never define identity and never merge entities. **There is no generic, multi-organism symbol namespace** |
 | Taxa | 9606, 7227 and 32630 ("synthetic construct") *(verify the labels)* |
-| Relationship types | `transcriptional_regulation`, `physical_interaction`, `protein_interaction_unspecified`, `encodes`, `isoform_of` (section 4.2) |
+| Relationship types | `transcriptional_regulation`, `physical_interaction`, `protein_interaction_unspecified`, `encodes`, `isoform_of` (section 4.2). `genetic_interaction` comes with N1; until then G3's tests exercise sign polarity with a test-only type |
 | Score types | Defined from each source's documentation when its adapter is added. The synthetic fixture defines two, `synthetic:confidence` (probability, higher is stronger) and `synthetic:rank` (rank, lower is stronger), because D12 needs one assertion with two scores and an assertion holds one score per score type |
 
 ### 3.4 Entities and identifiers
@@ -282,7 +292,7 @@ PR that adds it, and unverified namespaces are not added.
 | `label` | CharField(255) | Display name, not identity |
 | `label_key` | CharField(255), `db_index=True` | The upper-cased label, set by the write path; used only for prefix search |
 | `description` | TextField, blank | Plain text, always rendered escaped |
-| `taxon` | FK Taxon, PROTECT, null | Required or forbidden according to the entity type: required for genes, proteins, isoforms, transcripts and RNAs; forbidden for chemicals, diseases and phenotypes. Never filled in from deployment settings |
+| `taxon` | FK Taxon, PROTECT, null | Required or forbidden according to the entity type: required for genes, proteins, isoforms, transcripts and RNAs; forbidden for chemicals, diseases and phenotypes. Never filled in from deployment settings. Fixed once the entity exists, as its type and `identity_key` are, on every write path (G3) |
 | `status` | CharField | `active`, `provisional`, `merged` or `retired`; check constraint |
 | `merged_into` | FK self, PROTECT, null | Set only by the audited merge command (P5). A check requires it exactly when the status is `merged` |
 | `created_by_release` | FK DatasetRelease, PROTECT, null | Provenance; added with the provenance models |
@@ -374,12 +384,12 @@ scan. Django limits index names to 30 characters.
 |---|---|---|
 | `DataSource` | slug, name, kind (`lab`, `consortium`, `database`, `this_portal`, `other`), url, description | slug unique |
 | `SourceDataset` | slug, title, short title, description (plain text), data source, homepage, status (`candidate` = known, nothing imported; `active`; `withdrawn`), which describes the dataset and gates nothing: its data leave view only through a release's withdrawal or an approval's revocation (G2) | slug unique |
-| `Publication` | pmid, doi (as given) and `doi_lookup` (lower case), pmcid, imex id, title, authors, journal, year, url, `is_synthetic`, and `local_key` with `local_dataset` (FK SourceDataset, null) for a publication that has none of those identifiers | partial unique on each identifier when not blank, and on (local_dataset, local_key) when `local_key` is not blank. Identifiers of one paper in one row are merged into one publication; for example IntAct's `imex:IM-11990\|pubmed:17081976` is one paper. A local key comes from the release manifest (section 8), so a title-only paper, such as the fixture's synthetic ones, is the same row in every release of its dataset |
+| `Publication` | pmid, doi (as given) and `doi_lookup` (lower case), pmcid, imex id, title, authors, journal, year, url, `is_synthetic` (fixed when the row is created; G3), and `local_key` with `local_dataset` (FK SourceDataset, null) for a publication that has none of those identifiers | partial unique on each identifier when not blank, and on (local_dataset, local_key) when `local_key` is not blank. Identifiers of one paper in one row are merged into one publication; for example IntAct's `imex:IM-11990\|pubmed:17081976` is one paper. A local key comes from the release manifest (section 8), so a title-only paper, such as the fixture's synthetic ones, is the same row in every release of its dataset |
 | `SourceDatasetPublication`, `ReleasePublication` | dataset or release, publication, role (`primary`, `describes`, `update`, `erratum`, `related`) | unique (parent, publication, role) |
 | `DatasetRelease` | dataset, version (the source's label, URL-safe), release date, retrieved at, source URL, `kind` (`evidence` or `reference`, declared by the adapter's spec), status (`draft`, `staged`, `published`, `superseded`, `withdrawn`), `supersedes` (a foreign key to the release it corrects, which has the same dataset and `is_synthetic`), `is_synthetic`, `embargo_until`, declared taxa (M2M through `ReleaseTaxon`), adapter, adapter version and mapping version, `store_raw_rows` (default true), `stats` (JSON, computed at commit), withdrawn at and reason | unique (dataset, version). `supersedes` is unique among releases that were published, so a release is corrected by at most one, and a correction withdrawn before it was published frees the release it named (G2) |
 | `SourceFile` | release, role (`data`, `entities`, `manifest`, `readme`, `licence_text`, `supplementary`), original name, storage path, media type, size, sha256, retrieved from | unique (release, sha256); several files per release |
 | `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters, checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it `abandoned` |
-| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues | unique (release, record_key). Status and issues are the only fields a later dry run or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable |
+| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues | unique (release, record_key). Status and issues are the only fields a later dry run or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable. A record that evidence was recorded from stays `mapped`, since its assertions rest on that mapping (G3) |
 
 **Superseded releases.** A release becomes `superseded` in the same
 transaction that publishes the release naming it in `supersedes`, and it is
@@ -425,7 +435,7 @@ gate.
 | `subject` | FK Entity, PROTECT | Regulator, enzyme or other subject; the lower entity id for symmetric types |
 | `object` | FK Entity, PROTECT | |
 | `ordered` | BooleanField | Copied from the type's orientation when the row is created |
-| `qualifier_key` | CharField(160), default `''` | Canonical serialization of the identity qualifiers the type declares, such as `site:<sequence site id>`; `''` when it declares none. A new qualifier needs no change to the unique constraint |
+| `qualifier_key` | CharField(160), default `''` | Canonical serialization of the identity qualifiers the type declares, such as `site:<sequence site id>`; `''` when it declares none. A new qualifier needs no change to the unique constraint. Always `''` in G3: no type declares a qualifier until P2, and any other key is refused |
 | `created_at` | DateTimeField | |
 
 Constraints:
@@ -437,27 +447,32 @@ Constraints:
 
 Indexes: `(subject, relationship_type)` and `(object, relationship_type)`.
 
+A relationship is never changed or deleted. Its endpoints are `active` or
+`provisional` entities, never `merged` or `retired`: a merged entity's
+evidence belongs on its successor (P5). Its row's guard checks the type's
+rules again from the database, under a shared lock on the type (G3).
+
 **`graph.EvidenceAssertion`**: one source statement about one relationship.
 
 | Field | Notes |
 |---|---|
 | `relationship` | FK Relationship, PROTECT |
-| `release` | FK DatasetRelease, PROTECT. Copied from the source record so filters need no join |
-| `source_record` | FK SourceRecord, PROTECT |
-| `assertion_key` | Deterministic and content-derived within the record: `main`; `pub:<publication key>` when one row reports several papers; `site:S15`. It never depends on extraction order |
-| `import_run` | FK ImportRun, PROTECT; the first writer |
+| `release` | FK DatasetRelease, CASCADE (G3). Copied from the source record so filters need no join. Evidence follows the release's lifecycle: a draft release's deletion takes it, and nothing of a staged or published release is deleted |
+| `source_record` | FK SourceRecord, RESTRICT (G3): a record with evidence goes only with its whole draft release |
+| `assertion_key` | Deterministic and content-derived within the record: `main`; `pub:<publication key>` when one row reports several papers; `site:S15`. It never depends on extraction order. In G3 it is the claim's key part (`main` when blank; a record with several claims names each, distinctly), followed by `\|pub:<paper key>` when the claim reports several papers. The paper key comes from the identifiers the record states for the paper (PMID first, then DOI, PMCID, IMEx id, local key), each the publication's own value, never from a stored row that a later merge could change |
+| `import_run` | FK ImportRun, RESTRICT (G3); the commit run that first wrote it |
 | `outcome` | `supported`, `tested_absent`, `inconclusive` or `not_significant` (D17) |
 | `evidence_basis` | `experimental`, `computational_prediction`, `computational_inference`, `statistical`, `text_mining` or `unknown`: what the claim rests on |
 | `assertion_method` | `manual_assertion`, `automatic_assertion` or `unknown`: how the source made the statement. It is kept apart from the basis, so that "literature-curated" never competes with "experimental" for one slot |
 | `eco_term` | FK Term, null. An ECO evidence code when the source gives one |
-| `effect` | `activating`, `inhibiting`, `unknown` (the source says unknown) or `not_applicable`; NULL means the source did not state one |
-| `genetic_sign` | `negative` or `positive`, relative to the null model of the score type that accompanies it; NULL when not applicable |
+| `effect` | `activating`, `inhibiting`, `unknown` (the source says unknown) or `not_applicable`; NULL means the source did not state one. Only types with effect polarity carry one (G3). `not_applicable` stays in the database check but is never stored: it is the summary of types without effect polarity |
+| `genetic_sign` | `negative` or `positive`, relative to the null model of the score type that accompanies it; NULL when not applicable. Only types with sign polarity carry one, and only with a score on the same assertion of a signed type that states its null model; when that score's value is finite and not zero, the sign agrees with it (G3) |
 | `interaction_type` | FK Term, null. The PSI-MI interaction type as stated, never upgraded |
-| `interaction_level` | Physical-family assertions only (NULL otherwise): `association`, `physical_association`, `direct_interaction` or `not_stated` (D20). The adapter sets it from its test-pinned list of the PSI-MI terms it accepts, and rejects a row whose term is not listed. The edge label and any level filter read this field alone, so neither needs the PSI-MI hierarchy before V1 |
+| `interaction_level` | Physical-family assertions only (NULL otherwise): `association`, `physical_association`, `direct_interaction` or `not_stated` (D20). The adapter sets it from its test-pinned list of the PSI-MI terms it accepts, and rejects a row whose term is not listed. The edge label and any level filter read this field alone, so neither needs the PSI-MI hierarchy before V1. In G3 a stated `interaction_type` is in the one PSI-MI crosswalk (D20) and the level is the crosswalk's; without one the level is `not_stated`, or `association` assigned by openPIP (B14). `physical_association` and `direct_interaction` always rest on a stated type |
 | `relationship_as_stated`, `effect_as_stated` | The source's own wording |
 | `evidence_group` | Groups assertions that come from one n-ary observation, such as one purification, so they are not counted as independent. The label is the source's own, so a group is always (release, `evidence_group`): equal labels in two releases are different groups |
 | `observation_key` | Blank, or an identifier the source gives for the observation itself that other resources share, such as an IMEx interaction id *(verify per source)*. Added by the first adapter that can fill it (M1), and used only to count independent evidence (section 4.5) |
-| `qualifiers` | JSON. Further mapped source fields, documented per adapter: for example `expansion: "spoke"`, the source's genetic-interaction class, alleles, or a tested hypothesis's effect (`tested_effect`) on a tested-absent row |
+| `qualifiers` | JSON. Further mapped source fields, documented per adapter: for example `expansion: "spoke"`, the source's genetic-interaction class, alleles, or a tested hypothesis's effect (`tested_effect`) on a tested-absent row. `threshold` is reserved (G3): a `not_significant` assertion records there the significance criterion it failed (section 4.3), and no other outcome carries it |
 | `created_at` | |
 
 Constraints:
@@ -473,14 +488,29 @@ Constraints:
 
 Indexes: `(relationship, release)` and `(release, outcome)`.
 
+Stored evidence never changes (G3). An assertion and each of its parts are
+inserted while their release is a draft, by its running commit run, from a
+`mapped` record; they are never saved again, changed or not, and are
+deleted only while the release is a draft, on every write path. A
+correction is a new release.
+
 **Children of an assertion**
+
+Each part is deleted with its assertion (CASCADE) and also holds the
+assertion's release (CASCADE), so it follows the same lifecycle (G3).
 
 - `AssertionParticipant`: one row per side, generalizing
   `InteractionParticipant` (`backend/interactions/models.py:229-294`). It
   holds the assertion, the side (`subject` or `object`) and the entity, plus:
+  - the side as the source stated it, while the relationship holds the
+    canonical order: a symmetric pair stated higher id first keeps its
+    stated sides (G3);
   - how the source wrote the identifier, always kept verbatim;
   - the resolution basis (`primary`, `xref_unique`, `alias_unique`,
     `isoform_entry`, `source_local`, `curated`; section 4.1);
+  - for `isoform_entry`, the isoform the source named (`stated_entity`), the
+    entity being its protein entry, mapped only through a verified
+    `isoform_of` link (open question B12; G3);
   - from M1, the PSI-MI participant fields: experimental and biological
     roles, interactor type and identification method (Term FKs), and
     features and stoichiometry (text).
@@ -592,7 +622,8 @@ Rules enforced in the service layer, with tests:
   shown to visitors. Staff may pin a staged release to view it, never for
   bulk download or external services. `visible_release_ids` returns the
   visible ids with the superseded ones among them marked, so callers flag
-  them without another query (G2).
+  them without another query (G2). The set it returns carries its mark, and
+  the evidence services refuse a set without it (G3, section 4.5).
 - **ShareAlike releases are exported on their own** (owner's decision,
   2026-10-29, open question C13). Until the ShareAlike implications have been
   evaluated and recorded, an export that would combine a release whose
@@ -833,10 +864,10 @@ basis, method, score, context, publication, release and participant roles
 
 | Family | Types | Endpoints | Identity qualifiers | Rules that keep claims apart |
 |---|---|---|---|---|
-| Physical | `physical_interaction`: PSI-MI MI:0914 *association* and its subtree, including MI:0915 *physical association* and MI:0407 *direct interaction* (D20). `protein_interaction_unspecified` for rows whose source states no type | Unordered pair. Self-pairs allowed. Host–pathogen pairs span taxa, each entity keeping its own | None; an isoform is a different endpoint | The PSI-MI type is stated per assertion and never upgraded (`backend/psicquic/mitab.py:88-102` already refuses to). The edge label never presents association-only (MI:0914) evidence as binding. Colocalization (MI:0403) and genetic interaction (MI:0208) are never mapped to a physical type. Enzymatic-reaction evidence without enzyme and enzyme-target roles stays physical. Spoke-expanded pairs carry `expansion` and an evidence group *(verify the PSI-MI hierarchy against the loaded release)* |
+| Physical | `physical_interaction`: PSI-MI MI:0914 *association* and its subtree, including MI:0915 *physical association* and MI:0407 *direct interaction* (D20). `protein_interaction_unspecified` for rows whose source states no type | Unordered pair. Self-pairs allowed. Host–pathogen pairs span taxa, each entity keeping its own | None; an isoform is a different endpoint | The PSI-MI type is stated per assertion and never upgraded (`backend/psicquic/mitab.py:88-102` already refuses to). The edge label never presents association-only (MI:0914) evidence as binding. Colocalization (MI:0403 and its subtree, which contains MI:2364 proximity) and genetic interaction (MI:2402 and its subtree, which contains MI:0208) are never mapped to a physical type. Enzymatic-reaction evidence without enzyme and enzyme-target roles stays physical. Spoke-expanded pairs carry `expansion` and an evidence group *(verify the PSI-MI hierarchy against the loaded release)*. G3 checked these PSI-MI facts against psi-mi.obo at HUPO-PSI/psi-mi-CV commit 7b5bb4f, from which its crosswalk was generated (D20) |
 | Regulation | `transcriptional_regulation`; later `regulates_activity` | Ordered (regulator, target): A→B and B→A are different relationships. The regulator is a gene or a protein, as the source states it; the target is a gene | None | Effect on each assertion. A regulator stated as a gene is never upgraded to its protein. A transcription-factor binding motif alone is never evidence for regulation (brief §3) |
 | RNA | `mirna_binding` (role-ordered miRNA → target transcript or gene; a binding observation, no effect); `mirna_repression` (directed regulation with effect); later RNA-binding-protein types | As stated | Later, a site on the target where the source gives one | Binding and functional repression are different claims (brief §0, §3) |
-| Genetic (Phase 4) | `genetic_interaction` (symmetric); ordered types for suppression and epistasis | Unordered gene pair, or ordered for the directional types | None | `genetic_sign` relative to the score type's null model, the source's class (for example synthetic lethal) in qualifiers, the score, and alleles and perturbations as context. Never stored as an effect or an outcome |
+| Genetic (Phase 4) | `genetic_interaction` (symmetric; no registry entry until N1, and G3's tests use a test-only type); ordered types for suppression and epistasis | Unordered gene pair, or ordered for the directional types | None | `genetic_sign` relative to the score type's null model, the source's class (for example synthetic lethal) in qualifiers, the score, and alleles and perturbations as context. Never stored as an effect or an outcome |
 | Modification (P2) | One type per modification reaction, for example `phosphorylation`; `kinase_site_preference` for predictions | Ordered (enzyme, substrate) | `site:<sequence site>`, pinned to the sequence version or checksum. No site means a separate, coarser claim | A predicted motif preference is never a phosphorylation claim. Positions are never moved between isoforms |
 | Ligand–receptor (Phase 4) | `ligand_receptor_pair` | Role-ordered (ligand, receptor) | None | A molecular pairing, never "demonstrated cell-to-cell communication", which would be a separate, inferred type (brief §3) |
 | Functional and statistical association | `functional_association`, `coexpression`, `coessentiality` (later) | Unordered | None | Not binding and not regulation; method and threshold on each assertion |
@@ -854,6 +885,15 @@ Consequences:
 - Adding an identity qualifier to an existing type is a deliberate re-key of
   that type's rows by a command, never a silent change.
 
+In G3 (`graph.claims`):
+
+- the type's closed set of families lists every family above from the
+  start, so a later family needs no constraint change;
+- no type declares an identity qualifier, so `qualifier_key` is always `''`
+  until P2;
+- an endpoint is `active` or `provisional`, never `merged` or `retired`: a
+  merged entity's evidence belongs on its successor (P5).
+
 ### 4.3 Meanings of "negative"
 
 The brief warns that "negative" has unrelated meanings (brief §2, pitfall 3,
@@ -865,8 +905,8 @@ kept apart from all three.
 |---|---|---|
 | Tested and not detected (MITAB column 36 `true` in a typed import) | `outcome = tested_absent` | Grey dashed line with no arrowhead, labelled "tested, not detected". Hidden by default and never counted as support |
 | Repression or inhibition | `effect = inhibiting` | Tee arrowhead, labelled "inhibits" |
-| Negative (aggravating) genetic interaction | `genetic_sign = negative`, with a score of a typed, signed score type that states its null model | Its own colour and text label inside the genetic layer. Never a tee, never dashed |
-| Not significant: measured, but below the source's threshold. Not a negative result at all | `outcome = not_significant`, with the score, the threshold and the statistics kept | Hidden by default; when shown, a thin grey line labelled "not significant at the stated threshold". Never drawn as absence, never counted as support |
+| Negative (aggravating) genetic interaction | `genetic_sign = negative`, with a score of a typed, signed score type that states its null model, on the same assertion, whose value, when finite and not zero, is below 0 (G3) | Its own colour and text label inside the genetic layer. Never a tee, never dashed |
+| Not significant: measured, but below the source's threshold. Not a negative result at all | `outcome = not_significant`, with the score, the threshold and the statistics kept. The threshold is the criterion the result failed, in `qualifiers["threshold"]`: a list of `{score_type, operator, value}` over the assertion's scores. A result whose scores meet every stated criterion is significant, and is refused (G3) | Hidden by default; when shown, a thin grey line labelled "not significant at the stated threshold". Never drawn as absence, never counted as support |
 
 Legacy `Interaction.negative` is not mapped to an outcome, because the legacy
 schema does not record which dataset set it. Federated edges show it as an
@@ -877,6 +917,10 @@ every assertion that is not `supported`. An adapter that cannot map a
 source term defensibly rejects the row with a reason; it never coerces it. A
 source "effect" written as `negative` is rejected, because it is ambiguous.
 
+Each polarity has one encoding (G3): an effect only on a type with effect
+polarity, a genetic sign only on a type with sign polarity, and NULL on
+every other. `not_applicable` is a summary value and is never stored.
+
 ### 4.4 Idempotency keys
 
 | Level | Key | Behaviour on re-import |
@@ -884,9 +928,9 @@ source "effect" written as `negative` is rejected, because it is ambiguous.
 | Release | `(dataset, version)` | A known version with a different checksum is refused; it must be a new release |
 | Source file | `(release, sha256)` | A committed release's files never change |
 | Source record | `(release, record_key)`. The key is the source's own record id where it has one, else the line number in the checksummed file, else a content hash plus occurrence | Same key and same `raw_sha256`: no-op. Same key with different content in a committed release: hard error |
-| Assertion | `(source_record, assertion_key)`, content-derived | No-op. A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft`, then running a fresh dry run and commit. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
+| Assertion | `(source_record, assertion_key)`, content-derived | No-op, decided per record (G3): recording a record's claims again writes nothing when they give exactly the assertions the record holds, read back and compared (relationship, outcome, basis, method, effect, sign, terms, level, the source's wording, evidence group, qualifiers as canonical JSON text, and each kind of part as a set), and any difference is refused (`ClaimConflict`) with nothing written, because a stored assertion never changes. Keys come from each claim's key part and the identifiers the record states for its papers, never from stored rows (section 3.6). A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft`, then running a fresh dry run and commit. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
 | Entity | `identity_key` | `ON CONFLICT DO NOTHING`, then re-select |
-| Relationship | `(relationship_type, subject, object, qualifier_key)` | `ON CONFLICT DO NOTHING`, then re-select |
+| Relationship | `(relationship_type, subject, object, qualifier_key)` | `ON CONFLICT DO NOTHING`, then re-select. A batch's missing relationships are created in canonical order (type, subject id, object id; G3's `create_relationships`), so two commits that share pairs never deadlock |
 | Non-primary identifier (from RF1a) | `(entity, namespace, lookup, scope_key, role)` | `ON CONFLICT DO NOTHING`, then re-select |
 | Publication | PMID, else lower-cased DOI, else PMCID or IMEx id, else (source dataset, local key) from the release manifest, after co-referent identifiers have been merged | Reused across releases, and written with `ON CONFLICT DO NOTHING` on each partial-unique identifier, then re-selected. When a record's co-referent identifiers match two existing publications (a PMID-only row and a DOI-only row, for example), the assertion attaches by the precedence above, the conflicting identifier is not written, and the import report and `graph_check` list the conflict for an audited merge. The batch does not fail |
 
@@ -905,10 +949,30 @@ These rules are tested on the synthetic release.
   assertion passes the request's filters with an outcome in the requested set
   (default `supported`). An edge whose only visible evidence is tested-absent,
   inconclusive or not significant is hidden by default and appears with that
-  `outcome` or `all`.
+  `outcome` or `all`. In G3's summary module this is `shown`. A relationship
+  with no visible assertion has no summary at all, so its existence never
+  shows.
 - **What the summary covers.** It is computed over the visible assertions
   that pass the filters. The panel says how many assertions lie outside the
-  current filters.
+  current filters. G3 names the sets:
+  - V, the visible assertions: their release is in the caller's release set,
+    and its status, read in the same query, is `published`, `superseded` or
+    `staged`, so a set built by hand or kept too long never shows a draft
+    or a withdrawn release. The evidence services also refuse a release set
+    that `visible_release_ids` did not issue;
+  - F: V passing every filter except the outcome filter;
+  - C, the covered assertions: F with an outcome in the requested set.
+
+  Outcome counts are over F, so a shown edge always shows the evidence that
+  contradicts it. The other counts and summaries are over C's supporting
+  assertions, and a summary is `None` when there are none. The count outside
+  the filters is V minus F. Filters on effect and genetic sign apply only to
+  supported assertions of types with that polarity, since no other
+  assertion carries one; the level filter applies to every assertion of the
+  physical family. So a view that combines regulation and physical evidence
+  keeps both, an effect or sign filter never moves the evidence against an
+  edge out of its outcome counts, and under one a requested outcome other
+  than `supported` is covered (G3).
 - **Counts.** `evidence_count` is the edge's **independent evidence**:
   supporting assertions, with records of one observation counted once
   (below). It is the headline number, so duplicate source observations never
@@ -918,21 +982,29 @@ These rules are tested on the synthetic release.
   effect or sign summaries and the strongest physical level (D20):
   a negative direct-interaction test never makes an edge read "direct
   interaction". An edge with only tested-absent evidence carries its outcome
-  label, with the level tested shown as "tested for: …".
+  label, with the level tested shown as "tested for: …". A level that rests
+  only on openPIP's assignment (B14) is flagged: `level_assigned` is true
+  when the strongest level is `association` and no covered supporting
+  assertion at that level states an interaction type (G3); `not_stated` is
+  no assignment, so it is false there.
 - **Effect summary.** It is computed over supporting assertions with a stated
   effect.
   - `mixed` when both activating and inhibiting are present;
   - otherwise `activating` or `inhibiting`;
   - `unknown` when every stated effect is `unknown` or nothing is stated;
-  - `not_applicable` for types without effect polarity.
+  - `not_applicable` for types without effect polarity;
+  - `None` when no covered assertion supports the edge (G3).
 
   `effect_counts` is always returned, including `unknown` and `not_stated`, so
   "activating, plus two of unknown effect" is visible.
 - **Genetic sign summary.** `negative`, `positive` or `mixed`, over supporting
-  assertions, for types with sign polarity.
+  assertions, for types with sign polarity. In G3 it is `not_stated` when
+  no supporting assertion states a sign, `not_applicable` for types without
+  sign polarity, and `None` without covered support.
 - **Distinct counts**, computed at read time over the capped edge set and
   never summed across releases: independent evidence (`evidence_count`),
-  publications (`reported_in`), releases and datasets.
+  publications (`reported_in`), releases and datasets, each over the covered
+  supporting assertions (G3).
 - **Duplicates count once; independent experiments count separately.**
   Assertions are never merged or deleted to de-duplicate: every source
   statement stays its own evidence record. Only the independent-evidence
@@ -947,7 +1019,11 @@ These rules are tested on the synthetic release.
      otherwise the source dataset. Evidence with no publication, such as a
      prediction or an unpublished screen, is therefore never merged across
      datasets, and restating it in a later release of the same dataset does
-     not count again.
+     not count again. G3 links two assertions of one outcome and origin when
+     their detection-method sets are equal, intersect, or either is empty,
+     and counts connected components (`graph.summary.independence_links`,
+     where M1 puts `observation_key` first), so records linked through
+     others are one observation too.
 
   Assertions in one evidence group, (release, `evidence_group`), count once.
   One experiment reported by two aggregators therefore counts once, and both
@@ -956,7 +1032,13 @@ These rules are tested on the synthetic release.
   limits are stated in the panel, which always shows the assertion count
   beside the independent count:
   - two experiments in one paper with the same method and no observation key
-    count once;
+    count once, and in G3 so do two whose records share any method, or of
+    which one names none. The evidence basis is not part of the key, so
+    records of one origin count once whatever basis each states: a
+    prediction and an experiment of one dataset with no paper and no method
+    count once. The per-basis assertion counts still show both, and a basis
+    in the key would make one experiment count twice when two sources state
+    its basis differently;
   - two sources that name one experiment's method at different depths of
     PSI-MI count twice, until V1 lets methods be compared by subtree;
   - a record of an experiment with an observation key and a record of the
@@ -1758,16 +1840,22 @@ This is an open question; either choice costs little.
     statistics stay on the assertion, and the score keeps its measured sign,
     but the assertion carries no `genetic_sign`. Whether a release imports
     such pairs at all is the adapter's declared choice; a first release
-    imports only pairs that pass one declared threshold tier.
+    imports only pairs that pass one declared threshold tier. G3 records the
+    threshold as the criterion the result failed (`qualifiers["threshold"]`,
+    section 4.3), and refuses a result whose scores meet every criterion it
+    states.
 - `evidence_basis` and `assertion_method` are separate fields, with an
   optional ECO code.
 - `effect`: `activating`, `inhibiting`, `unknown` (the source says unknown)
   or `not_applicable`. NULL means not stated. `mixed` exists only as a
-  summary.
+  summary, and from G3 so does `not_applicable`, which is never stored.
 - `genetic_sign`: its own column from the first evidence migration, so the
   brief's "separate fields" (brief §9) is visible in the schema from day one.
   Each relationship type's polarity says which of `effect` and
-  `genetic_sign` its evidence may carry.
+  `genetic_sign` its evidence may carry: in G3 an effect only on a type with
+  effect polarity, a sign only on one with sign polarity, NULL otherwise. A
+  sign needs a score of a signed type that states its null model, on the
+  same assertion, and agrees with that score's finite, non-zero value.
 
 ### D18. A separate typed ingestion pipeline
 
@@ -1805,6 +1893,24 @@ has its own list (G4). An unlisted type is rejected with a reason. The label
 and any level filter read only the stored level, so neither needs the PSI-MI
 hierarchy. V1, if it is built, checks the lists against the loaded
 hierarchy.
+
+G3 adds the one crosswalk every list is a subset of, at the levels it
+gives: `graph.terms.PHYSICAL_INTERACTION_LEVELS`, generated once from
+psi-mi.obo at HUPO-PSI/psi-mi-CV commit 7b5bb4f (2026-09-11; the file the
+EBI's OLS4 loaded on 2026-10-29) by a script kept outside the repository.
+It holds the live terms under MI:0914 association: MI:0407 and its
+descendants at `direct_interaction`, MI:0915 and its descendants not under
+MI:0407 at `physical_association`, and MI:0914 and its descendants not
+under MI:0915 at `association`. Left out are MI:1126 self interaction,
+which is intra-molecular, MI:1127 putative self interaction, which may be
+intra-molecular or between two identical molecules (a homomer) and so is
+ambiguous, and obsolete terms. Never mapped to a physical type are
+colocalization (MI:0403 and its subtree, which contains MI:2364 proximity)
+and genetic interaction (MI:2402 and its subtree, which contains MI:0208).
+A physical assertion's stated interaction type must be in the crosswalk, at
+its level; a level above `association` always rests on a stated type, and
+`association` without one is assigned by openPIP (B14, below) and flagged
+in the summary (`level_assigned`, section 4.5).
 
 Association-only evidence is never presented as binding. Filters can select
 assertions by stored level, for example physical association or stronger,
@@ -2201,6 +2307,9 @@ All of them refuse to write while the switch is off.
    - finite scores and duplicate keys;
    - no effect or sign on tested-absent or inconclusive rows.
 
+   The claims are checked by G3's `graph.claims.check_claims`, which reads
+   and never writes, and refuses a record in the words a commit would use.
+
    The report gives:
    - counts by status;
    - rejected rows, with reasons and physical line numbers;
@@ -2219,8 +2328,20 @@ All of them refuse to write while the switch is off.
      `ON CONFLICT DO NOTHING` on `identity_key` and re-selected. Without it,
      a record whose identifier names no entity stays `unresolved`.
      Relationships and publications, and from RF1a non-primary identifiers,
-     are written the same race-safe way, and assertions are upserted on
-     their idempotency key (section 4.4).
+     are written the same race-safe way; a batch's missing relationships
+     first, in canonical order (`graph.claims.create_relationships`, G3).
+   - Each record's claims are recorded by `graph.claims.record_claims` (G3):
+     only while the release is a draft, by its running commit run, from a
+     `mapped` record, with an effective `internal` approval unless the
+     release is synthetic, and with synthetic separation both ways: a
+     synthetic release's evidence names only synthetic constructs (taxon
+     32630), synthetic publications, `synthetic:` or `stats:` score types and
+     host taxon 32630 or an unregistered one, and no other release's names a
+     synthetic construct, publication, score type or host taxon. A record
+     already recorded is a no-op when its claims give exactly its stored
+     assertions, and is refused otherwise (section 4.4). The terms the
+     claims name are recorded by the same commit (`graph.terms`), never by a
+     dry run.
    - A checkpoint is saved after each batch, so a killed commit resumes and
      earlier batches become no-ops.
    - The release becomes `staged`, and `DatasetRelease.stats` is written. No
@@ -2658,6 +2779,34 @@ decisions, the science and Django 5.0.6. It led to these changes:
   to zero (6.1);
 - one due-diligence record per dataset (3.7);
 - unstated interaction types stay unspecified (D20, open question B14).
+
+**Four independent reviews of G3's specification** then refined the rules
+for relationships and evidence before they were built:
+
+- terms are created only inside an approved commit and keep the label it
+  supplied, or a crosswalk term the crosswalk's, and one crosswalk,
+  generated from a cited PSI-MI file, maps interaction types to levels
+  (3.3, D20);
+- evidence follows its release's lifecycle, and stored evidence never
+  changes (3.6);
+- participants keep the sides as the source stated them (3.6);
+- idempotency is per record, and keys come from what the record states
+  (3.6, 4.4);
+- no identity qualifier until P2, every family is in the closed set, and
+  endpoints are never merged or retired (4.2);
+- one encoding per polarity, and a not-significant result records the
+  criterion it failed (4.3, D17);
+- the summary's sets, independence rule and flags are defined, and a
+  release set that `visible_release_ids` did not issue is refused (4.5);
+- registry rows that evidence depends on are locked by the sync and held
+  in shared mode by writers (3.3);
+- G1's and G2's records were hardened: deletes decide from stored rows,
+  JSON values are compared exactly, an entity's type, identity key and
+  taxon are fixed, a record with evidence stays mapped, and a
+  publication's synthetic flag is fixed (3.4, 3.5; IMPLEMENTATION_PLAN.md,
+  G3);
+- colocalization and genetic interaction are never physical, with their
+  whole PSI-MI subtrees (4.2, D20).
 
 ## 15. Owner decisions of 2026-10-29
 

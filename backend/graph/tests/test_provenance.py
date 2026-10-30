@@ -3,6 +3,7 @@ import runs and source records, and the record rules that hold on every
 write path."""
 
 import datetime
+import json
 import threading
 import time
 
@@ -17,6 +18,7 @@ from graph.approvals import revoke as revoke_decision
 from graph.entities import EntityError, ReleaseProvenanceError, create_entity
 from graph.models import (
     ApprovalScope,
+    AssertionParticipant,
     DataSource,
     DataSourceKind,
     DatasetRelease,
@@ -28,6 +30,11 @@ from graph.models import (
     Entity,
     EntityIdentifier,
     EntityStatus,
+    EvidenceAssertion,
+    EvidenceContext,
+    EvidenceMethod,
+    EvidencePublication,
+    EvidenceScore,
     FileRole,
     GuardedForeignKey,
     GuardedQuerySet,
@@ -40,6 +47,7 @@ from graph.models import (
     PublicationRole,
     RecordKeyBasis,
     RecordStatus,
+    Relationship,
     ReleaseKind,
     ReleaseLicence,
     ReleaseStatus,
@@ -48,15 +56,23 @@ from graph.models import (
     SourceDataset,
     SourceFile,
     SourceRecord,
+    Term,
     UsageApproval,
 )
 from graph.tests.factories import (
+    AssertionParticipantFactory,
     DataSourceFactory,
     DatasetReleaseFactory,
     DueDiligenceRecordFactory,
     EntityFactory,
+    EvidenceAssertionFactory,
+    EvidenceContextFactory,
+    EvidenceMethodFactory,
+    EvidencePublicationFactory,
+    EvidenceScoreFactory,
     ImportRunFactory,
     PublicationFactory,
+    RelationshipFactory,
     ReleaseLicenceFactory,
     ReleasePublicationFactory,
     ReleaseTaxonFactory,
@@ -66,9 +82,11 @@ from graph.tests.factories import (
     SourceRecordFactory,
     StaffUserFactory,
     TaxonFactory,
+    TermFactory,
     UsageApprovalFactory,
     approvable_release,
     approve,
+    mapped_record,
 )
 from graph.visibility import Purpose, visible_release_ids
 
@@ -93,7 +111,44 @@ GUARDED_MODELS = [
     DueDiligenceChange,
     ReleaseLicence,
     UsageApproval,
+    # G3.
+    Term,
+    Relationship,
+    EvidenceAssertion,
+    AssertionParticipant,
+    EvidenceMethod,
+    EvidencePublication,
+    EvidenceScore,
+    EvidenceContext,
 ]
+G2_MODELS = {
+    "DataSource",
+    "SourceDataset",
+    "Publication",
+    "SourceDatasetPublication",
+    "DatasetRelease",
+    "ReleasePublication",
+    "ReleaseTaxon",
+    "SourceFile",
+    "ImportRun",
+    "SourceRecord",
+    "DueDiligenceRecord",
+    "DueDiligenceChange",
+    "ReleaseLicence",
+    "UsageApproval",
+}
+G3_MODELS = {
+    "RelationshipType",
+    "ScoreType",
+    "Term",
+    "Relationship",
+    "EvidenceAssertion",
+    "AssertionParticipant",
+    "EvidenceMethod",
+    "EvidencePublication",
+    "EvidenceScore",
+    "EvidenceContext",
+}
 # Ways to write a change to a stored row, and to delete one.
 WRITE_PATHS = ["save", "save_update_fields", "update", "bulk_update"]
 DELETE_PATHS = ["delete", "queryset_delete"]
@@ -221,6 +276,18 @@ def _run_of(record):
     return ImportRunFactory(release=record.release, file=record.file)
 
 
+def _assertion_elsewhere():
+    return RelationshipFactory(), EvidenceAssertionFactory()
+
+
+def _part_elsewhere(factory_class):
+    def make():
+        part = factory_class()
+        return EvidenceAssertionFactory(release=part.release), part
+
+    return make
+
+
 # Each reverse many-to-one accessor of a model with record rules: the parent
 # it is read from, the row given to add(), and the refusal expected. Each
 # moves a stored row to another parent.
@@ -294,6 +361,36 @@ REVERSE_ACCESSORS = {
         "created_entities",
         "Entity.created_by_release",
     ),
+    "relationship.assertions": (
+        _assertion_elsewhere,
+        "assertions",
+        "EvidenceAssertion.relationship",
+    ),
+    "assertion.participants": (
+        _part_elsewhere(AssertionParticipantFactory),
+        "participants",
+        "AssertionParticipant.assertion",
+    ),
+    "assertion.methods": (
+        _part_elsewhere(EvidenceMethodFactory),
+        "methods",
+        "EvidenceMethod.assertion",
+    ),
+    "assertion.publications": (
+        _part_elsewhere(EvidencePublicationFactory),
+        "publications",
+        "EvidencePublication.assertion",
+    ),
+    "assertion.scores": (
+        _part_elsewhere(EvidenceScoreFactory),
+        "scores",
+        "EvidenceScore.assertion",
+    ),
+    "assertion.contexts": (
+        _part_elsewhere(EvidenceContextFactory),
+        "contexts",
+        "EvidenceContext.assertion",
+    ),
 }
 
 
@@ -349,6 +446,13 @@ def test_every_reverse_many_to_one_accessor_of_a_guarded_model_saves_each_row():
         "ReleaseLicence.release",
         "UsageApproval.release",
         "UsageApproval.licence",
+        # G3: every other key of its models has related_name="+".
+        "EvidenceAssertion.relationship",
+        "AssertionParticipant.assertion",
+        "EvidenceMethod.assertion",
+        "EvidencePublication.assertion",
+        "EvidenceScore.assertion",
+        "EvidenceContext.assertion",
     }
     # Each is refused above but data_source (a catalogue dataset may move),
     # and Entity.created_by_release is too.
@@ -356,6 +460,24 @@ def test_every_reverse_many_to_one_accessor_of_a_guarded_model_saves_each_row():
     # The migrations see a plain ForeignKey.
     path = DatasetRelease._meta.get_field("dataset").deconstruct()[1]
     assert path == "django.db.models.ForeignKey"
+    for name in ("entity_type", "taxon"):
+        field = Entity._meta.get_field(name)
+        assert isinstance(field, GuardedForeignKey), name
+        assert field.deconstruct()[1] == "django.db.models.ForeignKey"
+
+
+@pytest.mark.parametrize("model", GUARDED_MODELS, ids=lambda m: m.__name__)
+def test_every_foreign_key_on_a_guarded_model_saves_each_row_or_has_no_manager(
+    model,
+):
+    """A reverse manager's add() would move a row past its rules with one
+    plain update(); a GuardedForeignKey's saves each row, and a key with
+    related_name="+" has none."""
+    for field in model._meta.get_fields():
+        if field.many_to_one and field.concrete:
+            assert (
+                isinstance(field, GuardedForeignKey) or field.remote_field.is_hidden()
+            ), f"{model.__name__}.{field.name}"
 
 
 def test_a_reverse_add_still_writes_what_the_rules_allow(db):
@@ -386,7 +508,7 @@ def test_a_reverse_add_makes_no_release_public(switch_on):
     assert not other.approvals.exists()
 
 
-def test_every_constraint_and_index_name_g2_adds_is_prefixed_and_short():
+def test_every_constraint_and_index_name_g2_and_g3_add_is_prefixed_and_short():
     # G1's graph_entity_merged_into_iff_merged is longer, and stays as
     # migrated.
     g1 = {"Taxon", "EntityType", "IdentifierNamespace", "RegistryState"}
@@ -396,7 +518,9 @@ def test_every_constraint_and_index_name_g2_adds_is_prefixed_and_short():
         for model in apps.get_app_config("graph").get_models()
         if model.__name__ not in g1
     ]
-    assert len(models) == 14
+    # G2's 14 models and G3's 10, by name.
+    assert (len(G2_MODELS), len(G3_MODELS)) == (14, 10)
+    assert {model.__name__ for model in models} == G2_MODELS | G3_MODELS
     for model in models:
         for item in [*model._meta.constraints, *model._meta.indexes]:
             assert item.name.startswith("graph_"), (model.__name__, item.name)
@@ -1624,6 +1748,333 @@ def test_a_file_or_run_that_records_point_at_is_never_deleted_alone(db):
     # The whole draft release goes together.
     record.release.delete()
     assert not SourceRecord.objects.filter(pk=record.pk).exists()
+
+
+# ── Deletes decide from the stored row ──────────────────────────────────────
+
+# A stored row of each model whose release decides its deletion, made while
+# its release is a draft.
+RELEASE_ROWS = {
+    ReleaseTaxon: lambda release: ReleaseTaxonFactory(release=release),
+    SourceFile: lambda release: SourceFileFactory(release=release),
+    ImportRun: lambda release: ImportRunFactory(release=release, file=None),
+    SourceRecord: lambda release: SourceRecordFactory(release=release),
+    EvidenceAssertion: lambda release: EvidenceAssertionFactory(release=release),
+    AssertionParticipant: lambda release: AssertionParticipantFactory(
+        assertion__release=release
+    ),
+    EvidenceMethod: lambda release: EvidenceMethodFactory(assertion__release=release),
+    EvidencePublication: lambda release: EvidencePublicationFactory(
+        assertion__release=release
+    ),
+    EvidenceScore: lambda release: EvidenceScoreFactory(assertion__release=release),
+    EvidenceContext: lambda release: EvidenceContextFactory(assertion__release=release),
+}
+
+
+def _misleading(model, row, variant):
+    """An instance of the stored row that says less, or something else, than
+    the row: its pk alone, or a draft release (or assertion) given in
+    memory."""
+    if variant == "pk only":
+        return model(pk=row.pk)
+    instance = model.objects.get(pk=row.pk)
+    draft = DatasetReleaseFactory()
+    instance.release_id = draft.pk
+    if variant == "assertion in memory":
+        instance.assertion_id = EvidenceAssertionFactory(release=draft).pk
+    return instance
+
+
+@pytest.mark.parametrize("variant", ["pk only", "release in memory"])
+@pytest.mark.parametrize("status", [STAGED, PUBLISHED, SUPERSEDED, WITHDRAWN])
+@pytest.mark.parametrize("model", list(RELEASE_ROWS), ids=lambda m: m.__name__)
+def test_a_delete_is_decided_by_the_stored_row_not_the_instance(
+    db, model, status, variant
+):
+    """A probe showed SourceRecord(pk=x).delete() deleting a published
+    release's record: the guard asked the instance's release, which a
+    pk-only instance does not have."""
+    release = DatasetReleaseFactory()
+    row = RELEASE_ROWS[model](release)
+    advance(release, status)
+    with pytest.raises(ImmutableRecordError, match=f"{model.__name__}.release"):
+        _misleading(model, row, variant).delete()
+    assert model._base_manager.filter(pk=row.pk).exists()
+
+
+@pytest.mark.parametrize("status", [STAGED, PUBLISHED, SUPERSEDED, WITHDRAWN])
+@pytest.mark.parametrize(
+    "model",
+    [
+        AssertionParticipant,
+        EvidenceMethod,
+        EvidencePublication,
+        EvidenceScore,
+        EvidenceContext,
+    ],
+    ids=lambda m: m.__name__,
+)
+def test_a_parts_delete_ignores_an_assertion_given_in_memory(db, model, status):
+    release = DatasetReleaseFactory()
+    row = RELEASE_ROWS[model](release)
+    advance(release, status)
+    with pytest.raises(ImmutableRecordError, match=f"{model.__name__}.release"):
+        _misleading(model, row, "assertion in memory").delete()
+    assert model._base_manager.filter(pk=row.pk).exists()
+
+
+def test_an_update_is_decided_by_the_stored_rows_release_not_the_instance(db):
+    """The release a save locks and asks is the stored row's: a draft given
+    in memory let a partial save change a published release's record."""
+    record = SourceRecordFactory()
+    advance(record.release, PUBLISHED)
+    fresh = SourceRecord.objects.get(pk=record.pk)
+    fresh.release_id = DatasetReleaseFactory().pk
+    fresh.status = RecordStatus.REJECTED
+    with pytest.raises(ImmutableRecordError, match="is published"):
+        fresh.save(update_fields=["status"])
+    assert stored(record)["status"] == RecordStatus.MAPPED
+
+
+def test_a_due_diligence_actor_is_judged_by_the_stored_account(db):
+    actor = StaffUserFactory()
+    # Demoted since it was loaded: the object in memory still says staff.
+    type(actor).objects.filter(pk=actor.pk).update(is_staff=False)
+    record = DueDiligenceRecordFactory.build(
+        dataset=SourceDatasetFactory(), changed_by=actor
+    )
+    with pytest.raises(ImmutableRecordError, match="names its actor"):
+        record.save()
+    assert not DueDiligenceRecord.objects.exists()
+
+
+def test_a_draft_releases_row_is_deleted_by_its_pk_alone(db):
+    record = SourceRecordFactory()
+    assert SourceRecord(pk=record.pk).delete()[0] == 1
+    assert not SourceRecord.objects.filter(pk=record.pk).exists()
+
+
+# The models whose rows are never deleted, whatever their release says.
+NEVER_DELETED = {
+    DueDiligenceRecord: lambda: DueDiligenceRecordFactory(),
+    DueDiligenceChange: lambda: DueDiligenceRecordFactory().history.get(),
+    ReleaseLicence: lambda: ReleaseLicenceFactory(),
+    UsageApproval: lambda: UsageApprovalFactory(),
+    Term: lambda: TermFactory(),
+    Relationship: lambda: RelationshipFactory(),
+}
+
+
+@pytest.mark.parametrize("model", list(NEVER_DELETED), ids=lambda m: m.__name__)
+def test_a_row_that_is_never_deleted_is_not_deleted_by_its_pk(db, model):
+    row = NEVER_DELETED[model]()
+    with pytest.raises(ImmutableRecordError, match=f"{model.__name__}"):
+        model(pk=row.pk).delete()
+    assert model._base_manager.filter(pk=row.pk).exists()
+
+
+@pytest.mark.parametrize("status", [STAGED, PUBLISHED, SUPERSEDED, WITHDRAWN])
+def test_a_release_is_not_deleted_by_its_pk_past_draft(db, status):
+    release = DatasetReleaseFactory(status=status)
+    with pytest.raises(ImmutableRecordError, match="DatasetRelease.status"):
+        DatasetRelease(pk=release.pk).delete()
+    assert DatasetRelease.objects.filter(pk=release.pk).exists()
+
+
+@pytest.mark.parametrize("model", GUARDED_MODELS, ids=lambda m: m.__name__)
+def test_a_pk_that_names_no_row_deletes_nothing(db, model):
+    missing = "MI:9999" if model is Term else 10**12
+    assert model(pk=missing).delete()[0] == 0
+
+
+# ── JSON is compared exactly ────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "stored_raw,retyped",
+    [
+        ({"n": 1}, {"n": True}),
+        ({"n": True}, {"n": 1}),
+        ({"n": 1}, {"n": 1.0}),
+        ({"n": [1, 2]}, {"n": [1.0, 2]}),
+        ({"n": None}, {"n": False}),
+    ],
+)
+def test_a_records_raw_row_is_never_retyped(db, stored_raw, retyped):
+    """Python finds True == 1 and 1.0 == 1; JSON stores them differently, so
+    the comparison that decides "never changes" reads canonical JSON."""
+    record = SourceRecordFactory(raw=stored_raw)
+    advance(record.release, STAGED)
+    before = stored(record)
+    record.raw = retyped
+    with pytest.raises(ImmutableRecordError, match="SourceRecord.raw"):
+        record.save()
+    assert stored(record) == before
+
+
+def test_json_that_differs_only_in_key_order_is_unchanged(db):
+    record = SourceRecordFactory(raw={"a": 1, "b": [1, 2]})
+    advance(record.release, STAGED)
+    record.raw = {"b": [1, 2], "a": 1}
+    record.status = RecordStatus.REJECTED
+    record.save()
+    assert stored(record)["status"] == RecordStatus.REJECTED
+
+
+def test_a_published_releases_stats_are_never_retyped(db):
+    release = DatasetReleaseFactory(status=PUBLISHED, stats={"records": 1})
+    release.stats = {"records": 1.0}
+    with pytest.raises(ImmutableRecordError, match="DatasetRelease.stats"):
+        release.save()
+    assert stored(release)["stats"] == {"records": 1}
+
+
+@pytest.mark.parametrize(
+    "value", [{"n": -0.0}, {"n": 1e16}], ids=["negative zero", "1e16"]
+)
+def test_a_value_the_database_keeps_in_its_own_form_is_unchanged(db, value):
+    """PostgreSQL's jsonb gives -0.0 back as 0.0 and 1e16 as the integer
+    10000000000000000: an instance still holding the value it was saved with
+    is saved again unchanged, not refused as a change."""
+    record = SourceRecordFactory(raw=value)
+    record.status = RecordStatus.REJECTED
+    record.save()
+    assert stored(record)["status"] == RecordStatus.REJECTED
+    release = advance(DatasetReleaseFactory(stats=value), PUBLISHED)
+    move(release, WITHDRAWN)
+    assert stored(release)["status"] == WITHDRAWN
+
+
+@pytest.mark.parametrize(
+    "stored_raw,retyped",
+    [
+        ({"n": 1e16}, {"n": 10**16}),
+        ({"n": 10**16}, {"n": 1e16}),
+        ({"n": -0.0}, {"n": 0.0}),
+        ({"n": 0.0}, {"n": -0.0}),
+    ],
+    ids=["1e16 to an integer", "an integer to 1e16", "-0.0 to 0.0", "0.0 to -0.0"],
+)
+def test_a_stored_number_keeps_its_json_form_on_every_backend(db, stored_raw, retyped):
+    """PostgreSQL's jsonb keeps one form of each of these numbers, so there
+    the save writes what is stored already and is allowed; SQLite keeps the
+    text json.dumps wrote, so there the save would re-type the stored value,
+    and is refused."""
+    record = SourceRecordFactory(raw=stored_raw)
+    advance(record.release, STAGED)
+    before = stored(record)
+    record.raw = retyped
+    record.status = RecordStatus.REJECTED
+    if connection.vendor == "postgresql":
+        record.save()
+        assert stored(record)["status"] == RecordStatus.REJECTED
+    else:
+        with pytest.raises(ImmutableRecordError, match="SourceRecord.raw"):
+            record.save()
+        assert stored(record) == before
+    # == finds 1e16 equal to 10**16 and -0.0 to 0.0; their JSON text differs.
+    assert json.dumps(stored(record)["raw"]) == json.dumps(before["raw"])
+
+
+@pytest.mark.parametrize(
+    "stored_raw,retyped",
+    [
+        ({"true": "x"}, {True: "y", "true": "x"}),
+        ({"null": "x"}, {None: "y", "null": "x"}),
+        ({"1": "x"}, {1: "y", "1": "x"}),
+    ],
+    ids=["true", "null", "1"],
+)
+def test_keys_json_writes_alike_are_a_change(db, stored_raw, retyped):
+    """{True: .., "true": ..} would be written as one JSON object with a
+    repeated key; a stored value is never re-written that way."""
+    record = SourceRecordFactory(raw=stored_raw)
+    advance(record.release, STAGED)
+    before = stored(record)
+    record.raw = retyped
+    record.status = RecordStatus.REJECTED
+    with pytest.raises(ImmutableRecordError, match="SourceRecord.raw"):
+        record.save()
+    assert stored(record) == before
+
+
+def test_a_published_releases_stats_keys_never_collapse(db):
+    release = advance(DatasetReleaseFactory(stats={"true": 1}), PUBLISHED)
+    before = stored(release)
+    release.stats = {True: 2, "true": 1}
+    with pytest.raises(ImmutableRecordError):
+        release.save()
+    assert stored(release) == before
+
+
+# ── A record with evidence stays mapped ─────────────────────────────────────
+
+
+def _record_with_evidence():
+    assertion = EvidenceAssertionFactory()
+    return SourceRecord.objects.get(pk=assertion.source_record_id)
+
+
+@pytest.mark.parametrize("path", WRITE_PATHS)
+@pytest.mark.parametrize("status", [RecordStatus.REJECTED, RecordStatus.UNRESOLVED])
+def test_a_record_with_evidence_keeps_its_mapped_status(db, path, status):
+    record = _record_with_evidence()
+    before = stored(record)
+    with pytest.raises(ImmutableRecordError, match="SourceRecord.status: stays"):
+        write(path, record, status=status)
+    assert stored(record) == before
+
+
+@pytest.mark.parametrize("path", ["update", "bulk_update"])
+def test_a_queryset_naming_the_status_of_a_record_with_evidence_is_refused(db, path):
+    """The hook sees names, not values: even mapped to mapped."""
+    record = _record_with_evidence()
+    other = mapped_record(record.release)
+    with pytest.raises(ImmutableRecordError, match=f"record {record.pk} has"):
+        if path == "update":
+            SourceRecord.objects.filter(pk__in=[record.pk, other.pk]).update(
+                status=RecordStatus.MAPPED
+            )
+        else:
+            SourceRecord.objects.bulk_update([other, record], ["status"])
+    assert stored(record)["status"] == RecordStatus.MAPPED
+
+
+def test_a_record_with_evidence_still_takes_issues_and_its_mapped_status(db):
+    record = _record_with_evidence()
+    record.issues = ["re-read by run 2"]
+    record.save()
+    record.status = RecordStatus.MAPPED
+    record.save(update_fields=["status"])
+    # And a record without evidence changes status as before.
+    other = mapped_record(record.release)
+    SourceRecord.objects.filter(pk=other.pk).update(status=RecordStatus.REJECTED)
+    assert stored(record)["issues"] == ["re-read by run 2"]
+    assert stored(other)["status"] == RecordStatus.REJECTED
+
+
+# ── A publication's synthetic flag is fixed when it is created ──────────────
+
+
+@pytest.mark.parametrize("path", ["save", "save_update_fields"])
+def test_a_publications_synthetic_flag_is_fixed_at_creation(db, path):
+    # False counted as blank among the set-once identifiers, so a save could
+    # make a paper synthetic.
+    paper = Publication(local_dataset=SourceDatasetFactory(), local_key="p1")
+    paper.save()
+    with pytest.raises(
+        ImmutableRecordError, match="Publication.is_synthetic: is fixed"
+    ):
+        write(path, paper, is_synthetic=True)
+    assert stored(paper)["is_synthetic"] is False
+    synthetic = Publication(
+        local_dataset=SourceDatasetFactory(), local_key="s1", is_synthetic=True
+    )
+    synthetic.save()
+    with pytest.raises(ImmutableRecordError, match="Publication.is_synthetic"):
+        write(path, synthetic, is_synthetic=False)
+    assert stored(synthetic)["is_synthetic"] is True
 
 
 # ── Entities and the releases that introduce them ───────────────────────────

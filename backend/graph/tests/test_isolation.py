@@ -179,6 +179,42 @@ def test_graph_0002_is_checked_and_depends_only_on_0001_and_the_user_model():
     }
 
 
+# The models graph.0003 creates: relationships and evidence (G3).
+EVIDENCE_MODELS = {
+    "relationshiptype",
+    "scoretype",
+    "term",
+    "relationship",
+    "evidenceassertion",
+    "assertionparticipant",
+    "evidencemethod",
+    "evidencepublication",
+    "evidencescore",
+    "evidencecontext",
+}
+
+
+def test_graph_0003_is_checked_and_depends_only_on_0002():
+    # As 0002 above: the allow-list covers it. It adds no key to the user
+    # model, and touches only the models it creates, so G1's and G2's tables
+    # are as 0002 left them.
+    found = {name: migration for app, name, migration in new_app_migrations()}
+    migration = found["0003_relationships_evidence"]
+    assert set(migration.dependencies) == {("graph", "0002_provenance_licensing")}
+    assert {type(operation) for operation in migration.operations} <= set(
+        ALLOWED_OPERATIONS
+    )
+    created = {
+        operation.name.lower()
+        for operation in migration.operations
+        if isinstance(operation, migrations.CreateModel)
+    }
+    assert created == EVIDENCE_MODELS
+    for operation in migration.operations:
+        model = (getattr(operation, "model_name", None) or operation.name).lower()
+        assert model in created, f"0003 alters {model}, which it does not create"
+
+
 def test_the_pre_existing_apps_migrations_match_the_manifest():
     # A fork-only migration in a shared app would collide with upstream's
     # numbering. An upstream sync that brings new migrations updates the
@@ -364,23 +400,30 @@ def tables_at(app, migration) -> set[str]:
 
 @pytest.mark.postgres
 @pytest.mark.django_db(transaction=True)
-def test_the_legacy_schema_and_rows_are_unchanged_by_one_step_back_and_forward():
-    # graph back to 0001, its first migration, removes only 0002's
+@pytest.mark.parametrize(
+    "target",
+    ["0002_provenance_licensing", "0001_initial"],
+    ids=["one step back to 0002", "back to 0001"],
+)
+def test_the_legacy_schema_and_rows_are_unchanged_by_steps_back_and_forward(target):
+    # graph back one step, to 0002, removes only 0003's relationship and
+    # evidence tables; back to 0001, its first migration, also 0002's
     # provenance and licensing tables and Entity.created_by_release.
     get_user_model().objects.create_user("snapshot", "snapshot@example.com", "x" * 12)
     apps.get_model("proteins", "Protein").objects.create(gene_name="TP53")
     apps.get_model("datasets", "Dataset").objects.create(name="Snapshot")
-    first_tables = tables_at("graph", "0001_initial")
+    target_tables = tables_at("graph", target)
+    assert target_tables < new_tables()
 
     snapshots = []
     try:
         snapshots.append(
             ("graph applied", legacy_schema(), row_counts(), bookkeeping())
         )
-        migrate("graph", "0001")
-        assert new_tables() & tables() == first_tables
+        migrate("graph", target)
+        assert new_tables() & tables() == target_tables
         snapshots.append(
-            ("graph at 0001", legacy_schema(), row_counts(), bookkeeping())
+            (f"graph at {target}", legacy_schema(), row_counts(), bookkeeping())
         )
     finally:
         migrate()
@@ -394,6 +437,33 @@ def test_the_legacy_schema_and_rows_are_unchanged_by_one_step_back_and_forward()
             ("schema", "rows", "bookkeeping"), first, snapshot
         ):
             assert after == before, f"{part} differs between {first_name} and {name}"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_steps_back_to_0002_and_forward_again():
+    provenance_tables = tables_at("graph", "0002_provenance_licensing")
+    # A many-to-many table belongs to the model that declares the field.
+    evidence_tables = {
+        model._meta.db_table
+        for model in new_models()
+        if (model._meta.auto_created or model)._meta.model_name in EVIDENCE_MODELS
+    }
+    # G2's tables, and not the ones 0003 adds: those, and the relationship
+    # types' many-to-many tables, are all that goes.
+    assert "graph_datasetrelease" in provenance_tables
+    assert "graph_relationship" not in provenance_tables
+    assert provenance_tables == new_tables() - evidence_tables
+    try:
+        migrate("graph", "0002")
+        assert new_tables() & tables() == provenance_tables
+        with connection.cursor() as cursor:
+            columns = connection.introspection.get_table_description(
+                cursor, "graph_entity"
+            )
+        assert "created_by_release_id" in {column.name for column in columns}
+    finally:
+        migrate()
+    assert new_tables() <= tables()
 
 
 @pytest.mark.django_db(transaction=True)

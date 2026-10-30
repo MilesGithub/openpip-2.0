@@ -5,9 +5,23 @@ them. These tests hold that from the outside: they record the legacy
 responses, create typed entities and identifiers that use the same strings
 (TP53, P04637, 7157 ...), with the provenance and licensing records of the
 releases that introduce them (named like the legacy dataset, citing its
-PubMed id), and expect every response back byte for byte. The typed records
-point at the legacy user table only through SET_NULL keys with a username
-kept beside each, so deleting an account in the Django admin still works.
+PubMed id), and expect every response back byte for byte.
+
+The typed rows include relationships between those entities with evidence
+of every kind, recorded by graph.claims.record_claims from the source
+records of a release that is then published and approved for public view,
+so visitors of the typed graph may see them: TP53 regulating MDM2, with
+activating, inhibiting, unknown and unstated effects, a prediction, an
+inconclusive and a not-significant test; TP53 and MDM2 binding, at each
+level, with a tested-absent assertion; the same pair without a stated
+interaction type; a negative genetic interaction between their genes; and
+the encodes and isoform_of links between their genes, proteins and
+isoforms; with methods of each role, publications, scores and contexts.
+PSICQUIC still serves the two legacy interactions and nothing typed.
+
+The typed records point at the legacy user table only through SET_NULL keys
+with a username kept beside each, so deleting an account in the Django admin
+still works.
 """
 
 import datetime
@@ -18,16 +32,28 @@ from django.apps import apps
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
+from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.models import User, UserInteractionNetwork
 from datasets.tests.factories import DatasetFactory
 from graph.approvals import record_decision, revoke
+from graph.claims import (
+    Claim,
+    ContextValue,
+    Endpoint,
+    MethodRef,
+    PublicationRef,
+    ScoreValue,
+    record_claims,
+)
 from graph.entities import create_entity
 from graph.licensing import confirm_due_diligence, record_licence
 from graph.models import (
     ApprovalScope,
+    AssertionMethod,
     DataSource,
     DataSourceKind,
     DatasetRelease,
@@ -35,14 +61,32 @@ from graph.models import (
     Decision,
     DueDiligenceChange,
     DueDiligenceRecord,
+    Effect,
     Entity,
+    EvidenceAssertion,
+    EvidenceBasis,
+    GeneticSign,
     IdentifierNamespace,
     IdentifierRole,
+    ImportMode,
+    ImportRun,
+    ImportState,
+    InteractionLevel,
+    Orientation,
+    Outcome,
     Permission,
+    Polarity,
     PublicationRole,
+    Relationship,
+    RelationshipFamily,
+    RelationshipType,
     ReleaseLicence,
     ReleasePublication,
     ReleaseStatus,
+    ResolutionBasis,
+    ScoreDirection,
+    ScoreType,
+    ScoreValueKind,
     ShareAlike,
     SourceDataset,
     SourceDatasetPublication,
@@ -50,7 +94,15 @@ from graph.models import (
 )
 from graph.publications import get_or_create_publication
 from graph.releases import publish_release
-from graph.tests.factories import EntityIdentifierFactory
+from graph.summary import summarize
+from graph.terms import get_or_create_term
+from graph.tests.factories import (
+    EntityIdentifierFactory,
+    ImportRunFactory,
+    SourceFileFactory,
+    SourceRecordFactory,
+)
+from graph.visibility import Purpose, visible_release_ids
 from interactions.models import InteractionInteractionNetworks, InteractionNetwork
 from interactions.tests.factories import (
     InteractionCategoryFactory,
@@ -110,6 +162,68 @@ INTERACTOR_KEYS = {
     "protein_gene_name",
     "protein_ensembl_id",
 }
+
+# The legacy strings: symbol, HGNC id, UniProt accession, NCBI Gene id and
+# Ensembl gene id, as the legacy proteins below hold them.
+LEGACY_STRINGS = (
+    ("TP53", "HGNC:11998", "P04637", "7157", "ENSG00000141510"),
+    ("MDM2", "HGNC:6973", "Q00987", "4193", "ENSG00000135679"),
+)
+# The source records release v2's commit reads, by key, as the file states
+# them.
+RECORDS = {
+    "compat-regulation-1": {"regulator": "TP53", "target": "MDM2", "effect": "up"},
+    "compat-regulation-2": {"regulator": "7157", "target": "4193", "effect": "down"},
+    "compat-regulation-3": {"regulator": "TP53", "target": "MDM2", "effect": "?"},
+    "compat-regulation-4": {"regulator": "TP53", "target": "MDM2", "predicted": "1"},
+    "compat-regulation-5": {"regulator": "TP53", "target": "MDM2", "result": "?"},
+    "compat-regulation-6": {"regulator": "TP53", "target": "MDM2", "p": "0.2"},
+    "compat-binding-1": {"a": "Q00987", "b": "P04637", "type": "MI:0915"},
+    "compat-binding-2": {"a": "P04637", "b": "Q00987", "type": "MI:0407"},
+    "compat-binding-3": {"a": "P04637", "b": "Q00987", "assay": "AP-MS"},
+    "compat-binding-4": {"a": "P04637", "b": "Q00987"},
+    "compat-genetic": {"a": "TP53", "b": "MDM2", "score": "-0.31"},
+    "compat-encodes": {"HGNC:11998": "P04637", "HGNC:6973": "Q00987"},
+    "compat-isoforms": {"P04637-2": "P04637", "Q00987-2": "Q00987"},
+}
+# The terms the records name, with the labels they state.
+TERMS = {
+    "MI:0007": "anti tag coimmunoprecipitation",
+    "MI:0018": "two hybrid",
+    "MI:0396": "predetermined participant",
+    "MI:0402": "chromatin immunoprecipitation assay",
+    "MI:0407": "direct interaction",
+    "MI:0915": "physical association",
+    "ECO:0000353": "physical interaction evidence used in manual assertion",
+}
+# The compat source's score types and genetic interaction type: test-only,
+# never in the registry JSON (no genetic type is registered until N1).
+CONFIDENCE = "compat:confidence"
+P_VALUE = "compat:p_value"
+GENETIC_SCORE = "compat:genetic_score"
+GENETIC = "compat_genetic"
+DEFINED_IN = "docs/project/generalization/TEST_PLAN.md"
+# Strings only the typed rows hold.
+TYPED_ONLY = (
+    "HGNC:11998",
+    "HGNC:6973",
+    "P04637-2",
+    "Q00987-2",
+    "transcriptional_regulation",
+    "physical_interaction",
+    "protein_interaction_unspecified",
+    "isoform_of",
+    GENETIC,
+    "compat-regulation",
+    "compat-binding",
+    "compat-methods",
+    CONFIDENCE,
+    P_VALUE,
+    GENETIC_SCORE,
+    "MI:0402",
+    "ECO:0000353",
+    "HCT116",
+)
 
 
 def protein(gene_name, uniprot_id, ensembl_id, entrez_id, organism):
@@ -219,19 +333,39 @@ def legacy_row_counts() -> dict[str, int]:
     return counts
 
 
-def release_with_terms(dataset, version, paper, approver, supersedes=None):
-    """A staged release citing the paper, with open terms recorded and its
-    dataset's due diligence confirmed after them, by the approver."""
+def release_with_terms(dataset, version, paper, approver, supersedes=None, records=()):
+    """A release citing the paper, with open terms recorded and its dataset's
+    due diligence confirmed after them, by the approver. Staged; or, given
+    record keys (RECORDS), a draft being committed: a file, a commit run the
+    approver started, and a mapped source record of each key, added before
+    anyone decides on the release, as its files must be."""
     release = DatasetRelease.objects.create(
         dataset=dataset,
         version=version,
-        status=ReleaseStatus.STAGED,
+        status=ReleaseStatus.DRAFT if records else ReleaseStatus.STAGED,
         supersedes=supersedes,
         source_url="https://example.org/compat",
     )
     ReleasePublication.objects.create(
         release=release, publication=paper, role=PublicationRole.DESCRIBES
     )
+    if records:
+        file = SourceFileFactory(release=release, original_name="compat.tsv")
+        run = ImportRunFactory(
+            release=release,
+            file=file,
+            adapter="compat",
+            mode=ImportMode.COMMIT,
+            triggered_by=approver,
+        )
+        for key in records:
+            SourceRecordFactory(
+                release=release,
+                file=file,
+                import_run=run,
+                record_key=key,
+                raw=RECORDS[key],
+            )
     record_licence(
         release,
         recorded_by=approver,
@@ -261,9 +395,11 @@ def decide(release, scope, approver):
 
 def add_provenance_rows(approver):
     """A data source and dataset named like the legacy dataset, a publication
-    with its PubMed id, a published v1 and its staged correction v2, with
-    licence snapshots, due diligence and decisions recorded by the approver.
-    Returns v2, which introduces the typed entities."""
+    with its PubMed id, a published v1 and its correction v2, a draft being
+    committed, with licence snapshots, due diligence and decisions recorded
+    by the approver. Returns v2, which introduces the typed entities and
+    states their relationships (add_evidence then publishes it, which
+    supersedes v1, and stages its own correction, v3)."""
     source = DataSource.objects.create(
         slug="compat", name="Compat", kind=DataSourceKind.LAB
     )
@@ -298,7 +434,9 @@ def add_provenance_rows(approver):
         reason="Compat: a revoked decision.",
         revoked_by=approver,
     )
-    v2 = release_with_terms(dataset, "v2", paper, approver, supersedes=v1)
+    v2 = release_with_terms(
+        dataset, "v2", paper, approver, supersedes=v1, records=list(RECORDS)
+    )
     decide(v2, ApprovalScope.INTERNAL, approver)
     return v2
 
@@ -306,19 +444,20 @@ def add_provenance_rows(approver):
 def add_typed_rows(settings, approver=None):
     """Typed entities and identifiers that use the legacy rows' strings and,
     given the account that records them, the provenance and licensing rows
-    of the release that introduces them."""
+    of the release that introduces them, and the relationships and evidence
+    that release states, published for visitors to view."""
     settings.TYPED_GRAPH_ENABLED = True
     call_command("graph_sync_registry", stdout=io.StringIO())
     release = add_provenance_rows(approver) if approver is not None else None
     ncbigene = IdentifierNamespace.objects.get(slug="ncbigene")
     ensembl = IdentifierNamespace.objects.get(slug="ensembl_gene")
-    for symbol, hgnc, uniprot, entrez, ensembl_id in (
-        ("TP53", "HGNC:11998", "P04637", "7157", "ENSG00000141510"),
-        ("MDM2", "HGNC:6973", "Q00987", "4193", "ENSG00000135679"),
-    ):
+    entities = {}
+    for symbol, hgnc, uniprot, entrez, ensembl_id in LEGACY_STRINGS:
         gene = create_entity("gene", symbol, 9606, "hgnc", hgnc, release=release)
-        create_entity("protein", symbol, 9606, "uniprotkb", uniprot, release=release)
-        create_entity(
+        entry = create_entity(
+            "protein", symbol, 9606, "uniprotkb", uniprot, release=release
+        )
+        isoform = create_entity(
             "protein_isoform",
             symbol,
             9606,
@@ -326,12 +465,287 @@ def add_typed_rows(settings, approver=None):
             f"{uniprot}-2",
             release=release,
         )
+        entities[symbol] = (gene, entry, isoform)
         EntityIdentifierFactory(
             entity=gene, namespace=ncbigene, value=entrez, role=IdentifierRole.XREF
         )
         EntityIdentifierFactory(
             entity=gene, namespace=ensembl, value=ensembl_id, role=IdentifierRole.XREF
         )
+    if release is not None:
+        add_evidence(release, entities, approver)
+
+
+def stated(entity, value) -> Endpoint:
+    """An endpoint as the record writes it: by the entity's own identifier."""
+    return Endpoint(entity, value, ResolutionBasis.PRIMARY)
+
+
+def evidence_claims(entities, paper, methods_paper) -> dict[str, list[Claim]]:
+    """{record key: its claims}: the relationships each source record states,
+    as an adapter would map them, with evidence of every kind."""
+    tp53_gene, tp53, tp53_isoform = entities["TP53"]
+    mdm2_gene, mdm2, mdm2_isoform = entities["MDM2"]
+    reported = (PublicationRef(paper, "reported_in", {"pmid": "12345678"}),)
+    experiment = {
+        "outcome": Outcome.SUPPORTED,
+        "evidence_basis": EvidenceBasis.EXPERIMENTAL,
+        "assertion_method": AssertionMethod.MANUAL_ASSERTION,
+    }
+    reference = {
+        "outcome": Outcome.SUPPORTED,
+        "evidence_basis": EvidenceBasis.UNKNOWN,
+        "assertion_method": AssertionMethod.MANUAL_ASSERTION,
+    }
+    two_hybrid = MethodRef("MI:0018", "detection")
+
+    def regulation(**fields):
+        """TP53 regulating MDM2's transcription in a curated experiment,
+        unless told otherwise."""
+        claim = {
+            **experiment,
+            "subject": stated(tp53_gene, "HGNC:11998"),
+            "object": stated(mdm2_gene, "HGNC:6973"),
+            "relationship_as_stated": "TP53 regulates MDM2 transcription",
+            "stated_directed": True,
+            "methods": (MethodRef("MI:0402", "detection"),),
+            "publications": reported,
+            **fields,
+        }
+        return Claim(relationship_type="transcriptional_regulation", **claim)
+
+    def binding(relationship_type="physical_interaction", **fields):
+        """TP53 and MDM2 binding in a two-hybrid test, unless told
+        otherwise."""
+        claim = {
+            **experiment,
+            "subject": stated(tp53, "P04637"),
+            "object": stated(mdm2, "Q00987"),
+            "stated_directed": False,
+            "methods": (two_hybrid,),
+            "publications": reported,
+            **fields,
+        }
+        return Claim(relationship_type=relationship_type, **claim)
+
+    return {
+        # Contradictory findings are kept side by side.
+        "compat-regulation-1": [
+            regulation(
+                effect=Effect.ACTIVATING,
+                effect_as_stated="up",
+                evidence_group="ChIP series 1",
+                qualifiers={"assay": "ChIP-seq"},
+                publications=(*reported, PublicationRef(methods_paper, "cited")),
+                scores=(ScoreValue(CONFIDENCE, "0.875"),),
+                contexts=(ContextValue("cell_line", "HCT116", label="HCT 116"),),
+            )
+        ],
+        # Stated by NCBI Gene ids, which the genes hold as cross-references.
+        "compat-regulation-2": [
+            regulation(
+                subject=Endpoint(tp53_gene, "7157", ResolutionBasis.XREF_UNIQUE),
+                object=Endpoint(mdm2_gene, "4193", ResolutionBasis.XREF_UNIQUE),
+                effect=Effect.INHIBITING,
+                effect_as_stated="down",
+                scores=(ScoreValue(CONFIDENCE, "0.42"),),
+            )
+        ],
+        "compat-regulation-3": [
+            regulation(effect=Effect.UNKNOWN, effect_as_stated="?")
+        ],
+        # A prediction from no paper, stating no effect.
+        "compat-regulation-4": [
+            regulation(
+                evidence_basis=EvidenceBasis.COMPUTATIONAL_PREDICTION,
+                assertion_method=AssertionMethod.AUTOMATIC_ASSERTION,
+                methods=(),
+                publications=(),
+            )
+        ],
+        "compat-regulation-5": [regulation(outcome=Outcome.INCONCLUSIVE)],
+        "compat-regulation-6": [
+            regulation(
+                outcome=Outcome.NOT_SIGNIFICANT,
+                scores=(ScoreValue(P_VALUE, "0.2"),),
+                qualifiers={
+                    "threshold": [
+                        {"score_type": P_VALUE, "operator": "<", "value": "0.05"}
+                    ]
+                },
+            )
+        ],
+        # Stated MDM2 first; the relationship keeps the lower entity id first.
+        "compat-binding-1": [
+            binding(
+                subject=stated(mdm2, "Q00987"),
+                object=stated(tp53, "P04637"),
+                interaction_type="MI:0915",
+                interaction_level=InteractionLevel.PHYSICAL_ASSOCIATION,
+                eco_term="ECO:0000353",
+                methods=(
+                    two_hybrid,
+                    MethodRef("MI:0396", "participant_identification"),
+                    MethodRef("ECO:0000353", "evidence_code"),
+                ),
+                publications=(
+                    *reported,
+                    PublicationRef(methods_paper, "method_reference"),
+                ),
+                scores=(ScoreValue(CONFIDENCE, "0.91"),),
+                contexts=(
+                    ContextValue("host_taxon", "9606", taxon=9606),
+                    ContextValue("assay_system", "in vivo"),
+                ),
+            )
+        ],
+        "compat-binding-2": [
+            binding(
+                outcome=Outcome.TESTED_ABSENT,
+                interaction_type="MI:0407",
+                interaction_level=InteractionLevel.DIRECT_INTERACTION,
+            )
+        ],
+        # Co-purification with no stated interaction type: association,
+        # assigned by openPIP (open question B14), in an unregistered host.
+        "compat-binding-3": [
+            binding(
+                interaction_level=InteractionLevel.ASSOCIATION,
+                methods=(MethodRef("MI:0007", "detection"),),
+                contexts=(ContextValue("host_taxon", "10090", taxon=10090),),
+            )
+        ],
+        "compat-binding-4": [
+            binding(
+                relationship_type="protein_interaction_unspecified",
+                interaction_level=InteractionLevel.NOT_STATED,
+            )
+        ],
+        "compat-genetic": [
+            Claim(
+                relationship_type=GENETIC,
+                subject=stated(tp53_gene, "HGNC:11998"),
+                object=stated(mdm2_gene, "HGNC:6973"),
+                outcome=Outcome.SUPPORTED,
+                genetic_sign=GeneticSign.NEGATIVE,
+                evidence_basis=EvidenceBasis.EXPERIMENTAL,
+                assertion_method=AssertionMethod.AUTOMATIC_ASSERTION,
+                scores=(ScoreValue(GENETIC_SCORE, "-0.31"),),
+            )
+        ],
+        "compat-encodes": [
+            Claim(
+                relationship_type="encodes",
+                subject=stated(gene, gene_id),
+                object=stated(entry, accession),
+                key_part=symbol,
+                **reference,
+            )
+            for symbol, gene, gene_id, entry, accession in (
+                ("TP53", tp53_gene, "HGNC:11998", tp53, "P04637"),
+                ("MDM2", mdm2_gene, "HGNC:6973", mdm2, "Q00987"),
+            )
+        ],
+        "compat-isoforms": [
+            Claim(
+                relationship_type="isoform_of",
+                subject=stated(isoform, f"{accession}-2"),
+                object=stated(entry, accession),
+                key_part=symbol,
+                **reference,
+            )
+            for symbol, isoform, entry, accession in (
+                ("TP53", tp53_isoform, tp53, "P04637"),
+                ("MDM2", mdm2_isoform, mdm2, "Q00987"),
+            )
+        ],
+    }
+
+
+def add_source_types():
+    """The compat source's score types, and a genetic interaction type for
+    its sign, as test-only registry rows."""
+    ScoreType.objects.bulk_create(
+        [
+            ScoreType(
+                slug=CONFIDENCE,
+                label="Compat confidence",
+                definition="Test only: the source's confidence in a claim.",
+                value_kind=ScoreValueKind.PROBABILITY,
+                direction=ScoreDirection.HIGHER_IS_STRONGER,
+                range_min=0,
+                range_max=1,
+                defining_document=DEFINED_IN,
+            ),
+            ScoreType(
+                slug=P_VALUE,
+                label="Compat p-value",
+                definition="Test only: the p-value of the source's test of a claim.",
+                value_kind=ScoreValueKind.P_VALUE,
+                direction=ScoreDirection.LOWER_IS_STRONGER,
+                range_min=0,
+                range_max=1,
+                defining_document=DEFINED_IN,
+            ),
+            ScoreType(
+                slug=GENETIC_SCORE,
+                label="Compat genetic interaction score",
+                definition="Test only: a double mutant's fitness against the null "
+                "model.",
+                value_kind=ScoreValueKind.CONTINUOUS,
+                direction=ScoreDirection.SIGNED,
+                null_model="The product of the two single mutants' fitness.",
+                defining_document=DEFINED_IN,
+            ),
+        ]
+    )
+    genetic = RelationshipType.objects.create(
+        slug=GENETIC,
+        label="Compat genetic interaction",
+        definition="Test only: two genes interact genetically, with the sign "
+        "the score's null model defines.",
+        family=RelationshipFamily.GENETIC,
+        orientation=Orientation.SYMMETRIC,
+        polarity=Polarity.GENETIC_SIGN,
+        subject_role_label="gene",
+        object_role_label="gene",
+        self_pairs_allowed=False,
+    )
+    genetic.allowed_subject_types.set(["gene"])
+    genetic.allowed_object_types.set(["gene"])
+
+
+def add_evidence(release, entities, approver):
+    """The relationships release v2 states, recorded by its commit run from
+    its source records, with the terms they name. The run then completes, and
+    the release is staged, approved for public view and published, which
+    supersedes v1; its own correction, v3, is staged with an internal
+    approval."""
+    run = ImportRun.objects.get(release=release, mode=ImportMode.COMMIT)
+    for curie, label in TERMS.items():
+        get_or_create_term(curie, label, import_run=run)
+    add_source_types()
+    paper = ReleasePublication.objects.get(release=release).publication
+    # A paper with no PMID or DOI, known by the dataset's own key.
+    methods_paper = get_or_create_publication(
+        local_dataset=release.dataset_id,
+        local_key="compat-methods",
+        title="Compat methods",
+    ).publication
+    records = {record.record_key: record for record in release.records.all()}
+    for key, claims in evidence_claims(entities, paper, methods_paper).items():
+        record_claims(records[key], claims, import_run=run)
+    run.state = ImportState.COMPLETED
+    run.finished_at = timezone.now()
+    run.save(update_fields=["state", "finished_at"])
+    release.status = ReleaseStatus.STAGED
+    release.save(update_fields=["status", "updated_at"])
+    # v1 is public, so its correction is published only once it is too.
+    decide(release, ApprovalScope.PUBLIC_VIEW, approver)
+    publish_release(release, published_by=approver)
+    # And v2's own correction, staged, which visitors never see.
+    v3 = release_with_terms(release.dataset, "v3", paper, approver, supersedes=release)
+    decide(v3, ApprovalScope.INTERNAL, approver)
 
 
 def test_legacy_responses_are_byte_identical_with_typed_rows_present(
@@ -349,7 +763,53 @@ def test_legacy_responses_are_byte_identical_with_typed_rows_present(
     # Decided by the legacy admin account, which the root conftest creates.
     add_typed_rows(settings, approver=admin_user)
     assert Entity.objects.filter(created_by_release__version="v2").count() == 6
-    assert UsageApproval.objects.filter(decided_by=admin_user).count() == 4
+    assert UsageApproval.objects.filter(decided_by=admin_user).count() == 6
+    assert list(
+        DatasetRelease.objects.order_by("version").values_list("version", "status")
+    ) == [
+        ("v1", ReleaseStatus.SUPERSEDED),
+        ("v2", ReleaseStatus.PUBLISHED),
+        ("v3", ReleaseStatus.STAGED),
+    ]
+    # The typed evidence is published, and visitors to the typed graph may
+    # view every relationship, each summarized by its type's rules.
+    v2 = DatasetRelease.objects.get(version="v2")
+    assert (v2.status, Relationship.objects.count()) == (ReleaseStatus.PUBLISHED, 8)
+    assert EvidenceAssertion.objects.filter(release=v2).count() == 15
+    releases = visible_release_ids(RequestFactory().get("/"), Purpose.VIEW)
+    assert releases.ids == {v2.pk}
+    summaries = summarize(
+        Relationship.objects.values_list("pk", flat=True), releases=releases
+    )
+    assert sorted(edge.relationship_type for edge in summaries.values()) == sorted(
+        [
+            "transcriptional_regulation",
+            "physical_interaction",
+            "protein_interaction_unspecified",
+            GENETIC,
+            *["encodes", "isoform_of"] * 2,
+        ]
+    )
+    edges = {edge.relationship_type: edge for edge in summaries.values()}
+    regulation = edges["transcriptional_regulation"]
+    assert regulation.effect == "mixed"
+    assert regulation.effect_counts == {
+        "activating": 1,
+        "inhibiting": 1,
+        "unknown": 1,
+        "not_stated": 1,
+    }
+    assert [regulation.outcome_counts[name] for name in Outcome.values] == [4, 0, 1, 1]
+    # Three records of one experiment, and a prediction from no paper.
+    assert (regulation.assertion_count, regulation.evidence_count) == (4, 2)
+    binding = edges["physical_interaction"]
+    assert (binding.level, binding.level_assigned) == (
+        InteractionLevel.PHYSICAL_ASSOCIATION,
+        False,
+    )
+    assert binding.outcome_counts[Outcome.TESTED_ABSENT] == 1
+    assert edges["protein_interaction_unspecified"].level == InteractionLevel.NOT_STATED
+    assert edges[GENETIC].genetic_sign == GeneticSign.NEGATIVE
 
     assert legacy_row_counts() == counts
     after = legacy_responses(regular_user, legacy)
@@ -357,6 +817,13 @@ def test_legacy_responses_are_byte_identical_with_typed_rows_present(
         assert after[name] == before[name], f"{name} changed"
     assert home_network_keys() == home_keys
     assert legacy_row_counts() == counts
+    # PSICQUIC serves the two legacy interactions, and no typed relationship.
+    tab28 = after["psicquic tab28"][1].decode()
+    header, *rows = tab28.split("\n")
+    assert header.startswith("#") and len(rows) == 2
+    assert after["psicquic count"][1] == b"2"
+    for typed in TYPED_ONLY:
+        assert typed not in tab28, typed
 
 
 def actors(model, name) -> set:
@@ -371,9 +838,11 @@ def test_deleting_a_legacy_user_in_the_django_admin_keeps_the_typed_records(
     add_typed_rows(settings, approver=admin_user)
     settings.TYPED_GRAPH_ENABLED = switch
     approvals = UsageApproval.objects.count()
+    assertions = EvidenceAssertion.objects.count()
     username = admin_user.username
     assert actors(UsageApproval, "decided_by") == {(admin_user.pk, username)}
     assert (admin_user.pk, username) in actors(UsageApproval, "revoked_by")
+    assert actors(ImportRun, "triggered_by") == {(admin_user.pk, username)}
 
     deleter = User.objects.create(username="deleter", is_staff=True, is_superuser=True)
     client.force_login(deleter)
@@ -385,10 +854,12 @@ def test_deleting_a_legacy_user_in_the_django_admin_keeps_the_typed_records(
 
     assert not User.objects.filter(pk=admin_user.pk).exists()
     assert UsageApproval.objects.count() == approvals
+    assert EvidenceAssertion.objects.count() == assertions
     assert actors(UsageApproval, "decided_by") == {(None, username)}
     assert actors(UsageApproval, "revoked_by") == {(None, ""), (None, username)}
     assert actors(ReleaseLicence, "recorded_by") == {(None, username)}
     assert actors(DueDiligenceChange, "changed_by") == {(None, username)}
+    assert actors(ImportRun, "triggered_by") == {(None, username)}
     assert (None, username) in actors(DatasetRelease, "published_by")
 
 

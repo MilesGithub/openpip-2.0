@@ -1,5 +1,6 @@
 """The registry JSON, its rules, and graph_sync_registry."""
 
+import dataclasses
 import hashlib
 import io
 import json
@@ -14,23 +15,45 @@ from django.db.models import ProtectedError
 from django.test.utils import CaptureQueriesContext
 
 import graph.registry
+from graph.claims import Claim, ClaimError, ContextValue, Endpoint, record_claims
 from graph.entities import create_entity, identity_namespace
 from graph.identity import normalize
-from graph.models import EntityType, IdentifierNamespace, RegistryState, Taxon
+from graph.models import (
+    Entity,
+    EntityType,
+    EvidenceAssertion,
+    EvidenceContext,
+    IdentifierNamespace,
+    ImmutableRecordError,
+    RegistryState,
+    Relationship,
+    RelationshipType,
+    ScoreType,
+    Taxon,
+)
 from graph.registry import (
     REGISTRY_DIR,
     REGISTRY_VERSION,
     RegistryError,
     load_registry,
     registry_state,
+    validate,
 )
-from graph.tests.factories import EntityIdentifierFactory, IdentifierNamespaceFactory
+from graph.tests.factories import (
+    EntityIdentifierFactory,
+    EvidenceScoreFactory,
+    IdentifierNamespaceFactory,
+    RelationshipFactory,
+    entity_of,
+    evidence_release,
+)
+from graph.tests.test_provenance import _race
 
 # The JSON's content, with the version it was released as. Editing the JSON
 # changes the digest: bump REGISTRY_VERSION, so that the import commands see
 # databases loaded from the old JSON as out of date, and update both here.
-PINNED_VERSION = "1.0"
-PINNED_DIGEST = "c08bc730d60877e2779554c81c8c0828e2ae0a78623b3f4550ce58788e402125"
+PINNED_VERSION = "1.1"
+PINNED_DIGEST = "266561b7f87ea63c63eb3fa273c3af47fe6ad90ee6c89ab8684ec28c00b77300"
 WRITES = re.compile(r"^\s*(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
 
 
@@ -91,6 +114,17 @@ def test_the_json_is_valid():
         "ensembl_gene",
         "synthetic_gene",
         "synthetic_protein",
+    }
+    assert {t["slug"] for t in loaded.relationship_types} == {
+        "transcriptional_regulation",
+        "physical_interaction",
+        "protein_interaction_unspecified",
+        "encodes",
+        "isoform_of",
+    }
+    assert {t["slug"] for t in loaded.score_types} == {
+        "synthetic:confidence",
+        "synthetic:rank",
     }
 
 
@@ -262,6 +296,19 @@ def test_the_first_sync_creates_the_rows_and_a_second_changes_nothing(switch_on)
             slug="uniprotkb"
         ).allowed_entity_types.values_list("slug", flat=True)
     ) == {"protein", "protein_isoform"}
+    assert RelationshipType.objects.count() == 5
+    regulation = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert set(regulation.allowed_subject_types.values_list("slug", flat=True)) == {
+        "gene",
+        "protein",
+    }
+    assert list(regulation.allowed_object_types.values_list("slug", flat=True)) == [
+        "gene"
+    ]
+    assert set(ScoreType.objects.values_list("slug", flat=True)) == {
+        "synthetic:confidence",
+        "synthetic:rank",
+    }
     assert registry_state().database == REGISTRY_VERSION
 
     with CaptureQueriesContext(connection) as queries:
@@ -405,3 +452,521 @@ def test_registry_rows_that_data_use_cannot_be_deleted(registry):
     ):
         with pytest.raises(ProtectedError):
             row.delete()
+
+
+# ── Relationship types and score types ──────────────────────────────────────
+
+
+def test_the_relationship_types_are_the_five_the_plan_names():
+    types = {t["slug"]: t for t in load_registry().relationship_types}
+    shape = {
+        slug: (
+            t["family"],
+            t["orientation"],
+            t["polarity"],
+            sorted(t["allowed_subject_types"]),
+            sorted(t["allowed_object_types"]),
+            t["self_pairs_allowed"],
+            t["psi_mi_anchors"],
+            t["is_reference"],
+        )
+        for slug, t in types.items()
+    }
+    proteins = ["protein", "protein_isoform"]
+    assert shape == {
+        "transcriptional_regulation": (
+            "regulation",
+            "directed",
+            "effect",
+            ["gene", "protein"],
+            ["gene"],
+            True,
+            ["MI:2247"],
+            False,
+        ),
+        "physical_interaction": (
+            "physical",
+            "symmetric",
+            "none",
+            proteins,
+            proteins,
+            True,
+            ["MI:0914"],
+            False,
+        ),
+        "protein_interaction_unspecified": (
+            "physical",
+            "symmetric",
+            "none",
+            proteins,
+            proteins,
+            True,
+            [],
+            False,
+        ),
+        "encodes": (
+            "reference",
+            "role_ordered",
+            "none",
+            ["gene"],
+            ["protein"],
+            False,
+            [],
+            True,
+        ),
+        "isoform_of": (
+            "reference",
+            "role_ordered",
+            "none",
+            ["protein_isoform"],
+            ["protein"],
+            False,
+            [],
+            True,
+        ),
+    }
+    roles = {
+        slug: (t["subject_role_label"], t["object_role_label"])
+        for slug, t in types.items()
+    }
+    assert roles["transcriptional_regulation"] == ("regulator", "target")
+    assert roles["encodes"] == ("gene", "protein entry")
+    assert roles["isoform_of"] == ("isoform", "protein entry")
+    assert all(t["identity_qualifiers"] == [] for t in types.values())
+    # Physical types say that association-only evidence is never binding.
+    assert "never presented as binding" in types["physical_interaction"]["definition"]
+
+
+def _with_type(slug, /, **changes):
+    loaded = load_registry()
+    entries = [
+        {**entry, **changes} if entry["slug"] == slug else entry
+        for entry in loaded.relationship_types
+    ]
+    return validate(dataclasses.replace(loaded, relationship_types=tuple(entries)))
+
+
+@pytest.mark.parametrize(
+    "slug,changes,problem",
+    [
+        ("encodes", {"family": "kinship"}, "family 'kinship' is not one of"),
+        ("encodes", {"orientation": "both"}, "orientation 'both' is not one of"),
+        ("encodes", {"polarity": "sign"}, "polarity 'sign' is not one of"),
+        ("encodes", {"label": ""}, "needs a label and a definition"),
+        ("encodes", {"definition": " "}, "needs a label and a definition"),
+        ("encodes", {"subject_role_label": ""}, "needs a subject_role_label"),
+        (
+            "encodes",
+            {"allowed_subject_types": []},
+            "allowed_subject_types is a non-empty list",
+        ),
+        (
+            "encodes",
+            {"allowed_object_types": ["chemical"]},
+            "entity type 'chemical' is not listed",
+        ),
+        (
+            "physical_interaction",
+            {"allowed_object_types": ["protein"]},
+            "is symmetric, so its subject and object types are the same",
+        ),
+        (
+            "physical_interaction",
+            {"polarity": "effect"},
+            "effect polarity belongs to directed types only",
+        ),
+        (
+            "encodes",
+            {"orientation": "directed"},
+            "a reference type is role_ordered, polarity none",
+        ),
+        (
+            "isoform_of",
+            {"is_reference": False},
+            "is_reference is true for the reference family, and only for it",
+        ),
+        (
+            "physical_interaction",
+            {"is_reference": True},
+            "is_reference is true for the reference family, and only for it",
+        ),
+        ("encodes", {"self_pairs_allowed": "no"}, "self_pairs_allowed is true or"),
+        (
+            "transcriptional_regulation",
+            {"identity_qualifiers": ["site"]},
+            "identity_qualifiers is [] until",
+        ),
+        (
+            "physical_interaction",
+            {"psi_mi_anchors": ["MI:914"]},
+            "psi_mi_anchors is a list of PSI-MI CURIEs",
+        ),
+        (
+            "physical_interaction",
+            {"psi_mi_anchors": "MI:0914"},
+            "psi_mi_anchors is a list of PSI-MI CURIEs",
+        ),
+        ("encodes", {"slug": "Encodes"}, "a slug is lower case"),
+    ],
+)
+def test_a_relationship_type_that_breaks_a_rule_is_rejected(slug, changes, problem):
+    problems = _with_type(slug, **changes)
+    assert any(problem in line for line in problems), problems
+
+
+def test_a_relationship_type_entry_has_exactly_its_keys():
+    problems = _with_type("encodes", extra="x")
+    assert any("unknown keys ['extra']" in line for line in problems), problems
+
+
+def _regulation_in_use():
+    """A stored relationship of transcriptional_regulation."""
+    return RelationshipFactory(
+        relationship_type=RelationshipType.objects.get(
+            slug="transcriptional_regulation"
+        )
+    )
+
+
+def test_a_relationship_types_descriptive_fields_change_while_it_is_used(
+    registry, edited_json
+):
+    _regulation_in_use()
+    edited_json(
+        "relationship_types.json",
+        with_entry(
+            "slug",
+            "transcriptional_regulation",
+            label="Regulation of transcription",
+            subject_role_label="transcription factor",
+            psi_mi_anchors=[],
+        ),
+    )
+    out = sync()
+    assert "update relationship type transcriptional_regulation: label" in out
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert (stored.label, stored.subject_role_label, stored.psi_mi_anchors) == (
+        "Regulation of transcription",
+        "transcription factor",
+        [],
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"orientation": "role_ordered", "polarity": "none"},
+        {"polarity": "none"},
+        {"family": "rna"},
+        {"self_pairs_allowed": False},
+        {"allowed_subject_types": ["gene"]},
+        {"allowed_object_types": ["gene", "protein"]},
+    ],
+    ids=lambda changes: "+".join(changes),
+)
+def test_a_relationship_types_rules_are_fixed_while_a_relationship_uses_it(
+    registry, edited_json, changes
+):
+    used = _regulation_in_use()
+    edited_json(
+        "relationship_types.json",
+        with_entry("slug", "transcriptional_regulation", label="Renamed", **changes),
+    )
+    out = io.StringIO()
+    with pytest.raises(CommandError) as refused:
+        call_command("graph_sync_registry", stdout=out)
+    message = str(refused.value)
+    for field in changes:
+        assert f"refused: relationship type transcriptional_regulation: {field}" in (
+            message
+        )
+    assert f"1 relationship uses it (id {used.pk})" in message
+    # All or nothing: the label is not changed either.
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert stored.label == "Transcriptional regulation"
+    assert set(stored.allowed_subject_types.values_list("slug", flat=True)) == {
+        "gene",
+        "protein",
+    }
+
+
+def test_a_relationship_types_rules_change_while_nothing_uses_it(registry, edited_json):
+    edited_json(
+        "relationship_types.json",
+        with_entry(
+            "slug",
+            "transcriptional_regulation",
+            allowed_subject_types=["gene"],
+            self_pairs_allowed=False,
+        ),
+    )
+    sync()
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert list(stored.allowed_subject_types.values_list("slug", flat=True)) == ["gene"]
+    assert stored.self_pairs_allowed is False
+
+
+def test_a_score_types_range_is_fixed_while_a_score_uses_it(registry, edited_json):
+    score = EvidenceScoreFactory(
+        score_type=ScoreType.objects.get(slug="synthetic:confidence"),
+        assertion__release__is_synthetic=True,
+        assertion__relationship__subject=entity_of("gene", 32630),
+        assertion__relationship__object=entity_of("gene", 32630),
+    )
+    edited_json(
+        "score_types.json",
+        with_entry("slug", "synthetic:confidence", range_max=0.5, label="Renamed"),
+    )
+    with pytest.raises(CommandError) as refused:
+        sync()
+    assert "refused: score type synthetic:confidence: range_max" in str(refused.value)
+    assert f"1 evidence score uses it (id {score.pk})" in str(refused.value)
+    edited_json(
+        "score_types.json",
+        with_entry("slug", "synthetic:confidence", range_max=1, label="Renamed"),
+    )
+    sync()
+    assert ScoreType.objects.get(slug="synthetic:confidence").label == "Renamed"
+
+
+def test_check_covers_relationship_and_score_types(registry, edited_json):
+    sync("--check")
+    RelationshipType.objects.create(
+        slug="retired_type",
+        label="x",
+        definition="x",
+        family="association",
+        orientation="symmetric",
+        polarity="none",
+        subject_role_label="a",
+        object_role_label="b",
+        self_pairs_allowed=False,
+    )
+    out = io.StringIO()
+    with pytest.raises(CommandError, match="differ from the JSON"):
+        call_command("graph_sync_registry", "--check", stdout=out)
+    assert "missing from the JSON: relationship type retired_type" in out.getvalue()
+    RelationshipType.objects.filter(slug="retired_type").delete()
+    edited_json(
+        "score_types.json", with_entry("slug", "synthetic:rank", unit="positions")
+    )
+    out = io.StringIO()
+    with pytest.raises(CommandError, match="differ from the JSON"):
+        call_command("graph_sync_registry", "--check", stdout=out)
+    assert "update score type synthetic:rank: unit '' -> 'positions'" in out.getvalue()
+
+
+def test_relationship_and_score_types_that_data_use_cannot_be_deleted(registry):
+    used = _regulation_in_use()
+    with pytest.raises(ProtectedError):
+        RelationshipType.objects.get(slug="transcriptional_regulation").delete()
+    score = EvidenceScoreFactory()
+    with pytest.raises(ProtectedError):
+        score.score_type.delete()
+    assert Relationship.objects.filter(pk=used.pk).exists()
+
+
+@pytest.mark.postgres
+def test_the_sync_locks_a_row_before_counting_its_users(registry, edited_json):
+    edited_json(
+        "relationship_types.json",
+        with_entry("slug", "isoform_of", self_pairs_allowed=True),
+    )
+    with CaptureQueriesContext(connection) as queries:
+        sync()
+    sql = [query["sql"] for query in queries.captured_queries]
+    # FOR NO KEY UPDATE: the lock the sync's own updates take.
+    locked = [
+        n
+        for n, text in enumerate(sql)
+        if "FOR NO KEY UPDATE" in text and 'FROM "graph_relationshiptype"' in text
+    ]
+    counted = [n for n, text in enumerate(sql) if 'FROM "graph_relationship"' in text]
+    updated = [
+        n for n, text in enumerate(sql) if 'UPDATE "graph_relationshiptype"' in text
+    ]
+    assert locked and counted and updated
+    assert locked[0] < counted[-1] < updated[0]
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+def test_a_sync_that_locks_second_sees_the_relationship_written_first(
+    registry, edited_json
+):
+    """The relationship's guard holds its type in shared mode until it
+    commits; the sync waits for it, then counts it and refuses."""
+    regulation = RelationshipType.objects.get(slug="transcriptional_regulation")
+    regulator, target = entity_of("gene"), entity_of("gene")
+    edited_json(
+        "relationship_types.json",
+        with_entry("slug", "transcriptional_regulation", self_pairs_allowed=False),
+    )
+    outcome = {}
+
+    def write_relationship():
+        outcome["relationship"] = RelationshipFactory(
+            relationship_type=regulation, subject=regulator, object=target
+        )
+
+    def run_sync():
+        sync()
+
+    errors = _race(write_relationship, run_sync)
+    assert len(errors) == 1 and isinstance(errors[0], CommandError), errors
+    assert "self_pairs_allowed True -> False" in str(errors[0])
+    assert "1 relationship uses it" in str(errors[0])
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert stored.self_pairs_allowed is True
+    assert Relationship.objects.filter(pk=outcome["relationship"].pk).exists()
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+def test_a_relationship_that_locks_second_sees_the_sync_written_first(
+    registry, edited_json
+):
+    """The sync holds the type it changes until it commits; the
+    relationship's guard waits for it, then reads the new rule."""
+    regulation = RelationshipType.objects.get(slug="transcriptional_regulation")
+    regulator, target = entity_of("protein"), entity_of("gene")
+    edited_json(
+        "relationship_types.json",
+        with_entry(
+            "slug", "transcriptional_regulation", allowed_subject_types=["gene"]
+        ),
+    )
+    refused = {}
+
+    def run_sync():
+        sync()
+
+    def write_relationship():
+        try:
+            RelationshipFactory(
+                relationship_type=regulation, subject=regulator, object=target
+            )
+        except ImmutableRecordError as exc:
+            refused["message"] = str(exc)
+
+    assert _race(run_sync, write_relationship) == []
+    assert "subject is a gene; entity" in refused["message"]
+    assert not Relationship.objects.exists()
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert list(stored.allowed_subject_types.values_list("slug", flat=True)) == ["gene"]
+
+
+def _regulation_claim(regulator, target):
+    return Claim(
+        relationship_type="transcriptional_regulation",
+        subject=Endpoint(regulator, "SYN-REG", "primary"),
+        object=Endpoint(target, "SYN-TARGET", "primary"),
+        outcome="supported",
+        evidence_basis="experimental",
+        assertion_method="manual_assertion",
+        effect="activating",
+    )
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+def test_a_sync_that_locks_second_sees_the_claim_recorded_first(registry, edited_json):
+    """record_claims holds the type in shared mode until it commits; the
+    sync waits for it, then counts the relationship and refuses."""
+    bundle = evidence_release(records=1)
+    claim = _regulation_claim(entity_of("gene"), entity_of("gene"))
+    edited_json(
+        "relationship_types.json",
+        with_entry("slug", "transcriptional_regulation", self_pairs_allowed=False),
+    )
+    recorded = {}
+
+    def record():
+        recorded["result"] = record_claims(
+            bundle.records[0], [claim], import_run=bundle.run
+        )
+
+    errors = _race(record, sync)
+    assert len(errors) == 1 and isinstance(errors[0], CommandError), errors
+    assert "self_pairs_allowed True -> False" in str(errors[0])
+    assert "1 relationship uses it" in str(errors[0])
+    stored = RelationshipType.objects.get(slug="transcriptional_regulation")
+    assert stored.self_pairs_allowed is True
+    assert EvidenceAssertion.objects.get().pk == (
+        recorded["result"].assertions[0].assertion.pk
+    )
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+def test_a_claim_that_locks_second_sees_the_sync_written_first(registry, edited_json):
+    """The sync holds the type it changes until it commits; record_claims
+    waits for it, then checks the claim against the new rule."""
+    bundle = evidence_release(records=1)
+    claim = _regulation_claim(entity_of("protein"), entity_of("gene"))
+    edited_json(
+        "relationship_types.json",
+        with_entry(
+            "slug", "transcriptional_regulation", allowed_subject_types=["gene"]
+        ),
+    )
+    refused = {}
+
+    def record():
+        try:
+            record_claims(bundle.records[0], [claim], import_run=bundle.run)
+        except ClaimError as exc:
+            refused["message"] = str(exc)
+
+    assert _race(sync, record) == []
+    assert "Rule 2 (endpoint types)" in refused["message"]
+    assert "subject is a gene; entity" in refused["message"]
+    assert not Relationship.objects.exists()
+    assert not EvidenceAssertion.objects.exists()
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("writer", ["create_entity", "record_claims"])
+def test_a_writer_referencing_a_taxon_the_sync_changes_never_deadlocks(
+    registry, edited_json, writer
+):
+    """The writer holds its entity type or relationship type in shared mode,
+    and its row's key to taxon 9606 is checked only when it commits; the
+    sync, changing both, locks the taxon first and waits on the type. The
+    sync's lock leaves key checks alone, so the writer commits, then the sync
+    applies its changes."""
+    edited_json("taxa.json", with_entry("taxid", 9606, common_name="human (test)"))
+    if writer == "create_entity":
+        edited_json(
+            "entity_types.json", with_entry("slug", "gene", label="Gene (test)")
+        )
+
+        def write():
+            create_entity("gene", "TP53", 9606, "hgnc", "HGNC:11998")
+
+    else:
+        edited_json(
+            "relationship_types.json",
+            with_entry("slug", "transcriptional_regulation", label="Test label"),
+        )
+        bundle = evidence_release(records=1)
+        claim = dataclasses.replace(
+            _regulation_claim(entity_of("gene"), entity_of("gene")),
+            contexts=(ContextValue("host_taxon", "9606", taxon=9606),),
+        )
+
+        def write():
+            record_claims(bundle.records[0], [claim], import_run=bundle.run)
+
+    assert _race(write, sync) == []
+    assert Taxon.objects.get(taxid=9606).common_name == "human (test)"
+    if writer == "create_entity":
+        assert Entity.objects.filter(identity_key="hgnc|t:9606|HGNC:11998").exists()
+        assert EntityType.objects.get(slug="gene").label == "Gene (test)"
+    else:
+        assert EvidenceContext.objects.get().taxon_id == 9606
+        assert (
+            RelationshipType.objects.get(slug="transcriptional_regulation").label
+            == "Test label"
+        )

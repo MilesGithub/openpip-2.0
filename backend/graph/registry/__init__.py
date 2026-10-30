@@ -1,4 +1,5 @@
-"""The typed graph's registries: taxa, entity types and identifier namespaces.
+"""The typed graph's registries: taxa, entity types, identifier namespaces,
+relationship types and score types.
 
 They are reviewed JSON in v1/, loaded into their tables by
 `manage.py graph_sync_registry`, never by a migration, so a portal that keeps
@@ -16,9 +17,19 @@ Each file holds a list of entries with exactly these keys:
   against the whole lookup), url_template, authority (the documents the rules
   were checked against), and examples, values the rules must accept, which
   are checked here and not stored.
+- relationship_types.json: slug, label, definition (what the edge claims and
+  what it does not), family, orientation, polarity, allowed_subject_types and
+  allowed_object_types (entity type slugs), subject_role_label,
+  object_role_label, identity_qualifiers (always [] until P2),
+  self_pairs_allowed, psi_mi_anchors (PSI-MI CURIEs), display_token,
+  is_reference.
+- score_types.json: slug (<source>:<name> or stats:<name>), label,
+  definition, value_kind, direction, range_min and range_max (finite numbers
+  or null), unit, null_model, defining_document, comparable_across_datasets.
 """
 
 import json
+import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -28,18 +39,25 @@ from types import SimpleNamespace
 
 from graph.identity import InvalidIdentifier, normalize
 from graph.models import (
+    SCORE_TYPE_SLUG,
     CasePolicy,
     IdentityScheme,
+    Orientation,
+    Polarity,
     RegistryState,
+    RelationshipFamily,
     Scope,
+    ScoreDirection,
+    ScoreValueKind,
     TaxonPolicy,
     VersionPolicy,
 )
 
 # The version of the JSON below. Bump it with any change to the JSON: the
 # import commands refuse to run while the database holds another version, and
-# graph_sync_registry records the one it loaded.
-REGISTRY_VERSION = "1.0"
+# graph_sync_registry records the one it loaded. 1.1 added the relationship
+# and score types.
+REGISTRY_VERSION = "1.1"
 REGISTRY_DIR = Path(__file__).resolve().parent / "v1"
 
 TAXON_KEYS = {
@@ -75,12 +93,49 @@ NAMESPACE_KEYS = {
     "authority",
     "examples",
 }
+RELATIONSHIP_TYPE_KEYS = {
+    "slug",
+    "label",
+    "definition",
+    "family",
+    "orientation",
+    "polarity",
+    "allowed_subject_types",
+    "allowed_object_types",
+    "subject_role_label",
+    "object_role_label",
+    "identity_qualifiers",
+    "self_pairs_allowed",
+    "psi_mi_anchors",
+    "display_token",
+    "is_reference",
+}
+SCORE_TYPE_KEYS = {
+    "slug",
+    "label",
+    "definition",
+    "value_kind",
+    "direction",
+    "range_min",
+    "range_max",
+    "unit",
+    "null_model",
+    "defining_document",
+    "comparable_across_datasets",
+}
 SLUG = re.compile(r"[a-z][a-z0-9_]{0,49}")
 CURIE_PREFIX = re.compile(r"[a-z][a-z0-9._-]{0,49}")
+PSI_MI_CURIE = re.compile(r"MI:[0-9]{4}")
 # One namespace never identifies both a gene and a protein: an accession could
 # then sit on either, and gene and protein must stay separate entities.
 GENE_TYPES = {"gene"}
 PROTEIN_TYPES = {"protein", "protein_isoform"}
+# Kinds whose values lie in [0, 1].
+UNIT_INTERVAL_KINDS = {
+    ScoreValueKind.PROBABILITY,
+    ScoreValueKind.P_VALUE,
+    ScoreValueKind.Q_VALUE,
+}
 
 
 class RegistryError(ValueError):
@@ -92,6 +147,8 @@ class Registry:
     taxa: tuple[dict, ...]
     entity_types: tuple[dict, ...]
     namespaces: tuple[dict, ...]
+    relationship_types: tuple[dict, ...] = ()
+    score_types: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -109,6 +166,8 @@ def load_registry(directory: Path | None = None) -> Registry:
         taxa=_read(directory / "taxa.json", problems),
         entity_types=_read(directory / "entity_types.json", problems),
         namespaces=_read(directory / "namespaces.json", problems),
+        relationship_types=_read(directory / "relationship_types.json", problems),
+        score_types=_read(directory / "score_types.json", problems),
     )
     if not problems:
         problems = validate(registry)
@@ -136,6 +195,16 @@ def validate(registry: Registry) -> list[str]:
     )
     namespaces = _keyed(
         registry.namespaces, "slug", NAMESPACE_KEYS, "namespaces.json", problems
+    )
+    relationship_types = _keyed(
+        registry.relationship_types,
+        "slug",
+        RELATIONSHIP_TYPE_KEYS,
+        "relationship_types.json",
+        problems,
+    )
+    score_types = _keyed(
+        registry.score_types, "slug", SCORE_TYPE_KEYS, "score_types.json", problems
     )
     if problems:
         return problems
@@ -170,6 +239,10 @@ def validate(registry: Registry) -> list[str]:
         if len(slugs) > 1:
             problems.append(f"namespaces {', '.join(slugs)} share prefix {prefix!r}.")
     problems += _check_identity_namespaces(namespaces)
+    for slug, relationship_type in relationship_types.items():
+        problems += _check_relationship_type(slug, relationship_type, types)
+    for slug, score_type in score_types.items():
+        problems += _check_score_type(slug, score_type)
     return problems
 
 
@@ -318,3 +391,152 @@ def _check_identity_namespaces(namespaces) -> list[str]:
         )
         if len(slugs) > 1
     ]
+
+
+def _text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _fits(entry, field, limit, where, problems):
+    value = entry[field]
+    if not isinstance(value, str) or len(value) > limit:
+        problems.append(f"{where}: {field} is text of at most {limit} characters.")
+
+
+def _check_relationship_type(slug, entry, types) -> list[str]:
+    problems = _check_slug("relationship type", slug)
+    where = f"relationship type {slug}"
+    for field, choices in (
+        ("family", RelationshipFamily),
+        ("orientation", Orientation),
+        ("polarity", Polarity),
+    ):
+        _check_choice(entry, field, choices, slug, problems)
+    if not _text(entry["label"]) or not _text(entry["definition"]):
+        problems.append(f"{where}: needs a label and a definition.")
+    _fits(entry, "label", 100, where, problems)
+    for field in ("subject_role_label", "object_role_label"):
+        if not _text(entry[field]):
+            problems.append(f"{where}: needs a {field}.")
+        _fits(entry, field, 50, where, problems)
+    _fits(entry, "display_token", 50, where, problems)
+    for field in ("self_pairs_allowed", "is_reference"):
+        if not isinstance(entry[field], bool):
+            problems.append(f"{where}: {field} is true or false.")
+
+    sides = {}
+    for field in ("allowed_subject_types", "allowed_object_types"):
+        allowed = entry[field]
+        if (
+            not isinstance(allowed, list)
+            or not allowed
+            or not all(isinstance(type_slug, str) for type_slug in allowed)
+        ):
+            problems.append(f"{where}: {field} is a non-empty list of entity types.")
+            continue
+        for type_slug in allowed:
+            if type_slug not in types:
+                problems.append(f"{where}: entity type {type_slug!r} is not listed.")
+        sides[field] = set(allowed)
+    if (
+        entry["orientation"] == Orientation.SYMMETRIC
+        and len(sides) == 2
+        and sides["allowed_subject_types"] != sides["allowed_object_types"]
+    ):
+        problems.append(
+            f"{where}: is symmetric, so its subject and object types are the same."
+        )
+    if entry["polarity"] == Polarity.EFFECT and (
+        entry["orientation"] != Orientation.DIRECTED
+    ):
+        problems.append(f"{where}: effect polarity belongs to directed types only.")
+    reference = entry["family"] == RelationshipFamily.REFERENCE
+    if entry["is_reference"] is not reference:
+        problems.append(
+            f"{where}: is_reference is true for the reference family, and only "
+            "for it."
+        )
+    if reference and (
+        entry["orientation"] != Orientation.ROLE_ORDERED
+        or entry["polarity"] != Polarity.NONE
+    ):
+        problems.append(f"{where}: a reference type is role_ordered, polarity none.")
+    qualifiers = entry["identity_qualifiers"]
+    if not isinstance(qualifiers, list) or qualifiers:
+        problems.append(
+            f"{where}: identity_qualifiers is [] until identity qualifiers arrive "
+            "(P2)."
+        )
+    anchors = entry["psi_mi_anchors"]
+    if not isinstance(anchors, list) or not all(
+        isinstance(anchor, str) and PSI_MI_CURIE.fullmatch(anchor) for anchor in anchors
+    ):
+        problems.append(
+            f"{where}: psi_mi_anchors is a list of PSI-MI CURIEs (MI: and four "
+            "digits)."
+        )
+    return problems
+
+
+def _finite_number(value) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _check_score_type(slug, entry) -> list[str]:
+    problems = []
+    if (
+        not isinstance(slug, str)
+        or len(slug) > 64
+        or not SCORE_TYPE_SLUG.fullmatch(slug)
+    ):
+        problems.append(
+            f"score type {slug!r}: a slug is <source>:<name> or stats:<name>, in "
+            "lower case, at most 64 characters."
+        )
+    where = f"score type {slug}"
+    _check_choice(entry, "value_kind", ScoreValueKind, slug, problems)
+    _check_choice(entry, "direction", ScoreDirection, slug, problems)
+    if not _text(entry["label"]) or not _text(entry["definition"]):
+        problems.append(f"{where}: needs a label and a definition.")
+    _fits(entry, "label", 100, where, problems)
+    _fits(entry, "unit", 50, where, problems)
+    if not isinstance(entry["null_model"], str):
+        problems.append(f"{where}: null_model is text.")
+    if not _text(entry["defining_document"]):
+        problems.append(f"{where}: needs a defining_document.")
+    if not isinstance(entry["comparable_across_datasets"], bool):
+        problems.append(f"{where}: comparable_across_datasets is true or false.")
+
+    bounds = {}
+    for field in ("range_min", "range_max"):
+        value = entry[field]
+        if value is None:
+            continue
+        if not _finite_number(value):
+            problems.append(
+                f"{where}: {field} is a finite number or null, not {value!r}."
+            )
+            continue
+        bounds[field] = value
+    if len(bounds) == 2 and bounds["range_min"] > bounds["range_max"]:
+        problems.append(f"{where}: range_min is at most range_max.")
+    kind, direction = entry["value_kind"], entry["direction"]
+    if kind in UNIT_INTERVAL_KINDS and not all(0 <= v <= 1 for v in bounds.values()):
+        problems.append(f"{where}: a {kind}'s range lies within [0, 1].")
+    if kind in (ScoreValueKind.P_VALUE, ScoreValueKind.Q_VALUE) and (
+        direction != ScoreDirection.LOWER_IS_STRONGER
+    ):
+        problems.append(f"{where}: a {kind} is lower_is_stronger.")
+    if direction == ScoreDirection.SIGNED and (
+        kind != ScoreValueKind.CONTINUOUS or not _text(entry["null_model"])
+    ):
+        problems.append(
+            f"{where}: a signed score is continuous, and states the null_model its "
+            "sign is relative to."
+        )
+    return problems
