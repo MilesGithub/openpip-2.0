@@ -87,6 +87,16 @@ No version has been tagged yet. Everything below is in development towards
 - Groundwork tables for typed entities and identifiers, behind
   `TYPED_GRAPH_ENABLED` (off by default). Existing pages, APIs and data are
   unchanged.
+- Provenance and licensing records for typed data: data sources, datasets
+  and publications, versioned releases with their files, import runs and
+  source records, due-diligence records with their history, licence
+  snapshots, approval decisions, and the release that introduced each entity.
+- Approval and visibility rules: nothing typed is visible without an
+  effective approval, viewing, bulk download and external services are each
+  approved on their own, a correction never hides public data, and a
+  withdrawn release is hidden at once. Still behind `TYPED_GRAPH_ENABLED`
+  and shown to no visitor; with it on, staff see the catalogue and licensing
+  records in the Django admin.
 
 ### Fixed
 

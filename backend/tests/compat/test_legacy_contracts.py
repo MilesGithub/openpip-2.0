@@ -3,9 +3,14 @@
 The typed graph lives in its own tables, and nothing in the legacy code reads
 them. These tests hold that from the outside: they record the legacy
 responses, create typed entities and identifiers that use the same strings
-(TP53, P04637, 7157 ...), and expect every response back byte for byte.
+(TP53, P04637, 7157 ...), with the provenance and licensing records of the
+releases that introduce them (named like the legacy dataset, citing its
+PubMed id), and expect every response back byte for byte. The typed records
+point at the legacy user table only through SET_NULL keys with a username
+kept beside each, so deleting an account in the Django admin still works.
 """
 
+import datetime
 import io
 
 import pytest
@@ -13,12 +18,38 @@ from django.apps import apps
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
+from django.urls import reverse
 from rest_framework.test import APIClient
 
-from core.models import UserInteractionNetwork
+from core.models import User, UserInteractionNetwork
 from datasets.tests.factories import DatasetFactory
+from graph.approvals import record_decision, revoke
 from graph.entities import create_entity
-from graph.models import IdentifierNamespace, IdentifierRole
+from graph.licensing import confirm_due_diligence, record_licence
+from graph.models import (
+    ApprovalScope,
+    DataSource,
+    DataSourceKind,
+    DatasetRelease,
+    DatasetStatus,
+    Decision,
+    DueDiligenceChange,
+    DueDiligenceRecord,
+    Entity,
+    IdentifierNamespace,
+    IdentifierRole,
+    Permission,
+    PublicationRole,
+    ReleaseLicence,
+    ReleasePublication,
+    ReleaseStatus,
+    ShareAlike,
+    SourceDataset,
+    SourceDatasetPublication,
+    UsageApproval,
+)
+from graph.publications import get_or_create_publication
+from graph.releases import publish_release
 from graph.tests.factories import EntityIdentifierFactory
 from interactions.models import InteractionInteractionNetworks, InteractionNetwork
 from interactions.tests.factories import (
@@ -188,19 +219,113 @@ def legacy_row_counts() -> dict[str, int]:
     return counts
 
 
-def add_typed_rows(settings):
-    """Typed entities and identifiers that use the legacy rows' strings."""
+def release_with_terms(dataset, version, paper, approver, supersedes=None):
+    """A staged release citing the paper, with open terms recorded and its
+    dataset's due diligence confirmed after them, by the approver."""
+    release = DatasetRelease.objects.create(
+        dataset=dataset,
+        version=version,
+        status=ReleaseStatus.STAGED,
+        supersedes=supersedes,
+        source_url="https://example.org/compat",
+    )
+    ReleasePublication.objects.create(
+        release=release, publication=paper, role=PublicationRole.DESCRIBES
+    )
+    record_licence(
+        release,
+        recorded_by=approver,
+        licence_name="Compat",
+        read_at="https://example.org/compat/terms",
+        read_on=datetime.date(2026, 10, 1),
+        redistribution=Permission.PERMITTED,
+        commercial_use=Permission.PERMITTED,
+        modification=Permission.PERMITTED,
+        share_alike=ShareAlike.NO,
+        attribution="Compat, PubMed 12345678.",
+    )
+    confirm_due_diligence(dataset.due_diligence, by=approver)
+    return release
+
+
+def decide(release, scope, approver):
+    return record_decision(
+        release,
+        scope,
+        Decision.APPROVED,
+        rationale="Compat: legacy strings in typed records.",
+        decided_by=approver,
+        evidence="https://example.org/compat/evidence",
+    )
+
+
+def add_provenance_rows(approver):
+    """A data source and dataset named like the legacy dataset, a publication
+    with its PubMed id, a published v1 and its staged correction v2, with
+    licence snapshots, due diligence and decisions recorded by the approver.
+    Returns v2, which introduces the typed entities."""
+    source = DataSource.objects.create(
+        slug="compat", name="Compat", kind=DataSourceKind.LAB
+    )
+    dataset = SourceDataset.objects.create(
+        slug="compat",
+        title="Compat",
+        data_source=source,
+        status=DatasetStatus.ACTIVE,
+    )
+    paper = get_or_create_publication(pmid="12345678", title="Compat").publication
+    SourceDatasetPublication.objects.create(
+        dataset=dataset, publication=paper, role=PublicationRole.PRIMARY
+    )
+    record = DueDiligenceRecord(
+        dataset=dataset,
+        reviewer="Compat",
+        notes_link="docs/project/generalization/DATASET_DUE_DILIGENCE.md",
+    )
+    record._changed_by = approver
+    record.save()
+
+    v1 = release_with_terms(dataset, "v1", paper, approver)
+    for scope in (
+        ApprovalScope.INTERNAL,
+        ApprovalScope.PUBLIC_VIEW,
+        ApprovalScope.PUBLIC_BULK,
+    ):
+        decide(v1, scope, approver)
+    publish_release(v1, published_by=approver)
+    revoke(
+        UsageApproval.objects.get(release=v1, scope=ApprovalScope.PUBLIC_BULK),
+        reason="Compat: a revoked decision.",
+        revoked_by=approver,
+    )
+    v2 = release_with_terms(dataset, "v2", paper, approver, supersedes=v1)
+    decide(v2, ApprovalScope.INTERNAL, approver)
+    return v2
+
+
+def add_typed_rows(settings, approver=None):
+    """Typed entities and identifiers that use the legacy rows' strings and,
+    given the account that records them, the provenance and licensing rows
+    of the release that introduces them."""
     settings.TYPED_GRAPH_ENABLED = True
     call_command("graph_sync_registry", stdout=io.StringIO())
+    release = add_provenance_rows(approver) if approver is not None else None
     ncbigene = IdentifierNamespace.objects.get(slug="ncbigene")
     ensembl = IdentifierNamespace.objects.get(slug="ensembl_gene")
     for symbol, hgnc, uniprot, entrez, ensembl_id in (
         ("TP53", "HGNC:11998", "P04637", "7157", "ENSG00000141510"),
         ("MDM2", "HGNC:6973", "Q00987", "4193", "ENSG00000135679"),
     ):
-        gene = create_entity("gene", symbol, 9606, "hgnc", hgnc)
-        create_entity("protein", symbol, 9606, "uniprotkb", uniprot)
-        create_entity("protein_isoform", symbol, 9606, "uniprotkb", f"{uniprot}-2")
+        gene = create_entity("gene", symbol, 9606, "hgnc", hgnc, release=release)
+        create_entity("protein", symbol, 9606, "uniprotkb", uniprot, release=release)
+        create_entity(
+            "protein_isoform",
+            symbol,
+            9606,
+            "uniprotkb",
+            f"{uniprot}-2",
+            release=release,
+        )
         EntityIdentifierFactory(
             entity=gene, namespace=ncbigene, value=entrez, role=IdentifierRole.XREF
         )
@@ -210,7 +335,7 @@ def add_typed_rows(settings):
 
 
 def test_legacy_responses_are_byte_identical_with_typed_rows_present(
-    legacy, regular_user, settings
+    legacy, regular_user, admin_user, settings
 ):
     before = legacy_responses(regular_user, legacy)
     home_keys = home_network_keys()
@@ -221,7 +346,10 @@ def test_legacy_responses_are_byte_identical_with_typed_rows_present(
     assert b"uniprotkb:P04637" in before["psicquic tab28"][1]
     assert before["psicquic count"][1] == b"2"
 
-    add_typed_rows(settings)
+    # Decided by the legacy admin account, which the root conftest creates.
+    add_typed_rows(settings, approver=admin_user)
+    assert Entity.objects.filter(created_by_release__version="v2").count() == 6
+    assert UsageApproval.objects.filter(decided_by=admin_user).count() == 4
 
     assert legacy_row_counts() == counts
     after = legacy_responses(regular_user, legacy)
@@ -229,6 +357,39 @@ def test_legacy_responses_are_byte_identical_with_typed_rows_present(
         assert after[name] == before[name], f"{name} changed"
     assert home_network_keys() == home_keys
     assert legacy_row_counts() == counts
+
+
+def actors(model, name) -> set:
+    """(account id, username snapshot) pairs of one actor field."""
+    return set(model.objects.values_list(f"{name}_id", f"{name}_username"))
+
+
+@pytest.mark.parametrize("switch", [False, True], ids=["switch off", "switch on"])
+def test_deleting_a_legacy_user_in_the_django_admin_keeps_the_typed_records(
+    legacy, admin_user, settings, client, switch
+):
+    add_typed_rows(settings, approver=admin_user)
+    settings.TYPED_GRAPH_ENABLED = switch
+    approvals = UsageApproval.objects.count()
+    username = admin_user.username
+    assert actors(UsageApproval, "decided_by") == {(admin_user.pk, username)}
+    assert (admin_user.pk, username) in actors(UsageApproval, "revoked_by")
+
+    deleter = User.objects.create(username="deleter", is_staff=True, is_superuser=True)
+    client.force_login(deleter)
+    delete = reverse("admin:core_user_delete", args=[admin_user.pk])
+    confirm = client.get(delete)
+    assert confirm.status_code == 200
+    assert not confirm.context["perms_lacking"] and not confirm.context["protected"]
+    assert client.post(delete, {"post": "yes"}).status_code == 302
+
+    assert not User.objects.filter(pk=admin_user.pk).exists()
+    assert UsageApproval.objects.count() == approvals
+    assert actors(UsageApproval, "decided_by") == {(None, username)}
+    assert actors(UsageApproval, "revoked_by") == {(None, ""), (None, username)}
+    assert actors(ReleaseLicence, "recorded_by") == {(None, username)}
+    assert actors(DueDiligenceChange, "changed_by") == {(None, username)}
+    assert (None, username) in actors(DatasetRelease, "published_by")
 
 
 def test_search_keeps_its_shape(db):

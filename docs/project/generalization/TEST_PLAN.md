@@ -328,7 +328,8 @@ match for every context.
   non-reference release are `provisional`, and the dry run lists them first.
 - **Resumable commits.** A commit killed midway, simulated by raising inside
   batch *n*, resumes from the checkpoint and ends with rows identical to an
-  uninterrupted run. A failed batch rolls back completely.
+  uninterrupted run. A release has at most one open commit run (`running` or
+  `failed`), the one a rerun resumes (G2). A failed batch rolls back completely.
 - **Race-safe shared rows.** Two releases that commit at once and share an
   entity, a pair and a publication create no duplicate or orphan rows, and
   neither fails a batch (G5). RF1a extends the test to a shared non-primary
@@ -342,12 +343,16 @@ match for every context.
   that supersedes one with an effective `public_view` unless the new release
   has one too, so a correction never hides public data. It does not need `public_view`:
   publishing an internal-only release makes it current for staff, and
-  visitors still see nothing.
+  visitors still see nothing. These rules are G2's (`graph/releases.py`),
+  tested there; G5 tests the commands that wrap them.
 - **Supersession.** Publishing v2 marks v1 `superseded` in the same
   transaction, also when v2 is approved for internal use only. Withdrawing v2
   does not restore v1. v1's records, assertions
   and approvals stay readable on its own pages and when it is selected
-  explicitly.
+  explicitly. A correction keeps v1's dataset and synthetic flag. One
+  withdrawn before it was published frees v1, so a later correction names v1
+  again; of two staged corrections naming v1, the second to be published is
+  refused, and nothing changes (G2).
 - **Withdraw and discard.** Withdrawing hides a release everywhere at once and
   keeps its rows. Discarding a staged release deletes its records and
   assertions and returns it to draft. It keeps the release row, its files,
@@ -367,7 +372,11 @@ match for every context.
 - With no decision recorded, a release is invisible to anonymous and non-staff
   callers.
 - Approving view does not grant bulk download. Bulk is refused while the
-  latest licence snapshot leaves redistribution unknown or not permitted.
+  latest licence snapshot leaves redistribution or modification unknown or
+  not permitted. Recording an approval is refused while the latest snapshot
+  records no terms, `public_view` while its redistribution is not
+  permitted, and either public scope without evidence; a denial is accepted
+  (G2).
 - Decisions are never edited. Revoking sets the revoked fields, once, and
   nothing else may change after insertion (CU1 later adds its confirmation
   fields to that list). A new decision is a new row with a rationale, and a
@@ -375,22 +384,35 @@ match for every context.
   is revoked.
 - `public_view` and `external_services` need an effective `internal`
   approval, and `public_bulk` an effective `public_view`. Revoking `internal`
-  withdraws all three at once.
+  withdraws all three at once. Their decisions stay active, and are
+  effective again once a new `internal` approval is recorded: revocation
+  does not cascade (G2). Replacing a stale approval keeps the release
+  visible throughout, and a replacement that is refused changes nothing.
 - **Due diligence fails closed** (G2's approval service; G5's commands wrap
-  it). For a non-synthetic release, every scope is refused unless the
-  dataset's due-diligence record is complete and its terms are not marked
-  time-limited, because approval expiry is deferred. Approve, then reopen or
-  block the record or set the flag: the release becomes invisible at once,
-  and no export or external call is allowed.
+  it). For a non-synthetic release, every approval is refused unless the
+  dataset's due-diligence record is complete, confirmed after the release's
+  latest licence snapshot was recorded, and its terms are not marked
+  time-limited, because approval expiry is deferred; a denial is accepted.
+  Approve, then reopen or block the record or set the flag: the release
+  becomes invisible at once, and no export or external call is allowed.
+  Recording a newer snapshot reopens nothing (G2): approvals already
+  recorded stay effective, bulk follows the newer snapshot at once, and a
+  new approval needs due diligence confirmed again.
+- Creating a due-diligence record, and every change to its status, flag,
+  reviewer, review date, notes link or confirmation, writes one history row
+  naming who made it, on every write path, the Django admin's included.
 - Under embargo only `internal` is effective. The release is visible to staff
   only, and with an `external_services` approval recorded, nothing is sent
   to an outside service.
 - Deleting the approver's account keeps the approval and its username
   snapshot.
 - Deleting a release that has approvals is refused.
-- A licence snapshot that an approval relies on cannot be edited. New terms
-  become a new snapshot, and `graph_check` reports approvals whose snapshot is
-  no longer the latest.
+- A licence snapshot cannot be edited once recorded, whether or not an
+  approval relies on it (G2). New terms become a new snapshot, and
+  `graph_check` reports approvals whose snapshot is no longer the latest.
+- With the switch off, the Django admin shows no typed record, to
+  superusers too. With it on, it shows only the catalogue, licensing and
+  registry records, with releases and approvals read-only (G2).
 
 **Visibility.**
 
@@ -405,7 +427,9 @@ match for every context.
   used and flagged. A corrected effect therefore never reads as `mixed` by
   default, in the network or in the relationship panel. For callers other
   than staff, a pinned set accepts only published or superseded releases,
-  never a staged one.
+  never a staged one. Staff may pin a staged release to view it, never to
+  download it in bulk or send it out (G2).
+- A dataset's status changes no release's visibility (G2).
 - If the bridge is built: bridged legacy datasets are invisible in typed
   views until an approval with its own rationale is recorded, and show
   "changed since approval" once the dataset changes after it (L2, on demand).
@@ -416,7 +440,8 @@ checksums and adapter and mapping versions, each release's licence,
 attribution and note of changes, and the approvals relied on. An export that
 would combine a release whose licence snapshot has `share_alike` set to `yes`
 or `unknown` with any other release is refused, naming it, while that release
-alone exports with its own licence (C13).
+alone exports with its own licence (C13). G2 tests both rules in
+`bulk_export_refusals`, which E1 calls.
 
 **Browser instances.** A typed instance computes as `live` only while every
 selected release is published or superseded, and visible to the caller, so an

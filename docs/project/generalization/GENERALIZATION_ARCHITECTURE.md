@@ -373,12 +373,12 @@ scan. Django limits index names to 30 characters.
 | Model | Key fields | Constraints |
 |---|---|---|
 | `DataSource` | slug, name, kind (`lab`, `consortium`, `database`, `this_portal`, `other`), url, description | slug unique |
-| `SourceDataset` | slug, title, short title, description (plain text), data source, homepage, status (`candidate` = known, nothing imported; `active`; `withdrawn`) | slug unique |
+| `SourceDataset` | slug, title, short title, description (plain text), data source, homepage, status (`candidate` = known, nothing imported; `active`; `withdrawn`), which describes the dataset and gates nothing: its data leave view only through a release's withdrawal or an approval's revocation (G2) | slug unique |
 | `Publication` | pmid, doi (as given) and `doi_lookup` (lower case), pmcid, imex id, title, authors, journal, year, url, `is_synthetic`, and `local_key` with `local_dataset` (FK SourceDataset, null) for a publication that has none of those identifiers | partial unique on each identifier when not blank, and on (local_dataset, local_key) when `local_key` is not blank. Identifiers of one paper in one row are merged into one publication; for example IntAct's `imex:IM-11990\|pubmed:17081976` is one paper. A local key comes from the release manifest (section 8), so a title-only paper, such as the fixture's synthetic ones, is the same row in every release of its dataset |
 | `SourceDatasetPublication`, `ReleasePublication` | dataset or release, publication, role (`primary`, `describes`, `update`, `erratum`, `related`) | unique (parent, publication, role) |
-| `DatasetRelease` | dataset, version (the source's label, URL-safe), release date, retrieved at, source URL, `kind` (`evidence` or `reference`, declared by the adapter's spec), status (`draft`, `staged`, `published`, `superseded`, `withdrawn`), `supersedes`, `is_synthetic`, `embargo_until`, declared taxa (M2M), adapter, adapter version and mapping version, `store_raw_rows` (default true), `stats` (JSON, computed at commit), withdrawn at and reason | unique (dataset, version) |
+| `DatasetRelease` | dataset, version (the source's label, URL-safe), release date, retrieved at, source URL, `kind` (`evidence` or `reference`, declared by the adapter's spec), status (`draft`, `staged`, `published`, `superseded`, `withdrawn`), `supersedes` (a foreign key to the release it corrects, which has the same dataset and `is_synthetic`), `is_synthetic`, `embargo_until`, declared taxa (M2M through `ReleaseTaxon`), adapter, adapter version and mapping version, `store_raw_rows` (default true), `stats` (JSON, computed at commit), withdrawn at and reason | unique (dataset, version). `supersedes` is unique among releases that were published, so a release is corrected by at most one, and a correction withdrawn before it was published frees the release it named (G2) |
 | `SourceFile` | release, role (`data`, `entities`, `manifest`, `readme`, `licence_text`, `supplementary`), original name, storage path, media type, size, sha256, retrieved from | unique (release, sha256); several files per release |
-| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state, parameters, checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one committing run per release (partial unique) |
+| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters, checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it `abandoned` |
 | `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues | unique (release, record_key). Status and issues are the only fields a later dry run or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable |
 
 **Superseded releases.** A release becomes `superseded` in the same
@@ -537,8 +537,8 @@ per release and never summed.
 
 | Model | Key fields | Rules |
 |---|---|---|
-| `DueDiligenceRecord` (exactly one per source dataset, unique on the dataset; can exist before any release. Status changes are kept as a history, and new terms for a new release reopen the record) | Status (`open`, `complete`, `blocked`), reviewer, date, a link to the reviewed notes that answer the brief's §7 checklist ([DATASET_DUE_DILIGENCE.md](DATASET_DUE_DILIGENCE.md) and its successors), notes, and `terms_time_limited` | Fails closed, because approval expiry is deferred. For a non-synthetic release, `graph_approve` refuses every scope unless the dataset's record is `complete` and `terms_time_limited` is not set, and an approval already recorded stops being effective as soon as either condition fails (the rules below) |
-| `ReleaseLicence` (append-only; one or more snapshots per release) | Licence name exactly as stated (`''` means unknown), an SPDX id only when the source states one, licence URL, quoted terms, where and when they were read, attribution text, redistribution (`permitted`, `permitted_with_conditions`, `not_permitted`, `unknown`), `share_alike` (`yes`, `no` or `unknown`; whether adapted material must carry the same licence, as CC BY-SA requires), commercial use, modification, obligations, ambiguity notes, reviewer, recorded at and by | Never pre-filled by the system. Fields stay `unknown` until a person records them. The latest snapshot holds the current terms. A snapshot that an approval relies on is immutable, so new or corrected terms, including terms researched after an `internal` approval, are recorded as a new snapshot |
+| `DueDiligenceRecord` (exactly one per source dataset, unique on the dataset; can exist before any release. Its creation and every change to its status, flag, reviewer, review date, notes link or confirmation time are kept as a history, `DueDiligenceChange`, naming who made each. New terms never reopen it (G2): reopening hides every approved release of the dataset at once, so recording a correction's terms would silently hide public data. New terms gate new approvals instead, in the rules below) | Status (`open`, `complete`, `blocked`), reviewer, date, a link to the reviewed notes that answer the brief's §7 checklist ([DATASET_DUE_DILIGENCE.md](DATASET_DUE_DILIGENCE.md) and its successors), notes, and `terms_time_limited` | Fails closed, because approval expiry is deferred. For a non-synthetic release, `graph_approve` refuses every approval unless the dataset's record is `complete`, was confirmed (`completed_at`) after the release's latest licence snapshot was recorded, and `terms_time_limited` is not set; a denial is always recorded. An approval already recorded stops being effective as soon as the record is not `complete` or the flag is set (the rules below); the confirmation time does not affect effectiveness |
+| `ReleaseLicence` (append-only; one or more snapshots per release) | Licence name exactly as stated (`''` means unknown), an SPDX id only when the source states one, licence URL, quoted terms, where and when they were read, attribution text, redistribution (`permitted`, `permitted_with_conditions`, `not_permitted`, `unknown`), `share_alike` (`yes`, `no` or `unknown`; whether adapted material must carry the same licence, as CC BY-SA requires), commercial use, modification, obligations, ambiguity notes, reviewer, recorded at and by | Never pre-filled by the system. Fields stay `unknown` until a person records them. The latest snapshot, the one with the highest id, holds the current terms. A snapshot is immutable from insertion (G2), so new or corrected terms, including terms researched after an `internal` approval, are recorded as a new snapshot |
 | `UsageApproval` (append-only, per release and scope) | Release (PROTECT), scope (`internal`, `public_view`, `public_bulk`, `external_services`), the licence snapshot it relied on (FK ReleaseLicence, PROTECT), decision (`approved` or `denied`), mandatory rationale, evidence URL or text, decided by (SET_NULL) plus a username snapshot, decided at, and revoked at, by (SET_NULL, with snapshot) and why | `UNIQUE(release, scope) WHERE revoked_at IS NULL`. A check makes the rationale non-empty. A decision is never edited: after insertion only the revoked at, by and why fields may be set, once, and a new decision is a new row (CU1 would add its confirmation fields to that list). The Django admin is read-only for these rows. Approval expiry is deferred; L1 would add `content_basis` if the bridge is built (D11) |
 
 Rules enforced in the service layer, with tests:
@@ -546,6 +546,13 @@ Rules enforced in the service layer, with tests:
 - A decision is **active** while `revoked_at IS NULL`. `graph_approve` on a
   scope that already has an active decision is refused until that decision
   is revoked.
+- **Recording an approval** asks more than effectiveness does (G2). The
+  latest licence snapshot must record terms: a licence name or quoted terms,
+  with where and when they were read. `public_view` needs its redistribution
+  permitted, and `public_bulk` its redistribution and modification. Both
+  public scopes need evidence (open question C2). For a non-synthetic
+  release, due diligence must have been confirmed after that snapshot was
+  recorded. A denial needs none of these: recording "no" is always safe.
 - A decision is **effective** when it is active and its prerequisites are
   effective:
   - for a non-synthetic release, every scope needs its dataset's
@@ -554,8 +561,9 @@ Rules enforced in the service layer, with tests:
     every approval of the dataset's releases ineffective at once;
   - `public_view` needs an effective `internal` approval;
   - `public_bulk` needs an effective `public_view` approval, and a latest
-    licence snapshot whose redistribution is `permitted` or
-    `permitted_with_conditions`;
+    licence snapshot whose redistribution and modification are each
+    `permitted` or `permitted_with_conditions` (an export is adapted
+    material, with a note of changes; G2);
   - `external_services` needs an effective `internal` approval.
 - While a release's `embargo_until` is in the future, only its `internal`
   approval can be effective. `public_view`, `public_bulk` and
@@ -563,9 +571,13 @@ Rules enforced in the service layer, with tests:
   none of its identifiers is sent to an outside service.
 - No effective approval means **denied**. `visible_release_ids` evaluates
   *effective* on every request, so revoking `internal` also withdraws public
-  view, bulk download and external services.
+  view, bulk download and external services. Revocation does not cascade
+  (G2): the dependent decisions stay active, and are effective again once a
+  new `internal` approval is recorded.
 - **Publishing is not public.** `graph_publish_release` needs an effective
-  `internal` approval. Publishing makes a release current, so it joins the
+  `internal` approval. The rules of publishing and withdrawal are in
+  `graph/releases.py`, moved forward to G2 at the owner's request, which
+  G5's commands wrap. Publishing makes a release current, so it joins the
   default views of those who may see it and supersedes the release it names.
   Whether visitors see it is decided only by `public_view`, through
   `visible_release_ids`. A private stack, such as milestone RD's, can
@@ -577,7 +589,10 @@ Rules enforced in the service layer, with tests:
   are visible, superseded or not, and are flagged. For callers other than
   staff, a pinned set accepts only `published` or `superseded` releases, so a
   staged release, which can still be discarded and re-imported, is never
-  shown to visitors.
+  shown to visitors. Staff may pin a staged release to view it, never for
+  bulk download or external services. `visible_release_ids` returns the
+  visible ids with the superseded ones among them marked, so callers flag
+  them without another query (G2).
 - **ShareAlike releases are exported on their own** (owner's decision,
   2026-10-29, open question C13). Until the ShareAlike implications have been
   evaluated and recorded, an export that would combine a release whose
@@ -586,7 +601,8 @@ Rules enforced in the service layer, with tests:
   exported alone, with its own licence, attribution and note of changes,
   when it has an effective `public_bulk` approval. Downloads are always
   restricted per release, so they can be restricted by dataset and by
-  release.
+  release. G2's `bulk_export_refusals` applies this rule with the bulk
+  approval check, and E1 calls it.
 - **A correction never hides public data.** `graph_publish_release` refuses
   to publish a release that supersedes one with an effective `public_view`
   approval unless the new release has an effective `public_view` approval
@@ -597,7 +613,9 @@ Rules enforced in the service layer, with tests:
   those endpoints accepts `releases=` and `browser=` to pin others (section
   7.2). A release's own catalogue page shows that release.
 - `graph_check` reports, for review, every approval whose licence snapshot is
-  no longer the latest.
+  no longer the latest. `replace_decision` (G2) refreshes one: it revokes the
+  decision and records it again against the latest snapshot, in one
+  transaction, so the release is never hidden in between.
 - Synthetic releases need the same explicit decision. The fixture loader
   records it for the operator named on its command line.
 - Discarding a staged release deletes its records and assertions and returns
@@ -738,7 +756,9 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
     for example the HGNC gene set or the UniProt human proteome, each with
     its own licence; RF1a) creates `active` entities;
   - any other release creates `provisional` entities. A reference release that
-    later states the identifier makes the entity `active`.
+    later states the identifier makes the entity `active` (RF1a). G2's
+    `create_entity(release=...)` records the release that created each
+    entity, the first writer, and nothing more.
 
   A value that an existing entity of the declared type and taxon already
   holds, in any role, never creates a new entity. The record then maps only
@@ -1649,7 +1669,10 @@ because the docs contract test walks the URL resolver whatever the settings
 - every `/api/graph/v1/` route except `status` returns 404;
 - every typed management command refuses to write;
 - the Django admin modules stay registered, so system checks run, and are
-  hidden through `has_module_permission`;
+  hidden through `has_module_permission`, with every page refused, to
+  superusers too. G2's admin registers only the catalogue, licensing and
+  registry records; source records, files, import runs and entities wait
+  for AD1, behind the visibility service;
 - the new SPA routes show "not enabled on this portal", and the navigation
   adds nothing.
 
@@ -2106,8 +2129,8 @@ All of them refuse to write while the switch is off.
 - `graph_import --release --adapter --dry-run [--create-entities]
   [--resolutions FILE]` and `graph_import --release --commit
   [--create-entities] [--resolutions FILE]`.
-  - The commit is resumable: re-running it continues the release's committing
-    import run, completed batches are no-ops through the idempotency keys,
+  - The commit is resumable: re-running it continues the release's open
+    commit run, completed batches are no-ops through the idempotency keys,
     and the checkpoint only records progress.
   - Neither runs without an effective `internal` approval unless the release
     is synthetic, and neither runs on a registry version mismatch.
@@ -2115,14 +2138,16 @@ All of them refuse to write while the switch is off.
   - `--resolutions` names a reviewed resolution file (section 4.1).
 - `graph_approve --release --scope --decision --rationale` and
   `graph_revoke --approval --reason`, which wrap the approval service in
-  `graph/approvals.py` (G2). `graph_approve` refuses every scope for a
+  `graph/approvals.py` (G2). `graph_approve` refuses every approval for a
   non-synthetic release unless its dataset's due-diligence record is
-  complete and its terms are not time-limited (section 3.7).
+  complete, confirmed after the release's latest licence snapshot, and its
+  terms are not time-limited; a denial is always recorded (section 3.7).
 - `graph_publish_release`, which needs an effective `internal` approval and
-  also marks the release it supersedes,
-  `graph_withdraw_release --reason`, and `graph_discard_release`. Discard
-  applies to staged releases only, returns them to `draft`, and keeps the
-  audit trail.
+  also marks the release it supersedes, and
+  `graph_withdraw_release --reason`, which wrap `graph/releases.py` (G2),
+  and `graph_discard_release`. Discard applies to staged releases only,
+  returns them to `draft`, marks their open commit run `abandoned`, and keeps
+  the audit trail.
 - `graph_load_demo --approve-as <username>`, which commits the fixture with
   `--create-entities`
 - `graph_check` reports:
