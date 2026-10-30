@@ -5,13 +5,30 @@ import pytest
 from django.core.management import call_command
 
 from graph.models import CasePolicy, Scope, VersionPolicy
-from graph.tests.factories import IdentifierNamespaceFactory, TaxonFactory
+from graph.tests.factories import (
+    IdentifierNamespaceFactory,
+    StaffUserFactory,
+    TaxonFactory,
+)
 
 # Test-only taxa. Out of the range NCBI assigns today, and never in the JSON.
 TAXON_A = 999_999_901
 TAXON_B = 999_999_902
 TAXON_C = 999_999_903
 TAXON_D = 999_999_904
+
+
+@pytest.fixture
+def switch_on(db, settings):
+    """TYPED_GRAPH_ENABLED on for one test, as an operator would set it."""
+    settings.TYPED_GRAPH_ENABLED = True
+
+
+@pytest.fixture
+def staff_user(db):
+    """An active staff account, the actor the services and record rules ask
+    for."""
+    return StaffUserFactory()
 
 
 @pytest.fixture

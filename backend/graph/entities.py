@@ -8,22 +8,31 @@ here, in one tested place:
   identifies both protein entries and isoforms, which of the two a value is;
 - the identity rule: an entity is created only from the one namespace that
   defines identity for its type and taxon, and never from a value that an
-  existing entity of that type and taxon already holds, in any role.
+  existing entity of that type and taxon already holds, in any role;
+- provenance: an entity created for a release records it as the release that
+  introduced it, the first writer, and only a draft or staged release with an
+  effective `internal` approval introduces any (a synthetic one needs none,
+  and introduces synthetic constructs only).
 """
 
 from django.db import transaction
 
+from .approvals import INTERNAL, is_effective
 from .identity import identity_key, normalize, scope_key, uniprot_entity_type
 from .models import (
     Entity,
     EntityIdentifier,
+    EntityStatus,
     EntityType,
     IdentifierNamespace,
     IdentifierRole,
+    ReleaseKind,
+    ReleaseStatus,
     Scope,
     Taxon,
     TaxonPolicy,
 )
+from .preconditions import locked_release, require_switch
 
 # Namespaces that identify both tell them apart by the value's form.
 ISOFORM_PAIR = {"protein", "protein_isoform"}
@@ -33,6 +42,12 @@ NON_PRIMARY_ROLES = (
     IdentifierRole.ALIAS,
     IdentifierRole.SYMBOL,
 )
+# NCBI Taxonomy's "synthetic construct" (taxa.json): the only taxon whose
+# entities a synthetic release introduces.
+SYNTHETIC_TAXON = 32630
+# A release introduces entities while it is imported, and until it is
+# published.
+INTRODUCING = (ReleaseStatus.DRAFT, ReleaseStatus.STAGED)
 
 
 class EntityError(Exception):
@@ -52,6 +67,12 @@ class NamespaceTypeError(EntityError):
 class IdentityNamespaceError(EntityError):
     """Entities of this type and taxon are not created from this namespace:
     another one defines their identity, or none does."""
+
+
+class ReleaseProvenanceError(EntityError):
+    """The release cannot introduce entities: the typed graph is off, the
+    release is past staged, it has no effective internal approval, or it is
+    synthetic and the entity is not a synthetic construct."""
 
 
 class IdentityConflict(EntityError):
@@ -95,16 +116,29 @@ def identity_namespace(entity_type, taxon) -> IdentifierNamespace | None:
     return None
 
 
-def create_entity(entity_type, label, taxon, namespace, value) -> Entity:
+def create_entity(
+    entity_type, label, taxon, namespace, value, *, release=None
+) -> Entity:
     """The entity this value defines, created with its primary identifier if
     it does not exist yet.
 
     entity_type and namespace are rows or slugs, taxon a row, a taxid or None.
     Creating the same entity again returns the existing row, also when two
     transactions race: the insert is ON CONFLICT DO NOTHING on identity_key,
-    followed by a re-select. New entities are provisional; nothing yet marks
-    one as confirmed by a reference release.
+    followed by a re-select.
+
+    release: the release that introduces the entity, a row or its id. It is
+    locked, so its status and kind are read as they are when the entity is
+    written. It must be a draft or staged, and needs an effective internal
+    approval unless it is synthetic; a synthetic release introduces only
+    entities of taxon 32630. A new entity names the release in
+    created_by_release, and is active if the release is a reference release,
+    provisional otherwise. An existing entity is returned unchanged: the
+    first writer keeps its provenance. Without a release, new entities are
+    provisional and name none.
     """
+    if release is not None:
+        require_switch(ReleaseProvenanceError, "no release introduces entities")
     entity_type = _row(EntityType, entity_type, "entity type")
     namespace = _row(IdentifierNamespace, namespace, "namespace")
     taxon = _taxon(taxon)
@@ -139,7 +173,61 @@ def create_entity(entity_type, label, taxon, namespace, value) -> Entity:
         raise ValueError(f"An entity label is at most {label_length} characters.")
     scope = scope_key(namespace, taxon.taxid if taxon else None)
     key = identity_key(namespace, scope, lookup)
+    if release is None:
+        return _get_or_insert(
+            entity_type, label, taxon, namespace, value, lookup, version, scope, key
+        )
+    with transaction.atomic():
+        release = _introducing(release, taxon)
+        status = (
+            EntityStatus.ACTIVE
+            if release.kind == ReleaseKind.REFERENCE
+            else EntityStatus.PROVISIONAL
+        )
+        return _get_or_insert(
+            entity_type,
+            label,
+            taxon,
+            namespace,
+            value,
+            lookup,
+            version,
+            scope,
+            key,
+            created_by_release=release,
+            status=status,
+        )
 
+
+def _introducing(release, taxon):
+    """The release, locked, once it may introduce an entity of this taxon."""
+    release = locked_release(release, ReleaseProvenanceError)
+    if release.status not in INTRODUCING:
+        raise ReleaseProvenanceError(
+            f"Release {release.pk} is {release.status}: only a draft or staged "
+            "release introduces entities. Nothing was written."
+        )
+    if release.is_synthetic:
+        taxid = taxon.taxid if taxon else None
+        if taxid != SYNTHETIC_TAXON:
+            raise ReleaseProvenanceError(
+                f"Release {release.pk} is synthetic, so it introduces only "
+                f"synthetic constructs (taxon {SYNTHETIC_TAXON}), not entities of "
+                f"taxon {taxid}. Nothing was written."
+            )
+    elif not is_effective(release, INTERNAL):
+        raise ReleaseProvenanceError(
+            f"Release {release.pk} has no effective internal approval, so it "
+            "introduces no entities. Nothing was written."
+        )
+    return release
+
+
+def _get_or_insert(
+    entity_type, label, taxon, namespace, value, lookup, version, scope, key, **new
+) -> Entity:
+    """The entity with this identity key, inserted with its primary
+    identifier if there is none. `new` holds what only a new entity gets."""
     existing = Entity.objects.filter(identity_key=key).first()
     if existing is not None:
         return _same_entity(existing, entity_type, taxon, key)
@@ -171,6 +259,7 @@ def create_entity(entity_type, label, taxon, namespace, value) -> Entity:
                     label=label,
                     label_key=label.upper()[:255],
                     taxon=taxon,
+                    **new,
                 )
             ],
             ignore_conflicts=True,

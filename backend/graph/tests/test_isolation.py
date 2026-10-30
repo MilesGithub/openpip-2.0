@@ -168,6 +168,17 @@ def test_new_app_migrations_depend_only_on_the_apps_they_may_use():
             assert NEW_APPS.index(dependency_app) < NEW_APPS.index(app)
 
 
+def test_graph_0002_is_checked_and_depends_only_on_0001_and_the_user_model():
+    # The checks above cover every migration the loader finds; this pins that
+    # they find the provenance and licensing one.
+    found = {name: migration for app, name, migration in new_app_migrations()}
+    migration = found["0002_provenance_licensing"]
+    assert set(migration.dependencies) == {
+        ("graph", "0001_initial"),
+        (USER_APP, "__first__"),
+    }
+
+
 def test_the_pre_existing_apps_migrations_match_the_manifest():
     # A fork-only migration in a shared app would collide with upstream's
     # numbering. An upstream sync that brings new migrations updates the
@@ -338,6 +349,68 @@ def test_each_new_app_migrates_to_zero_and_forward_again():
     try:
         migrate_new_apps_to_zero()
         assert not new_tables() & tables()
+    finally:
+        migrate()
+    assert new_tables() <= tables()
+
+
+def tables_at(app, migration) -> set[str]:
+    """The app's tables once it is migrated to `migration`."""
+    loader = MigrationLoader(None, ignore_no_migrations=True)
+    state = loader.project_state((app, migration))
+    models = state.apps.get_app_config(app).get_models(include_auto_created=True)
+    return {model._meta.db_table for model in models}
+
+
+@pytest.mark.postgres
+@pytest.mark.django_db(transaction=True)
+def test_the_legacy_schema_and_rows_are_unchanged_by_one_step_back_and_forward():
+    # graph back to 0001, its first migration, removes only 0002's
+    # provenance and licensing tables and Entity.created_by_release.
+    get_user_model().objects.create_user("snapshot", "snapshot@example.com", "x" * 12)
+    apps.get_model("proteins", "Protein").objects.create(gene_name="TP53")
+    apps.get_model("datasets", "Dataset").objects.create(name="Snapshot")
+    first_tables = tables_at("graph", "0001_initial")
+
+    snapshots = []
+    try:
+        snapshots.append(
+            ("graph applied", legacy_schema(), row_counts(), bookkeeping())
+        )
+        migrate("graph", "0001")
+        assert new_tables() & tables() == first_tables
+        snapshots.append(
+            ("graph at 0001", legacy_schema(), row_counts(), bookkeeping())
+        )
+    finally:
+        migrate()
+    snapshots.append(("forward again", legacy_schema(), row_counts(), bookkeeping()))
+    assert new_tables() <= tables()
+
+    first_name, *first = snapshots[0]
+    assert first[0]["columns"] and first[1]["protein"] == 1
+    for name, *snapshot in snapshots[1:]:
+        for part, before, after in zip(
+            ("schema", "rows", "bookkeeping"), first, snapshot
+        ):
+            assert after == before, f"{part} differs between {first_name} and {name}"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_graph_steps_back_to_0001_and_forward_again():
+    first_tables = tables_at("graph", "0001_initial")
+    # G1's tables, and not the ones 0002 adds.
+    assert "graph_entity" in first_tables
+    assert "graph_datasetrelease" not in first_tables
+    assert first_tables < new_tables()
+    try:
+        migrate("graph", "0001")
+        assert new_tables() & tables() == first_tables
+        with connection.cursor() as cursor:
+            columns = connection.introspection.get_table_description(
+                cursor, "graph_entity"
+            )
+        assert "created_by_release_id" not in {column.name for column in columns}
     finally:
         migrate()
     assert new_tables() <= tables()
