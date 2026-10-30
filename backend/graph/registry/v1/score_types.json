@@ -1,0 +1,28 @@
+[
+  {
+    "slug": "synthetic:confidence",
+    "label": "Synthetic confidence",
+    "definition": "A made-up confidence of the synthetic demonstration release: a probability from 0 to 1, higher is stronger. It describes no real experiment and means nothing outside that release.",
+    "value_kind": "probability",
+    "direction": "higher_is_stronger",
+    "range_min": 0,
+    "range_max": 1,
+    "unit": "",
+    "null_model": "",
+    "defining_document": "docs/project/generalization/GENERALIZATION_ARCHITECTURE.md#d12-the-minimum-useful-demonstration-brief-1212",
+    "comparable_across_datasets": false
+  },
+  {
+    "slug": "synthetic:rank",
+    "label": "Synthetic rank",
+    "definition": "A made-up rank of the synthetic demonstration release: an integer from 1, lower is stronger. It describes no real experiment and means nothing outside that release.",
+    "value_kind": "rank",
+    "direction": "lower_is_stronger",
+    "range_min": 1,
+    "range_max": null,
+    "unit": "",
+    "null_model": "",
+    "defining_document": "docs/project/generalization/GENERALIZATION_ARCHITECTURE.md#d12-the-minimum-useful-demonstration-brief-1212",
+    "comparable_across_datasets": false
+  }
+]

@@ -1,5 +1,6 @@
-"""Typed entities and their identifiers, the registries they are typed by, and
-the provenance and licensing records of the releases that bring data in.
+"""Typed entities and their identifiers, the registries they are typed by, the
+provenance and licensing records of the releases that bring data in, and the
+relationships between entities with the evidence each release states for them.
 
 These tables sit beside the PPI tables and never reference them: the only
 foreign keys that leave this app point at `user`, for who decided, recorded
@@ -9,13 +10,18 @@ which truncates with CASCADE.
 """
 
 import contextvars
+import json
+import math
 import re
+import sys
+from collections import defaultdict
+from decimal import Decimal
 from functools import lru_cache
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
-from django.db import models, router, transaction
+from django.db import connections, models, router, transaction
 from django.db.models import F, Q
 from django.db.models.fields.related_descriptors import (
     ReverseManyToOneDescriptor,
@@ -217,6 +223,168 @@ class Decision(models.TextChoices):
     DENIED = "denied"
 
 
+# ── Closed sets: relationships and evidence ─────────────────────────────────
+# No allowed value anywhere is called "negative" except GeneticSign.NEGATIVE,
+# whose meaning its score type's null model defines (architecture §4.3).
+
+
+class RelationshipFamily(models.TextChoices):
+    # Every family of architecture §4.2, so a later family needs no
+    # constraint change.
+    PHYSICAL = "physical"
+    REGULATION = "regulation"
+    RNA = "rna"
+    GENETIC = "genetic"
+    MODIFICATION = "modification"
+    LIGAND_RECEPTOR = "ligand_receptor"
+    ASSOCIATION = "association"
+    PHENOTYPE = "phenotype"
+    MEMBERSHIP = "membership"
+    # A link between entity layers (encodes, isoform_of), not an
+    # evidence-backed claim about biology.
+    REFERENCE = "reference"
+
+
+class Orientation(models.TextChoices):
+    # A-B is B-A: the pair is stored lower entity id first.
+    SYMMETRIC = "symmetric"
+    # A causal direction: A->B and B->A are different claims.
+    DIRECTED = "directed"
+    # Two roles in a fixed order (gene, protein entry), with no causal claim.
+    ROLE_ORDERED = "role_ordered"
+
+
+class Polarity(models.TextChoices):
+    # Which of effect and genetic_sign the type's evidence may carry.
+    NONE = "none"
+    EFFECT = "effect"
+    GENETIC_SIGN = "genetic_sign"
+
+
+class Outcome(models.TextChoices):
+    SUPPORTED = "supported"
+    # Tested, and explicitly reported as not found (MITAB column 36).
+    TESTED_ABSENT = "tested_absent"
+    INCONCLUSIVE = "inconclusive"
+    # Measured, but below the source's threshold: neither support nor
+    # absence.
+    NOT_SIGNIFICANT = "not_significant"
+
+
+class EvidenceBasis(models.TextChoices):
+    # What the claim rests on.
+    EXPERIMENTAL = "experimental"
+    COMPUTATIONAL_PREDICTION = "computational_prediction"
+    COMPUTATIONAL_INFERENCE = "computational_inference"
+    STATISTICAL = "statistical"
+    TEXT_MINING = "text_mining"
+    UNKNOWN = "unknown"
+
+
+class AssertionMethod(models.TextChoices):
+    # How the source made the statement, kept apart from the basis.
+    MANUAL_ASSERTION = "manual_assertion"
+    AUTOMATIC_ASSERTION = "automatic_assertion"
+    UNKNOWN = "unknown"
+
+
+class Effect(models.TextChoices):
+    ACTIVATING = "activating"
+    INHIBITING = "inhibiting"
+    # The source says the effect is unknown; NULL means it states none.
+    UNKNOWN = "unknown"
+    # A summary value for types without effect polarity, never stored.
+    NOT_APPLICABLE = "not_applicable"
+
+
+class GeneticSign(models.TextChoices):
+    NEGATIVE = "negative"
+    POSITIVE = "positive"
+
+
+class InteractionLevel(models.TextChoices):
+    # PSI-MI MI:0914 and its subtree outside MI:0915: co-purification.
+    ASSOCIATION = "association"
+    # MI:0915 outside MI:0407.
+    PHYSICAL_ASSOCIATION = "physical_association"
+    # MI:0407 and its subtree.
+    DIRECT_INTERACTION = "direct_interaction"
+    NOT_STATED = "not_stated"
+
+
+# How strong each level's claim is: an edge shows the strongest level its
+# supporting evidence states (architecture D20).
+LEVEL_STRENGTH = {
+    InteractionLevel.DIRECT_INTERACTION: 3,
+    InteractionLevel.PHYSICAL_ASSOCIATION: 2,
+    InteractionLevel.ASSOCIATION: 1,
+    InteractionLevel.NOT_STATED: 0,
+}
+
+
+class ParticipantSide(models.TextChoices):
+    SUBJECT = "subject"
+    OBJECT = "object"
+
+
+class ResolutionBasis(models.TextChoices):
+    # How the source's identifier was mapped to the entity (architecture
+    # §4.1).
+    PRIMARY = "primary"
+    XREF_UNIQUE = "xref_unique"
+    ALIAS_UNIQUE = "alias_unique"
+    # The source named an isoform, recorded on its entry (open question B12).
+    ISOFORM_ENTRY = "isoform_entry"
+    SOURCE_LOCAL = "source_local"
+    CURATED = "curated"
+
+
+class MethodRole(models.TextChoices):
+    DETECTION = "detection"
+    PARTICIPANT_IDENTIFICATION = "participant_identification"
+    EVIDENCE_CODE = "evidence_code"
+
+
+class EvidencePublicationRole(models.TextChoices):
+    REPORTED_IN = "reported_in"
+    METHOD_REFERENCE = "method_reference"
+    CITED = "cited"
+
+
+class ContextFacet(models.TextChoices):
+    HOST_TAXON = "host_taxon"
+    TISSUE = "tissue"
+    CELL_TYPE = "cell_type"
+    CELL_LINE = "cell_line"
+    CONDITION = "condition"
+    PERTURBATION = "perturbation"
+    COMPARTMENT = "compartment"
+    # PSI-MI's pseudo-taxa (-1 "in vitro" and the rest) belong here, never
+    # under host_taxon.
+    ASSAY_SYSTEM = "assay_system"
+    DEVELOPMENTAL_STAGE = "developmental_stage"
+    TIMEPOINT = "timepoint"
+    GENOME_ASSEMBLY = "genome_assembly"
+    OTHER = "other"
+
+
+class ScoreValueKind(models.TextChoices):
+    PROBABILITY = "probability"
+    P_VALUE = "p_value"
+    Q_VALUE = "q_value"
+    RANK = "rank"
+    COUNT = "count"
+    CONTINUOUS = "continuous"
+
+
+class ScoreDirection(models.TextChoices):
+    HIGHER_IS_STRONGER = "higher_is_stronger"
+    LOWER_IS_STRONGER = "lower_is_stronger"
+    # The sign means something relative to the score type's null model.
+    SIGNED = "signed"
+    UNORDERED = "unordered"
+
+
 # ── Registries ──────────────────────────────────────────────────────────────
 # Rows come only from the reviewed JSON in graph/registry/, loaded by
 # `manage.py graph_sync_registry`; no migration writes them. Slug and taxid
@@ -377,12 +545,46 @@ class GuardedForeignKey(models.ForeignKey):
 # ── Entities ────────────────────────────────────────────────────────────────
 
 
+# What an entity is: a retyped entity is a new entity and an audited merge
+# (architecture §3.4), and the evidence rules read its type and taxon
+# (endpoint types, synthetic separation). Each name and attname maps to its
+# field.
+FROZEN_ENTITY_FIELDS = {
+    "entity_type": "entity_type",
+    "entity_type_id": "entity_type",
+    "identity_key": "identity_key",
+    "taxon": "taxon",
+    "taxon_id": "taxon",
+}
+
+
+def _frozen_entity_refusal(names, pk=None):
+    """The refusal for a write that names a frozen field, or None."""
+    frozen = sorted(
+        {FROZEN_ENTITY_FIELDS[n] for n in names if n in FROZEN_ENTITY_FIELDS}
+    )
+    if not frozen:
+        return None
+    which = f"entity {pk}'s" if pk is not None else "an entity's"
+    return _refusal(
+        Entity,
+        frozen[0],
+        f"is what the entity is, set when it is created and never changed; "
+        f"{which} type, identity key and taxon stay as written.",
+    )
+
+
 class EntityQuerySet(models.QuerySet):
     """Entity's default queryset: an update() never moves created_by_release
-    off the release that introduced an entity. Release.created_entities'
-    remove() and clear() and a bulk_update() go through it."""
+    off the release that introduced an entity, and never changes an entity's
+    type, identity key or taxon (by name, whatever the value).
+    Release.created_entities' remove() and clear(), taxon.entities' remove()
+    and clear(), and a bulk_update() go through it."""
 
     def update(self, **kwargs):
+        refusal = _frozen_entity_refusal(kwargs)
+        if refusal is not None:
+            raise refusal
         if not {"created_by_release", "created_by_release_id"} & kwargs.keys():
             return super().update(**kwargs)
         self._for_write = True
@@ -401,6 +603,9 @@ class EntityQuerySet(models.QuerySet):
     update.alters_data = True
 
     def bulk_update(self, objs, fields, batch_size=None):
+        refusal = _frozen_entity_refusal(fields)
+        if refusal is not None:
+            raise refusal
         # As GuardedQuerySet.bulk_update: a savepoint, so that a refusal
         # leaves the caller's transaction usable.
         self._for_write = True
@@ -408,6 +613,33 @@ class EntityQuerySet(models.QuerySet):
             return super().bulk_update(objs, fields, batch_size=batch_size)
 
     bulk_update.alters_data = True
+
+    def bulk_create(
+        self,
+        objs,
+        batch_size=None,
+        ignore_conflicts=False,
+        update_conflicts=False,
+        update_fields=None,
+        unique_fields=None,
+    ):
+        # create_entity inserts with ignore_conflicts; an upsert would rewrite
+        # what an existing entity is.
+        if update_conflicts:
+            raise _refusal(
+                Entity,
+                None,
+                "bulk_create(update_conflicts=True) would rewrite stored rows.",
+            )
+        return super().bulk_create(
+            objs,
+            batch_size=batch_size,
+            ignore_conflicts=ignore_conflicts,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+        )
+
+    bulk_create.alters_data = True
 
 
 def _introduced_rule(pk):
@@ -423,10 +655,12 @@ class Entity(models.Model):
 
     Write through graph.entities.create_entity, which enforces the rules
     that span tables (a gene needs a taxon; only the namespace that defines
-    identity for the type and taxon creates one).
+    identity for the type and taxon creates one). Its type, identity key and
+    taxon never change once written, on any path (FROZEN_ENTITY_FIELDS):
+    entity_type.entities and taxon.entities save each row they add.
     """
 
-    entity_type = models.ForeignKey(
+    entity_type = GuardedForeignKey(
         EntityType, on_delete=models.PROTECT, related_name="entities"
     )
     # <namespace>|<scope key>|<lookup> of the defining identifier, which fits
@@ -440,7 +674,7 @@ class Entity(models.Model):
     # non-C collation.
     label_key = models.CharField(max_length=255, db_index=True)
     description = models.TextField(blank=True)
-    taxon = models.ForeignKey(
+    taxon = GuardedForeignKey(
         Taxon,
         on_delete=models.PROTECT,
         null=True,
@@ -500,30 +734,36 @@ class Entity(models.Model):
     def save(
         self, force_insert=False, force_update=False, using=None, update_fields=None
     ):
-        names = {"created_by_release", "created_by_release_id"}
-        if (
-            self.pk is None
-            or force_insert
-            or (update_fields is not None and not names & set(update_fields))
-            or "created_by_release_id" in self.get_deferred_fields()
-        ):
+        if self.pk is None or force_insert:
             return super().save(
                 force_insert=force_insert,
                 force_update=force_update,
                 using=using,
                 update_fields=update_fields,
             )
+        if update_fields is not None and not update_fields:
+            return
+        written = self._written_names(update_fields)
         using = using or router.db_for_write(type(self), instance=self)
         with transaction.atomic(using=using):
-            held = (
+            # The stored row decides, read before anything is written.
+            stored = (
                 Entity._base_manager.using(using)
                 .select_for_update()
                 .filter(pk=self.pk)
-                .values_list("created_by_release_id", flat=True)
                 .first()
             )
-            if held is not None and held != self.created_by_release_id:
-                raise _refusal(self, "created_by_release", _introduced_rule(self.pk))
+            if stored is not None:
+                self._check_frozen(stored, written)
+                held = stored.created_by_release_id
+                if (
+                    "created_by_release" in written
+                    and held is not None
+                    and held != self.created_by_release_id
+                ):
+                    raise _refusal(
+                        self, "created_by_release", _introduced_rule(self.pk)
+                    )
             return super().save(
                 force_insert=force_insert,
                 force_update=force_update,
@@ -532,6 +772,30 @@ class Entity(models.Model):
             )
 
     save.alters_data = True
+
+    def _written_names(self, update_fields) -> set:
+        """The fields an update writes, by name: update_fields, or the loaded
+        ones (Django writes only those of a deferred instance)."""
+        fields = [
+            field for field in self._meta.concrete_fields if not field.primary_key
+        ]
+        if update_fields is not None:
+            given = set(update_fields)
+            return {
+                field.name
+                for field in fields
+                if field.name in given or field.attname in given
+            }
+        deferred = self.get_deferred_fields()
+        return {field.name for field in fields if field.attname not in deferred}
+
+    def _check_frozen(self, stored, written):
+        for name in sorted(set(FROZEN_ENTITY_FIELDS.values()) & written):
+            field = self._meta.get_field(name)
+            if _differs(
+                field, getattr(self, field.attname), getattr(stored, field.attname)
+            ):
+                raise _frozen_entity_refusal([name], self.pk)
 
 
 class EntityIdentifier(models.Model):
@@ -672,7 +936,55 @@ def _check_urls(instance, names):
             _check_url(type(instance), field.name, getattr(instance, field.attname))
 
 
-def _differs(field, new, old) -> bool:
+def _as_stored(value):
+    """A JSON value as PostgreSQL's jsonb gives it back, which keeps numbers
+    as decimals: a float written with an exponent and at least 1 comes back
+    as the integer its digits state (1e+16 as 10000000000000000), and -0.0 as
+    0.0. Probed on PostgreSQL 16; every other number comes back as written.
+    SQLite keeps the text json.dumps wrote, so _json_text compares in this
+    form on PostgreSQL only. graph.claims stores qualifiers in this form on
+    every backend, so the form read back is the form a claim gives, and
+    recording one twice compares equal."""
+    if isinstance(value, float):
+        if value == 0:
+            return 0.0
+        written = repr(value)
+        return int(Decimal(written)) if "e" in written and abs(value) >= 1 else value
+    if isinstance(value, list):
+        return [_as_stored(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _as_stored(item) for key, item in value.items()}
+    return value
+
+
+def _unique_pairs(pairs):
+    # Keys JSON writes alike ({True: .., "true": ..}) would collapse into one.
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("a JSON object with a repeated key")
+    return dict(pairs)
+
+
+def _json_text(field, value, jsonb=False) -> str:
+    # Canonical JSON text: true, 1 and 1.0 stay distinct. On PostgreSQL in the
+    # form jsonb keeps numbers (_as_stored: -0.0 as 0.0, 1e+16 as
+    # 10000000000000000); SQLite keeps the text json.dumps wrote, so there the
+    # comparison is exact. Keys that JSON writes alike raise ValueError, which
+    # _differs counts as a change.
+    plain = json.loads(
+        json.dumps(value, cls=field.encoder), object_pairs_hook=_unique_pairs
+    )
+    return json.dumps(_as_stored(plain) if jsonb else plain, sort_keys=True)
+
+
+def _differs(field, new, old, *, jsonb=False) -> bool:
+    if isinstance(field, models.JSONField):
+        # As canonical JSON text: Python finds True == 1 and 1.0 == 1, which
+        # JSON stores as different values.
+        try:
+            return _json_text(field, new, jsonb) != _json_text(field, old, jsonb)
+        except (TypeError, ValueError):
+            return True
     if new == old:
         return False
     try:
@@ -717,7 +1029,7 @@ def _locked_releases(using, release_ids) -> dict:
         .select_for_update()
         .filter(pk__in=ids)
         .order_by("pk")
-        .only("status", "store_raw_rows")
+        .only("status", "store_raw_rows", "is_synthetic", "dataset")
     )
     return {row.pk: row for row in rows}
 
@@ -736,6 +1048,15 @@ def _release_ids(queryset) -> list:
     return list(queryset.order_by().values_list("release_id", flat=True).distinct())
 
 
+def _other_release(model, name, target, target_id, owner, release_id):
+    return _refusal(
+        model,
+        name,
+        f"belongs to the row's own release; {target.__name__} {target_id} "
+        f"is in release {owner}, not {release_id}.",
+    )
+
+
 def _check_same_release(model, name, target, rows, using):
     """Refuse a row whose `name` key points at a row of another release."""
     ids = {getattr(row, f"{name}_id") for row in rows} - {None}
@@ -748,12 +1069,42 @@ def _check_same_release(model, name, target, rows, using):
         target_id = getattr(row, f"{name}_id")
         owner = owners.get(target_id)
         if owner is not None and owner != row.release_id:
-            raise _refusal(
-                model,
-                name,
-                f"belongs to the row's own release; {target.__name__} {target_id} "
-                f"is in release {owner}, not {row.release_id}.",
-            )
+            raise _other_release(model, name, target, target_id, owner, row.release_id)
+
+
+def share_lock(model, using, keys):
+    """Hold these registry rows in shared mode until the transaction ends.
+
+    A relationship type's orientation, polarity, family, allowed types and
+    self-pair rule, a score type's kind, direction and range, and an entity
+    type's or namespace's rules decide what a write may store. A writer that
+    validates against them takes this lock first, and graph_sync_registry
+    locks every row it changes (FOR NO KEY UPDATE) before it counts the rows
+    that use it, so whichever comes second sees the other's result. The
+    sync's lock conflicts with this one but not with the key-share lock a
+    foreign-key check takes at commit, so a row a writer only references (a
+    taxon) never joins a cycle. Within one call, writers take shared locks in
+    the sync's order (entity types, namespaces, relationship types, score
+    types; each in key order), so neither waits on the other in a cycle. A
+    caller that makes several such calls in one transaction (G4, G5) takes
+    its shared locks in that order, or all of them before the first call.
+
+    PostgreSQL only: Django's select_for_update() has no shared mode, and
+    SQLite serializes writers anyway. Call it inside a transaction.
+    """
+    keys = sorted({key for key in keys if key is not None})
+    connection = connections[using or router.db_for_write(model)]
+    if not keys or connection.vendor != "postgresql":
+        return
+    quote = connection.ops.quote_name
+    table, column = quote(model._meta.db_table), quote(model._meta.pk.column)
+    placeholders = ", ".join(["%s"] * len(keys))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT 1 FROM {table} WHERE {column} IN ({placeholders}) "
+            f"ORDER BY {column} FOR SHARE",
+            keys,
+        )
 
 
 class GuardedQuerySet(models.QuerySet):
@@ -869,10 +1220,14 @@ class GuardedModel(models.Model):
     the delete cascade takes), re-reads the stored row with
     select_for_update() through the base manager instead of trusting what the
     instance was loaded with, sets the derived fields, and asks guard_insert()
-    or guard_update(). delete() asks guard_delete(). A hook refuses with
-    ImmutableRecordError before anything is written. The defaults allow an
-    insert and refuse every other write; each model allows what its rules
-    allow.
+    or guard_update(). delete() re-reads the row by its pk the same way and
+    asks guard_delete() of the stored row, so a pk-only instance, or one whose
+    keys were changed in memory, is judged by what is stored; a pk that names
+    no row deletes nothing. A hook refuses with ImmutableRecordError before
+    anything is written. The defaults allow an insert and refuse every other
+    write; each model allows what its rules allow. No guard trusts an
+    instance's foreign keys or cached related rows beyond what the write
+    itself stores.
     """
 
     objects = GuardedQuerySet.as_manager()
@@ -887,7 +1242,7 @@ class GuardedModel(models.Model):
             return
         using = using or router.db_for_write(type(self), instance=self)
         with transaction.atomic(using=using):
-            locked = self.lock_for_write(using)
+            locked = self.lock_for_write(using, self.pk is None or force_insert)
             stored = None
             if self.pk is not None and not force_insert:
                 stored = (
@@ -907,7 +1262,7 @@ class GuardedModel(models.Model):
                 changed = written
                 self.guard_insert(using, locked)
             else:
-                changed = self._changed(stored, written)
+                changed = self._changed(stored, written, using)
                 if "created_at" in changed:
                     raise _refusal(self, "created_at", "never changes.")
                 self.guard_update(stored, changed, using, locked)
@@ -926,10 +1281,26 @@ class GuardedModel(models.Model):
         if self.pk is None:
             return super().delete(using=using, keep_parents=keep_parents)
         with transaction.atomic(using=using):
-            self.guard_delete(using)
+            stored = self.stored_for_delete(using)
+            if stored is None:
+                return 0, {self._meta.label: 0}
+            stored.guard_delete(using)
+            # The deletion collector deletes by pk alone.
             return super().delete(using=using, keep_parents=keep_parents)
 
     delete.alters_data = True
+
+    def stored_for_delete(self, using):
+        """The row as stored, locked, once the rows whose state decides its
+        deletion are: what a delete is decided on. None when the pk names no
+        row."""
+        return (
+            type(self)
+            ._base_manager.using(using)
+            .select_for_update()
+            .filter(pk=self.pk)
+            .first()
+        )
 
     def prepare_insert(self):
         """What save() does before an insert's rules are asked, for
@@ -971,16 +1342,18 @@ class GuardedModel(models.Model):
             names = {field.name for field in fields}
         return frozenset(names | self.companions(names))
 
-    def _changed(self, stored, written) -> frozenset:
+    def _changed(self, stored, written, using) -> frozenset:
         """The written fields whose value differs from the stored row's,
-        leaving out the auto_now bookkeeping."""
+        leaving out the auto_now bookkeeping. JSON is compared in the form
+        the database keeps it: jsonb's on PostgreSQL, exactly elsewhere."""
+        jsonb = connections[using].vendor == "postgresql"
         changed = set()
         for name in written:
             field = self._meta.get_field(name)
             if getattr(field, "auto_now", False):
                 continue
             new = getattr(self, field.attname)
-            if _differs(field, new, getattr(stored, field.attname)):
+            if _differs(field, new, getattr(stored, field.attname), jsonb=jsonb):
                 changed.add(name)
         return frozenset(changed)
 
@@ -993,9 +1366,11 @@ class GuardedModel(models.Model):
 
     # ── Hooks ──
 
-    def lock_for_write(self, using):
+    def lock_for_write(self, using, inserting):
         """Lock the other rows whose state decides this write, before the
-        row itself is read. Returns what the guards need of them."""
+        row itself is read. `inserting`: the save has no pk or forces an
+        insert; otherwise the stored row, if there is one, decides. Returns
+        what the guards need of them."""
         return None
 
     def companions(self, names) -> set:
@@ -1092,8 +1467,31 @@ class ReleaseScoped(GuardedModel):
     class Meta:
         abstract = True
 
-    def lock_for_write(self, using):
-        return _locked_releases(using, [self.release_id]).get(self.release_id)
+    def lock_for_write(self, using, inserting):
+        # An update is decided by the stored row's release, never by one
+        # given in memory; a row's release never changes.
+        release_id = self.release_id
+        if not inserting:
+            release_id = self._stored_release_id(using) or release_id
+        return _locked_releases(using, [release_id]).get(release_id)
+
+    def stored_for_delete(self, using):
+        # The stored release is locked before the row, the order the delete
+        # cascade from the release takes.
+        release_id = self._stored_release_id(using)
+        if release_id is None:
+            return None
+        _locked_releases(using, [release_id])
+        return super().stored_for_delete(using)
+
+    def _stored_release_id(self, using):
+        return (
+            type(self)
+            ._base_manager.using(using)
+            .filter(pk=self.pk)
+            .values_list("release_id", flat=True)
+            .first()
+        )
 
     def guard_delete(self, using):
         _require_releases(
@@ -1190,13 +1588,14 @@ class Publication(GuardedModel):
     A paper with none of the four identifiers is named by a local key, unique
     within its dataset, from the release manifest. Identifiers are stored
     normalized, and each is set once: blank to a value, as the co-referent
-    merge fills it, never from one value to another.
+    merge fills it, never from one value to another. is_synthetic is fixed
+    when the paper is created: evidence of synthetic releases cites only
+    synthetic papers, and of the others none.
     """
 
     IDENTIFIER_FIELDS = ("pmid", "doi", "pmcid", "imex_id")
-    SET_ONCE_FIELDS = frozenset(
-        {*IDENTIFIER_FIELDS, "local_key", "local_dataset", "is_synthetic"}
-    )
+    SET_ONCE_FIELDS = frozenset({*IDENTIFIER_FIELDS, "local_key", "local_dataset"})
+    CREATION_FIELDS = frozenset({"is_synthetic"})
 
     pmid = models.CharField(max_length=16, blank=True, default="")
     # As given, prefix removed.
@@ -1294,6 +1693,11 @@ class Publication(GuardedModel):
         self._check_identifiers(self.SET_ONCE_FIELDS)
 
     def guard_update(self, stored, changed, using, locked):
+        fixed = changed & self.CREATION_FIELDS
+        if fixed:
+            raise _refusal(
+                self, min(fixed), "is fixed when the publication is created."
+            )
         for name in sorted(changed & self.SET_ONCE_FIELDS):
             if getattr(stored, self._meta.get_field(name).attname) not in (
                 "",
@@ -1992,6 +2396,8 @@ class SourceRecord(ReleaseScoped):
     """One row of a release file, kept as read, with a stable key. Its
     content never changes; its status and issues follow the latest run while
     the release is a draft or staged (each run's report keeps its own copy).
+    A record that evidence was recorded from stays mapped: its assertions
+    rest on that mapping.
     """
 
     MUTABLE_FIELDS = frozenset({"status", "issues"})
@@ -2000,6 +2406,10 @@ class SourceRecord(ReleaseScoped):
     _CONTENT = (
         "is the record as read and never changes; only its status and issues "
         "follow the latest run."
+    )
+    _EVIDENCE_RULE = (
+        "stays mapped once evidence is recorded from the record; record {pk} "
+        "has assertions."
     )
 
     release = GuardedForeignKey(
@@ -2070,6 +2480,14 @@ class SourceRecord(ReleaseScoped):
                 min(changed) if changed else "status",
                 f"{self._WRITABLE_RULE}; release {release.pk} is {release.status}.",
             )
+        if (
+            "status" in changed
+            and self.status != RecordStatus.MAPPED
+            and EvidenceAssertion._base_manager.using(using)
+            .filter(source_record_id=self.pk)
+            .exists()
+        ):
+            raise _refusal(self, "status", self._EVIDENCE_RULE.format(pk=self.pk))
 
     @classmethod
     def guard_queryset_update(cls, queryset, names):
@@ -2078,6 +2496,20 @@ class SourceRecord(ReleaseScoped):
             raise _refusal(cls, min(content), cls._CONTENT)
         ids = _release_ids(queryset)
         _require_releases(cls, queryset.db, ids, cls.WRITABLE, cls._WRITABLE_RULE)
+        if "status" in names:
+            # The hook sees names, not values: any status update of a record
+            # with evidence is refused.
+            with_evidence = (
+                EvidenceAssertion._base_manager.using(queryset.db)
+                .filter(source_record__in=queryset.order_by().values("pk"))
+                .order_by("source_record_id")
+                .values_list("source_record_id", flat=True)
+                .first()
+            )
+            if with_evidence is not None:
+                raise _refusal(
+                    cls, "status", cls._EVIDENCE_RULE.format(pk=with_evidence)
+                )
         return queryset.filter(release_id__in=ids)
 
     @classmethod
@@ -2233,12 +2665,12 @@ class DueDiligenceRecord(GuardedModel):
         else:
             self.completed_at = stored.completed_at
 
-    def lock_for_write(self, using):
+    def lock_for_write(self, using, inserting):
         # A record created complete is confirmed when it is written. Locking
         # the dataset first serializes the creation with
         # licensing.record_licence, which locks it too, so that confirmation
         # never predates a snapshot it could not see.
-        if self.pk is None:
+        if inserting:
             list(
                 SourceDataset._base_manager.using(using)
                 .select_for_update()
@@ -2281,12 +2713,18 @@ class DueDiligenceRecord(GuardedModel):
         self._reconfirm = False
 
     def _check_actor(self, field):
-        actor = self._changed_by
-        if (
-            actor is None
-            or getattr(actor, "pk", None) is None
-            or not (actor.is_active and actor.is_staff)
-        ):
+        # The account as stored decides, not the object given in memory.
+        from django.contrib.auth import get_user_model
+
+        actor, user_model = self._changed_by, get_user_model()
+        account = None
+        if isinstance(actor, user_model) and actor.pk is not None:
+            account = (
+                user_model._base_manager.filter(pk=actor.pk)
+                .values("is_active", "is_staff")
+                .first()
+            )
+        if account is None or not (account["is_active"] and account["is_staff"]):
             raise _refusal(
                 self,
                 field,
@@ -2341,7 +2779,7 @@ class DueDiligenceChange(GuardedModel):
     def __str__(self):
         return f"{self.status}, by {self.changed_by_username}"
 
-    def lock_for_write(self, using):
+    def lock_for_write(self, using, inserting):
         return (
             DueDiligenceRecord._base_manager.using(using)
             .select_for_update()
@@ -2589,3 +3027,1486 @@ class UsageApproval(GuardedModel):
                 min(changed),
                 "the revoked fields are set together, by a revocation.",
             )
+
+
+# ── Relationships and evidence: shared rules ────────────────────────────────
+
+# NCBI Taxonomy's "synthetic construct" (taxa.json): synthetic releases name
+# only its entities, and no other release names any (graph.entities, and the
+# evidence guards below).
+SYNTHETIC_TAXON = 32630
+# The physical type for rows whose source states no interaction type: its
+# assertions carry none, at level not_stated (architecture D20).
+UNSPECIFIED_PHYSICAL_TYPE = "protein_interaction_unspecified"
+# <source>:<name>, or stats:<name> for statistics openPIP computes.
+SCORE_TYPE_SLUG = re.compile(r"[a-z][a-z0-9_]*:[a-z0-9][a-z0-9_.-]*")
+# Limits on what a source's own words take (architecture §8).
+STATED_TEXT_MAX = 10_000
+QUALIFIERS_MAX = 10_000
+
+
+def _finite(name) -> Q:
+    """NULL or a finite float. Probes on PostgreSQL 16 showed this check
+    rejecting NaN and both infinities; SQLite rejects the infinities and
+    stores NaN as NULL."""
+    return Q(**{f"{name}__isnull": True}) | Q(
+        **{f"{name}__gte": -sys.float_info.max, f"{name}__lte": sys.float_info.max}
+    )
+
+
+def _check_text(model, name, value, limit, *, blank=False):
+    """A text value as the evidence rules store it: a str of at most `limit`
+    characters (SQLite does not enforce column sizes), without NUL, and not
+    blank unless `blank`."""
+    if not isinstance(value, str):
+        raise _refusal(model, name, f"is text, not {value!r}.")
+    if "\x00" in value:
+        raise _refusal(model, name, "contains a NUL character (U+0000).")
+    if len(value) > limit:
+        raise _refusal(model, name, f"is at most {limit} characters, not {len(value)}.")
+    if not blank and not value.strip():
+        raise _refusal(model, name, "is never blank.")
+
+
+def _check_closed(model, name, value, choices, *, null=False):
+    if value is None and null:
+        return
+    if value not in choices.values:
+        allowed = ", ".join(choices.values) + (", or NULL" if null else "")
+        raise _refusal(model, name, f"is one of {allowed}; not {value!r}.")
+
+
+def qualifiers_problem(value) -> str | None:
+    """Why an assertion's qualifiers are not stored as they stand, or None.
+
+    They are a JSON object with string keys, made only of what json.loads
+    returns (a tuple is a list once round-tripped; NaN and infinity have no
+    JSON form), with no NUL in a key or a string, and at most QUALIFIERS_MAX
+    characters as JSON. graph.claims round-trips a claim's qualifiers through
+    json.loads(json.dumps(q, allow_nan=False)) before validating, storing and
+    comparing them, so what it stores passes.
+    """
+    if not isinstance(value, dict):
+        return f"are a JSON object, not {type(value).__name__}."
+    problem = _plain_json_problem(value, "")
+    if problem:
+        return problem
+    size = len(json.dumps(value, ensure_ascii=False, allow_nan=False))
+    if size > QUALIFIERS_MAX:
+        return f"are at most {QUALIFIERS_MAX} characters as JSON, not {size}."
+    return None
+
+
+def _plain_json_problem(value, path) -> str | None:
+    where = f"qualifiers{path}"
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                return f"have a key that is not a string at {where}: {key!r}."
+            if "\x00" in key:
+                return f"have a key with a NUL character at {where}."
+            problem = _plain_json_problem(item, f"{path}[{key!r}]")
+            if problem:
+                return problem
+        return None
+    # A tuple is not a list here: JSON would read it back as one.
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            problem = _plain_json_problem(item, f"{path}[{index}]")
+            if problem:
+                return problem
+        return None
+    if isinstance(value, str):
+        return f"have a NUL character in {where}." if "\x00" in value else None
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return None
+        return f"have {value!r} at {where}, which JSON cannot hold."
+    if value is None or isinstance(value, int):
+        return None
+    return (
+        f"hold a {type(value).__name__} at {where}: store what json.loads "
+        "returns, as a round trip through JSON gives it."
+    )
+
+
+# ── Registries: relationship types and score types ──────────────────────────
+# As the registries above: rows come only from the reviewed JSON, loaded by
+# graph_sync_registry. What evidence may say depends on them, so a writer that
+# validates against a row holds it with share_lock() until it commits, and the
+# sync locks a row before it changes it.
+
+
+class RelationshipType(models.Model):
+    """What a relationship claims, and what it does not: its family, how its
+    endpoints are ordered, whether its evidence carries an effect or a
+    genetic sign, and which entity types stand on each side (architecture
+    §3.3, §4.2)."""
+
+    slug = models.SlugField(max_length=50, primary_key=True)
+    label = models.CharField(max_length=100)
+    # What the edge claims, and what it does not.
+    definition = models.TextField()
+    family = models.CharField(max_length=24, choices=RelationshipFamily.choices)
+    orientation = models.CharField(max_length=16, choices=Orientation.choices)
+    polarity = models.CharField(max_length=16, choices=Polarity.choices)
+    allowed_subject_types = models.ManyToManyField(
+        EntityType, related_name="relationship_types_as_subject"
+    )
+    allowed_object_types = models.ManyToManyField(
+        EntityType, related_name="relationship_types_as_object"
+    )
+    # Such as "regulator" and "target".
+    subject_role_label = models.CharField(max_length=50)
+    object_role_label = models.CharField(max_length=50)
+    # Always [] in G3: identity qualifiers wait for P2.
+    identity_qualifiers = models.JSONField(default=list)
+    self_pairs_allowed = models.BooleanField()
+    # The PSI-MI CURIEs the type corresponds to: a descriptive crosswalk.
+    psi_mi_anchors = models.JSONField(default=list)
+    display_token = models.CharField(max_length=50, blank=True)
+    # A link between entity layers, not an evidence-backed claim.
+    is_reference = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=Q(family__in=RelationshipFamily.values),
+                name="graph_reltype_family_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(orientation__in=Orientation.values),
+                name="graph_reltype_orient_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(polarity__in=Polarity.values),
+                name="graph_reltype_polarity_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(is_reference=True, family=RelationshipFamily.REFERENCE)
+                | (Q(is_reference=False) & ~Q(family=RelationshipFamily.REFERENCE)),
+                name="graph_reltype_reference",
+            ),
+            # A reference link has two roles in a fixed order, and no effect.
+            models.CheckConstraint(
+                check=~Q(family=RelationshipFamily.REFERENCE)
+                | Q(orientation=Orientation.ROLE_ORDERED, polarity=Polarity.NONE),
+                name="graph_reltype_reference_shape",
+            ),
+        ]
+
+    def __str__(self):
+        return self.slug
+
+
+class ScoreType(models.Model):
+    """What a score's value means: its kind, which direction is stronger,
+    the range it may take, what a signed value's sign is relative to, and
+    the document that defines it (architecture §3.3)."""
+
+    # <source>:<name> or stats:<name> (SCORE_TYPE_SLUG).
+    slug = models.CharField(max_length=64, primary_key=True)
+    label = models.CharField(max_length=100)
+    definition = models.TextField()
+    value_kind = models.CharField(max_length=16, choices=ScoreValueKind.choices)
+    direction = models.CharField(max_length=24, choices=ScoreDirection.choices)
+    range_min = models.FloatField(null=True, blank=True)
+    range_max = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=50, blank=True)
+    # What a signed value's sign is relative to.
+    null_model = models.TextField(blank=True)
+    # Where the score is defined: a URL or a path in this repository.
+    defining_document = models.TextField()
+    comparable_across_datasets = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=Q(value_kind__in=ScoreValueKind.values),
+                name="graph_scoretype_kind_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(direction__in=ScoreDirection.values),
+                name="graph_scoretype_dir_valid",
+            ),
+            models.CheckConstraint(
+                check=_finite("range_min"), name="graph_scoretype_min_finite"
+            ),
+            models.CheckConstraint(
+                check=_finite("range_max"), name="graph_scoretype_max_finite"
+            ),
+            models.CheckConstraint(
+                check=Q(range_min__isnull=True)
+                | Q(range_max__isnull=True)
+                | Q(range_min__lte=F("range_max")),
+                name="graph_scoretype_range",
+            ),
+        ]
+
+    def __str__(self):
+        return self.slug
+
+
+# ── Vocabulary terms ────────────────────────────────────────────────────────
+
+
+class Term(GuardedModel):
+    """A controlled-vocabulary term, by its CURIE (graph.terms).
+
+    A registry with a natural key (architecture §3.3): the keys that point at
+    it hold the CURIE, so the independence key and the method filter need no
+    join. graph.terms.get_or_create_term writes one inside an approved
+    commit, from the CURIE and label a source states, and never invents one.
+    Only a draft release's commit states a label, so the guard refuses a
+    label_release that is not a draft on every insert path. Nothing changes
+    or deletes a term through the ORM; the deletion of the draft release
+    that supplied a label empties label_release through the deletion
+    collector, as the actor keys are emptied. bulk_create() is allowed, for
+    the race-safe insert, with save()'s checks on every row.
+    """
+
+    curie = models.CharField(max_length=64, primary_key=True)
+    # From the CURIE's prefix (graph.terms.ONTOLOGIES). No database check, so
+    # an ontology is added without a constraint change; the guard checks it.
+    ontology = models.CharField(max_length=16)
+    # As the first commit supplied it; a PSI-MI crosswalk term keeps the
+    # crosswalk's label (graph.terms).
+    label = models.CharField(max_length=255)
+    # The release whose commit supplied the label: NULL when a crosswalk
+    # term's first commit stated another label, or once that draft release is
+    # deleted.
+    label_release = GuardedForeignKey(
+        DatasetRelease,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    definition = models.TextField(blank=True)
+    obsolete = models.BooleanField(default=False)
+    # '' until V1 loads versioned ontology releases.
+    ontology_release = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.curie
+
+    def guard_insert(self, using, locked):
+        Term._check_rows([self], using)
+
+    @classmethod
+    def guard_bulk_create(cls, objs, using):
+        cls._check_rows(objs, using)
+
+    @classmethod
+    def _check_rows(cls, terms, using):
+        # graph.terms imports this module, so it is imported here.
+        from .terms import TermError, normalize_curie, ontology_of
+
+        for term in terms:
+            try:
+                canonical = normalize_curie(term.curie)
+            except TermError as error:
+                raise _refusal(cls, "curie", str(error)) from None
+            if canonical != term.curie:
+                raise _refusal(
+                    cls,
+                    "curie",
+                    f"is stored canonical: {term.curie!r} is {canonical!r}.",
+                )
+            ontology = ontology_of(canonical)
+            if term.ontology != ontology:
+                raise _refusal(
+                    cls,
+                    "ontology",
+                    f"follows the CURIE's prefix: {canonical} is a {ontology} term, "
+                    f"not {term.ontology!r}.",
+                )
+            _check_text(cls, "label", term.label, 255)
+            _check_text(cls, "ontology_release", term.ontology_release, 64, blank=True)
+        # Only a draft release's commit states a label (graph.terms), and
+        # get_or_create_term holds that release's lock already.
+        releases = _locked_releases(using, [term.label_release_id for term in terms])
+        for term in terms:
+            if term.label_release_id is None:
+                continue
+            release = releases.get(term.label_release_id)
+            if release is None or release.status != ReleaseStatus.DRAFT:
+                status = release.status if release is not None else "not stored"
+                raise _refusal(
+                    cls,
+                    "label_release",
+                    "names the draft release whose commit states the label; "
+                    f"release {term.label_release_id} is {status}.",
+                )
+
+
+# ── Relationships ───────────────────────────────────────────────────────────
+
+
+class Relationship(GuardedModel):
+    """The claim itself: a type and two entities, with no counts or effect
+    stored on it (architecture §3.6). Assertions from many releases attach
+    to one relationship, which is never changed or deleted.
+
+    A symmetric type's pair is stored lower entity id first, so A-B and B-A
+    are one row (graph_rel_symmetric_order); for directed and role-ordered
+    types the order is the claim, so A->B and B->A are two. graph.claims
+    builds the canonical identity. The guard re-checks every rule from the
+    database on save() and on bulk_create(), the race-safe insert, with a
+    fixed number of queries per call: SQLite's INSERT OR IGNORE would drop a
+    row that breaks a check constraint without a word.
+    """
+
+    relationship_type = GuardedForeignKey(
+        RelationshipType, on_delete=models.PROTECT, related_name="+"
+    )
+    # The regulator, gene or isoform; the lower entity id for symmetric types.
+    subject = GuardedForeignKey(Entity, on_delete=models.PROTECT, related_name="+")
+    object = GuardedForeignKey(Entity, on_delete=models.PROTECT, related_name="+")
+    # orientation != symmetric, copied from the type when the row is created.
+    ordered = models.BooleanField()
+    # Always '' in G3: identity qualifiers, and the re-keying they need, wait
+    # for P2.
+    qualifier_key = models.CharField(max_length=160, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["relationship_type", "subject", "object", "qualifier_key"],
+                name="graph_rel_identity",
+            ),
+            models.CheckConstraint(
+                check=Q(ordered=True) | Q(subject_id__lte=F("object_id")),
+                name="graph_rel_symmetric_order",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["subject", "relationship_type"], name="graph_rel_subject_type"
+            ),
+            models.Index(
+                fields=["object", "relationship_type"], name="graph_rel_object_type"
+            ),
+        ]
+
+    def __str__(self):
+        arrow = "->" if self.ordered else "--"
+        return f"{self.relationship_type_id} {self.subject_id}{arrow}{self.object_id}"
+
+    def guard_insert(self, using, locked):
+        Relationship._check_rows([self], using)
+
+    @classmethod
+    def guard_bulk_create(cls, objs, using):
+        cls._check_rows(objs, using)
+
+    @classmethod
+    def _check_rows(cls, rows, using):
+        """Every row's rules, in five queries whatever the number of rows: the
+        types (share-locked first), their allowed subject and object types,
+        and the endpoints."""
+        type_ids = {row.relationship_type_id for row in rows} - {None}
+        share_lock(RelationshipType, using, type_ids)
+        types = {
+            row["slug"]: row
+            for row in RelationshipType.objects.using(using)
+            .filter(pk__in=type_ids)
+            .values("slug", "orientation", "self_pairs_allowed")
+        }
+        allowed = {
+            name: _allowed_types(getattr(RelationshipType, name).through, using, types)
+            for name in ("allowed_subject_types", "allowed_object_types")
+        }
+        entity_ids = {row.subject_id for row in rows} | {row.object_id for row in rows}
+        entities = {
+            row["pk"]: row
+            for row in Entity._base_manager.using(using)
+            .filter(pk__in=entity_ids - {None})
+            .values("pk", "entity_type_id", "status")
+        }
+        for row in rows:
+            row._check_identity(types, allowed, entities)
+
+    def _check_identity(self, types, allowed, entities):
+        rel_type = types.get(self.relationship_type_id)
+        if rel_type is None:
+            raise _refusal(
+                self,
+                "relationship_type",
+                f"names no relationship type: {self.relationship_type_id!r}.",
+            )
+        slug = rel_type["slug"]
+        if self.qualifier_key != "":
+            raise _refusal(
+                self,
+                "qualifier_key",
+                "is '' until identity qualifiers arrive (P2); no type declares "
+                f"one, so {self.qualifier_key!r} is refused.",
+            )
+        ordered = rel_type["orientation"] != Orientation.SYMMETRIC
+        if self.ordered is not ordered:
+            raise _refusal(
+                self,
+                "ordered",
+                f"follows the type's orientation: {slug} is "
+                f"{rel_type['orientation']}, so ordered is {ordered}, not "
+                f"{self.ordered!r}.",
+            )
+        if not ordered and not (
+            self.subject_id is not None
+            and self.object_id is not None
+            and self.subject_id <= self.object_id
+        ):
+            raise _refusal(
+                self,
+                "subject",
+                f"a {slug} pair is symmetric, stored lower entity id first: "
+                f"subject {self.subject_id}, object {self.object_id}.",
+            )
+        for side, name in (
+            ("subject", "allowed_subject_types"),
+            ("object", "allowed_object_types"),
+        ):
+            pk = getattr(self, f"{side}_id")
+            entity = entities.get(pk)
+            if entity is None:
+                raise _refusal(self, side, f"names no entity: {pk!r}.")
+            if entity["status"] in (EntityStatus.MERGED, EntityStatus.RETIRED):
+                raise _refusal(
+                    self,
+                    side,
+                    f"is an active or provisional entity; entity {pk} is "
+                    f"{entity['status']}, and its evidence belongs on its "
+                    "successor.",
+                )
+            permitted = sorted(allowed[name].get(slug, ()))
+            if entity["entity_type_id"] not in permitted:
+                raise _refusal(
+                    self,
+                    side,
+                    f"a {slug} {side} is a {' or '.join(permitted) or 'type none'}; "
+                    f"entity {pk} is a {entity['entity_type_id']}.",
+                )
+        if self.subject_id == self.object_id and not rel_type["self_pairs_allowed"]:
+            raise _refusal(
+                self,
+                "object",
+                f"{slug} relates two different entities; entity {self.subject_id} "
+                "is both.",
+            )
+
+
+def _allowed_types(through, using, types) -> dict:
+    """{relationship type: entity type slugs} from one many-to-many table."""
+    allowed = defaultdict(set)
+    rows = (
+        through.objects.using(using)
+        .filter(relationshiptype_id__in=list(types))
+        .values_list("relationshiptype_id", "entitytype_id")
+    )
+    for type_slug, entity_type in rows:
+        allowed[type_slug].add(entity_type)
+    return allowed
+
+
+# ── Evidence ────────────────────────────────────────────────────────────────
+
+
+class EvidenceAssertion(ReleaseScoped):
+    """One statement a source record makes about one relationship: its
+    outcome, effect or genetic sign, level, methods, publications, scores and
+    context, and the source's own wording (architecture §3.6).
+
+    It belongs to its source record's release. graph.claims.record_claims
+    writes it once with save() (bulk_create() is refused: the release lock
+    already serializes every writer of a record), while that release is a
+    draft and its commit run is running; it is never saved again, changed or
+    not, and it is deleted only while the release is a draft. The guard
+    re-checks from the database the rules that compare it with other rows:
+    its record and run, its relationship's type (polarity, outcome, level),
+    its terms' ontologies and the PSI-MI crosswalk, the synthetic separation
+    of its endpoints, and its normalized qualifiers, of which
+    qualifiers["threshold"] belongs to a not-significant assertion, which
+    always states one. What needs its scores (a genetic sign's signed score,
+    whether a not-significant result's criteria name its scores and one of
+    them fails) is record_claims' to check before anything is written.
+    """
+
+    # The effects a source can state; NULL means it states none.
+    STORED_EFFECTS = frozenset({Effect.ACTIVATING, Effect.INHIBITING, Effect.UNKNOWN})
+
+    relationship = GuardedForeignKey(
+        Relationship, on_delete=models.PROTECT, related_name="assertions"
+    )
+    # The source record's, copied so filters need no join.
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    # RESTRICT on record and run: they go only with their whole draft release.
+    source_record = GuardedForeignKey(
+        SourceRecord, on_delete=models.RESTRICT, related_name="+"
+    )
+    # The commit run that first wrote it.
+    import_run = GuardedForeignKey(
+        ImportRun, on_delete=models.RESTRICT, related_name="+"
+    )
+    # Deterministic and content-derived within the record (graph.claims).
+    assertion_key = models.CharField(max_length=400)
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    evidence_basis = models.CharField(max_length=32, choices=EvidenceBasis.choices)
+    assertion_method = models.CharField(max_length=24, choices=AssertionMethod.choices)
+    eco_term = GuardedForeignKey(
+        Term, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    # NULL: the source states none.
+    effect = models.CharField(
+        max_length=16, choices=Effect.choices, null=True, blank=True
+    )
+    genetic_sign = models.CharField(
+        max_length=16, choices=GeneticSign.choices, null=True, blank=True
+    )
+    # The PSI-MI interaction type as stated, never upgraded.
+    interaction_type = GuardedForeignKey(
+        Term, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    # Physical-family evidence only (architecture D20).
+    interaction_level = models.CharField(
+        max_length=24, choices=InteractionLevel.choices, null=True, blank=True
+    )
+    relationship_as_stated = models.TextField(blank=True)
+    effect_as_stated = models.TextField(blank=True)
+    # A group is (release, evidence_group): records of one n-ary observation.
+    evidence_group = models.CharField(max_length=255, blank=True)
+    # Further mapped source fields. "threshold" is reserved for the criterion
+    # a not-significant result failed (graph.claims).
+    qualifiers = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_record", "assertion_key"],
+                name="graph_assert_record_key",
+            ),
+            models.CheckConstraint(
+                check=Q(outcome__in=Outcome.values), name="graph_assert_outcome_valid"
+            ),
+            models.CheckConstraint(
+                check=Q(evidence_basis__in=EvidenceBasis.values),
+                name="graph_assert_basis_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(assertion_method__in=AssertionMethod.values),
+                name="graph_assert_method_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(effect__isnull=True) | Q(effect__in=Effect.values),
+                name="graph_assert_effect_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(genetic_sign__isnull=True)
+                | Q(genetic_sign__in=GeneticSign.values),
+                name="graph_assert_sign_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(interaction_level__isnull=True)
+                | Q(interaction_level__in=InteractionLevel.values),
+                name="graph_assert_level_valid",
+            ),
+            models.CheckConstraint(
+                check=~Q(effect__isnull=False, genetic_sign__isnull=False),
+                name="graph_assert_effect_xor_sign",
+            ),
+            # Tested-absent, inconclusive and not-significant assertions carry
+            # no effect and no sign.
+            models.CheckConstraint(
+                check=Q(outcome=Outcome.SUPPORTED)
+                | (
+                    Q(genetic_sign__isnull=True)
+                    & (Q(effect__isnull=True) | Q(effect=Effect.NOT_APPLICABLE))
+                ),
+                name="graph_assert_bare_unless_sup",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["relationship", "release"], name="graph_assert_rel_release"
+            ),
+            models.Index(
+                fields=["release", "outcome"], name="graph_assert_release_outcome"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.source_record_id}/{self.assertion_key}"
+
+    def guard_insert(self, using, release):
+        if release is None:
+            raise _refusal(self, "release", f"names no release: {self.release_id!r}.")
+        if release.status != ReleaseStatus.DRAFT:
+            raise _refusal(
+                self,
+                "release",
+                "evidence is written only while its release is a draft; release "
+                f"{release.pk} is {release.status}.",
+            )
+        self._check_values()
+        self._check_run_and_record(using)
+        relationship, rel_type = self._relationship(using)
+        self._check_polarity(rel_type)
+        self._check_threshold()
+        self._check_terms(using)
+        self._check_level(rel_type)
+        self._check_endpoints(using, relationship, release)
+
+    def guard_update(self, stored, changed, using, release):
+        raise _refusal(
+            self,
+            min(changed) if changed else None,
+            f"assertion {self.pk} is stored, and a stored assertion is never "
+            "saved again, changed or not: a correction is a new release.",
+        )
+
+    def _check_values(self):
+        """The rules that read this row alone."""
+        model = type(self)
+        _check_text(model, "assertion_key", self.assertion_key, 400)
+        for name in ("relationship_as_stated", "effect_as_stated"):
+            _check_text(model, name, getattr(self, name), STATED_TEXT_MAX, blank=True)
+        _check_text(model, "evidence_group", self.evidence_group, 255, blank=True)
+        _check_closed(model, "outcome", self.outcome, Outcome)
+        _check_closed(model, "evidence_basis", self.evidence_basis, EvidenceBasis)
+        _check_closed(model, "assertion_method", self.assertion_method, AssertionMethod)
+        _check_closed(model, "genetic_sign", self.genetic_sign, GeneticSign, null=True)
+        _check_closed(
+            model,
+            "interaction_level",
+            self.interaction_level,
+            InteractionLevel,
+            null=True,
+        )
+        effect = self.effect
+        if effect == Effect.NOT_APPLICABLE:
+            raise _refusal(
+                self,
+                "effect",
+                "not_applicable is the summary for types without effect polarity, "
+                "and is never stored.",
+            )
+        if effect is not None and effect not in self.STORED_EFFECTS:
+            if isinstance(effect, str) and effect.strip().lower() == "negative":
+                rule = (
+                    "'negative' is ambiguous as an effect (inhibiting? a negative "
+                    "genetic interaction? tested and not found?), so it is refused, "
+                    "never coerced."
+                )
+            else:
+                rule = (
+                    "is activating, inhibiting, unknown, or NULL when the source "
+                    f"states none; not {effect!r}."
+                )
+            raise _refusal(self, "effect", rule)
+        problem = qualifiers_problem(self.qualifiers)
+        if problem:
+            raise _refusal(self, "qualifiers", problem)
+
+    def _check_run_and_record(self, using):
+        # The run is locked after the release, as record_claims locks them.
+        run = (
+            ImportRun._base_manager.using(using)
+            .select_for_update()
+            .filter(pk=self.import_run_id)
+            .values("release_id", "mode", "state")
+            .first()
+        )
+        if run is None:
+            raise _refusal(
+                self, "import_run", f"names no import run: {self.import_run_id!r}."
+            )
+        if run["release_id"] != self.release_id:
+            raise _other_release(
+                type(self),
+                "import_run",
+                ImportRun,
+                self.import_run_id,
+                run["release_id"],
+                self.release_id,
+            )
+        if run["mode"] != ImportMode.COMMIT or run["state"] != ImportState.RUNNING:
+            raise _refusal(
+                self,
+                "import_run",
+                "evidence is written by a running commit run; run "
+                f"{self.import_run_id} is a {run['mode']} run, {run['state']}.",
+            )
+        record = (
+            SourceRecord._base_manager.using(using)
+            .filter(pk=self.source_record_id)
+            .values("release_id", "status")
+            .first()
+        )
+        if record is None:
+            raise _refusal(
+                self,
+                "source_record",
+                f"names no source record: {self.source_record_id!r}.",
+            )
+        if record["release_id"] != self.release_id:
+            raise _other_release(
+                type(self),
+                "source_record",
+                SourceRecord,
+                self.source_record_id,
+                record["release_id"],
+                self.release_id,
+            )
+        if record["status"] != RecordStatus.MAPPED:
+            raise _refusal(
+                self,
+                "source_record",
+                "evidence is recorded only from a mapped record; record "
+                f"{self.source_record_id} is {record['status']}.",
+            )
+
+    def _relationship(self, using):
+        relationship = (
+            Relationship._base_manager.using(using)
+            .filter(pk=self.relationship_id)
+            .values("relationship_type_id", "subject_id", "object_id")
+            .first()
+        )
+        if relationship is None:
+            raise _refusal(
+                self,
+                "relationship",
+                f"names no relationship: {self.relationship_id!r}.",
+            )
+        type_id = relationship["relationship_type_id"]
+        share_lock(RelationshipType, using, [type_id])
+        rel_type = (
+            RelationshipType.objects.using(using)
+            .filter(pk=type_id)
+            .values("slug", "family", "polarity")
+            .get()
+        )
+        return relationship, rel_type
+
+    def _check_polarity(self, rel_type):
+        """One encoding per polarity: effects only on effect types, signs only
+        on sign types, and neither on an assertion that is not supported."""
+        polarity, slug = rel_type["polarity"], rel_type["slug"]
+        if self.effect is not None and polarity != Polarity.EFFECT:
+            raise _refusal(
+                self,
+                "effect",
+                "only a type with effect polarity carries an effect; "
+                f"{slug} has polarity {polarity}.",
+            )
+        if self.genetic_sign is not None and polarity != Polarity.GENETIC_SIGN:
+            raise _refusal(
+                self,
+                "genetic_sign",
+                "only a type with genetic_sign polarity carries a sign; "
+                f"{slug} has polarity {polarity}.",
+            )
+        if self.outcome != Outcome.SUPPORTED:
+            for name in ("effect", "genetic_sign"):
+                if getattr(self, name) is not None:
+                    raise _refusal(
+                        self,
+                        name,
+                        "an assertion that is not supported carries no effect and "
+                        f"no sign; this one is {self.outcome}.",
+                    )
+
+    def _check_threshold(self):
+        """Rule 8 on this row alone: only a not_significant assertion states
+        the criterion it failed, and it always does. Whether the criteria name
+        its scores and one of them fails is record_claims' to check."""
+        threshold = self.qualifiers.get("threshold")
+        if self.outcome == Outcome.NOT_SIGNIFICANT:
+            if not isinstance(threshold, list) or not threshold:
+                raise _refusal(
+                    self,
+                    "qualifiers",
+                    "a not_significant assertion records the significance criterion "
+                    'it failed in qualifiers["threshold"], a non-empty list of '
+                    "criteria.",
+                )
+        elif "threshold" in self.qualifiers:
+            raise _refusal(
+                self,
+                "qualifiers",
+                'qualifiers["threshold"] is the criterion a not_significant result '
+                f"failed, and is refused on a {self.outcome} assertion.",
+            )
+
+    def _check_terms(self, using):
+        wanted = (
+            ("eco_term", self.eco_term_id, "eco"),
+            ("interaction_type", self.interaction_type_id, "psi-mi"),
+        )
+        curies = [curie for _, curie, _ in wanted if curie is not None]
+        if not curies:
+            return
+        found = dict(
+            Term._base_manager.using(using)
+            .filter(pk__in=curies)
+            .values_list("pk", "ontology")
+        )
+        for name, curie, ontology in wanted:
+            if curie is None:
+                continue
+            if curie not in found:
+                raise _refusal(self, name, f"names no term: {curie!r}.")
+            if found[curie] != ontology:
+                raise _refusal(
+                    self, name, f"is a {ontology} term; {curie} is {found[curie]}."
+                )
+
+    def _check_level(self, rel_type):
+        """The stored level, read by every label and level filter (D20)."""
+        from .terms import PHYSICAL_INTERACTION_LEVELS
+
+        level, term = self.interaction_level, self.interaction_type_id
+        slug = rel_type["slug"]
+        if rel_type["family"] != RelationshipFamily.PHYSICAL:
+            for name, value in (
+                ("interaction_level", level),
+                ("interaction_type", term),
+            ):
+                if value is not None:
+                    raise _refusal(
+                        self,
+                        name,
+                        "belongs to physical-family evidence only; "
+                        f"{slug} is {rel_type['family']}.",
+                    )
+            return
+        if level is None:
+            raise _refusal(
+                self,
+                "interaction_level",
+                f"is stated on {slug} evidence: not_stated when the source states "
+                "no interaction type.",
+            )
+        if slug == UNSPECIFIED_PHYSICAL_TYPE and (
+            term is not None or level != InteractionLevel.NOT_STATED
+        ):
+            raise _refusal(
+                self,
+                "interaction_type" if term is not None else "interaction_level",
+                f"{slug} evidence states no interaction type, at level not_stated.",
+            )
+        if term is None:
+            if level not in (InteractionLevel.NOT_STATED, InteractionLevel.ASSOCIATION):
+                raise _refusal(
+                    self,
+                    "interaction_level",
+                    f"{level} rests on the interaction type the source states; "
+                    "without one the level is not_stated, or association assigned "
+                    "by openPIP (open question B14).",
+                )
+            return
+        crosswalk = PHYSICAL_INTERACTION_LEVELS.get(term)
+        if crosswalk is None:
+            raise _refusal(
+                self,
+                "interaction_type",
+                f"{term} is not in the PSI-MI physical crosswalk "
+                "(graph.terms.PHYSICAL_INTERACTION_LEVELS), so it is never "
+                "physical-interaction evidence.",
+            )
+        if level != crosswalk[0]:
+            raise _refusal(
+                self,
+                "interaction_level",
+                f"is the crosswalk's level for {term}, {crosswalk[0]}; not {level}.",
+            )
+
+    def _check_endpoints(self, using, relationship, release):
+        """Synthetic separation: a synthetic release's evidence joins synthetic
+        constructs only, and no other release's evidence names one."""
+        ends = (relationship["subject_id"], relationship["object_id"])
+        taxa = dict(
+            Entity._base_manager.using(using)
+            .filter(pk__in=ends)
+            .values_list("pk", "taxon_id")
+        )
+        for pk in ends:
+            taxon = taxa.get(pk)
+            if (taxon == SYNTHETIC_TAXON) == release.is_synthetic:
+                continue
+            if release.is_synthetic:
+                rule = (
+                    "a synthetic release's evidence joins synthetic constructs only "
+                    f"(taxon {SYNTHETIC_TAXON}); entity {pk} is of taxon {taxon}."
+                )
+            else:
+                rule = (
+                    f"synthetic constructs (taxon {SYNTHETIC_TAXON}) appear only in "
+                    f"synthetic releases' evidence; entity {pk} is one, and release "
+                    f"{release.pk} is not synthetic."
+                )
+            raise _refusal(self, "relationship", rule)
+
+
+class AssertionPart(ReleaseScoped):
+    """What the parts of an assertion share: the assertion, and its release,
+    copied so filters need no join. A part is inserted only while the release
+    is a draft, never saved again, and deleted only while the release is a
+    draft (or with its assertion).
+
+    record_claims writes each kind with one bulk_create(), whose guard runs a
+    fixed number of queries whatever the number of rows: the releases locked
+    once, in id order; the assertions read in one query; each of the kind's
+    rules checked over all rows in one more.
+    """
+
+    # What check_parts reads of each row's assertion and its relationship.
+    ASSERTION_FIELDS = ()
+
+    class Meta:
+        abstract = True
+
+    def guard_insert(self, using, release):
+        type(self)._check_inserts(
+            [self], using, {release.pk: release} if release else {}
+        )
+
+    def guard_update(self, stored, changed, using, release):
+        raise _refusal(
+            self,
+            min(changed) if changed else None,
+            f"row {self.pk} is written with its assertion and never saved again.",
+        )
+
+    @classmethod
+    def guard_bulk_create(cls, objs, using):
+        releases = _locked_releases(using, [row.release_id for row in objs])
+        cls._check_inserts(objs, using, releases)
+
+    @classmethod
+    def _check_inserts(cls, rows, using, releases):
+        for row in rows:
+            release = releases.get(row.release_id)
+            if release is None:
+                raise _refusal(cls, "release", f"names no release: {row.release_id!r}.")
+            if release.status != ReleaseStatus.DRAFT:
+                raise _refusal(
+                    cls,
+                    "release",
+                    "evidence is written only while its release is a draft; release "
+                    f"{release.pk} is {release.status}.",
+                )
+        assertions = {
+            row["pk"]: row
+            for row in EvidenceAssertion._base_manager.using(using)
+            .filter(pk__in={row.assertion_id for row in rows} - {None})
+            .values("pk", "release_id", *cls.ASSERTION_FIELDS)
+        }
+        for row in rows:
+            assertion = assertions.get(row.assertion_id)
+            if assertion is None:
+                raise _refusal(
+                    cls, "assertion", f"names no assertion: {row.assertion_id!r}."
+                )
+            if assertion["release_id"] != row.release_id:
+                raise _other_release(
+                    cls,
+                    "assertion",
+                    EvidenceAssertion,
+                    row.assertion_id,
+                    assertion["release_id"],
+                    row.release_id,
+                )
+        cls.check_parts(rows, assertions, using, releases)
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        """The kind's own rules, over all rows at once."""
+
+
+class AssertionParticipant(AssertionPart):
+    """One side of an assertion as the source stated it: the entity its
+    identifier was mapped to, the identifier exactly as written, and how it
+    was resolved (architecture §3.6).
+
+    The relationship holds the canonical order. For an ordered type a side
+    and its endpoint coincide; for a symmetric type the two participants are
+    the relationship's endpoints as a multiset, in whichever order the
+    source wrote them. When the source named an isoform and the record maps
+    to its entry (open question B12), stated_entity keeps the isoform.
+    """
+
+    ASSERTION_FIELDS = (
+        "relationship__subject_id",
+        "relationship__object_id",
+        "relationship__ordered",
+    )
+
+    assertion = GuardedForeignKey(
+        EvidenceAssertion, on_delete=models.CASCADE, related_name="participants"
+    )
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    side = models.CharField(max_length=16, choices=ParticipantSide.choices)
+    # The entity the source's identifier was mapped to.
+    entity = GuardedForeignKey(Entity, on_delete=models.PROTECT, related_name="+")
+    # The protein_isoform the source named, exactly when the basis is
+    # isoform_entry.
+    stated_entity = GuardedForeignKey(
+        Entity, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    # Exactly as written.
+    identifier_as_stated = models.CharField(max_length=255)
+    resolution_basis = models.CharField(max_length=16, choices=ResolutionBasis.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assertion", "side"], name="graph_part_one_per_side"
+            ),
+            models.CheckConstraint(
+                check=Q(side__in=ParticipantSide.values), name="graph_part_side_valid"
+            ),
+            models.CheckConstraint(
+                check=Q(resolution_basis__in=ResolutionBasis.values),
+                name="graph_part_basis_valid",
+            ),
+            models.CheckConstraint(
+                check=Q(
+                    resolution_basis=ResolutionBasis.ISOFORM_ENTRY,
+                    stated_entity__isnull=False,
+                )
+                | (
+                    ~Q(resolution_basis=ResolutionBasis.ISOFORM_ENTRY)
+                    & Q(stated_entity__isnull=True)
+                ),
+                name="graph_part_isoform_stated",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.side} {self.identifier_as_stated}"
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        for row in rows:
+            _check_closed(cls, "side", row.side, ParticipantSide)
+            _check_closed(
+                cls, "resolution_basis", row.resolution_basis, ResolutionBasis
+            )
+            _check_text(cls, "identifier_as_stated", row.identifier_as_stated, 255)
+            isoform = row.resolution_basis == ResolutionBasis.ISOFORM_ENTRY
+            if isoform != (row.stated_entity_id is not None):
+                raise _refusal(
+                    cls,
+                    "stated_entity",
+                    "is the isoform the source named, set exactly when the "
+                    "resolution basis is isoform_entry.",
+                )
+        # The sides already stored, then these rows: a symmetric pair is
+        # compared once both sides exist.
+        sides = defaultdict(dict)
+        stored = (
+            AssertionParticipant._base_manager.using(using)
+            .filter(assertion_id__in=list(assertions))
+            .values_list("assertion_id", "side", "entity_id")
+        )
+        for assertion_id, side, entity_id in stored:
+            sides[assertion_id][side] = entity_id
+        for row in rows:
+            assertion = assertions[row.assertion_id]
+            ends = (
+                assertion["relationship__subject_id"],
+                assertion["relationship__object_id"],
+            )
+            if assertion["relationship__ordered"]:
+                expected = ends[0] if row.side == ParticipantSide.SUBJECT else ends[1]
+                if row.entity_id != expected:
+                    raise _refusal(
+                        cls,
+                        "entity",
+                        f"the {row.side} of an ordered relationship is its {row.side}, "
+                        f"entity {expected}; not entity {row.entity_id}.",
+                    )
+            elif row.entity_id not in ends:
+                raise _refusal(
+                    cls,
+                    "entity",
+                    f"is one of the relationship's endpoints, entities {ends[0]} "
+                    f"and {ends[1]}; not entity {row.entity_id}.",
+                )
+            # A second row for one side is the unique constraint's to refuse.
+            sides[row.assertion_id].setdefault(row.side, row.entity_id)
+        for assertion_id, by_side in sides.items():
+            assertion = assertions[assertion_id]
+            if assertion["relationship__ordered"] or len(by_side) < 2:
+                continue
+            ends = sorted(
+                (
+                    assertion["relationship__subject_id"],
+                    assertion["relationship__object_id"],
+                )
+            )
+            named = sorted(by_side.values())
+            if named != ends:
+                raise _refusal(
+                    cls,
+                    "entity",
+                    f"the participants of assertion {assertion_id} are its "
+                    f"relationship's endpoints, entities {ends[0]} and {ends[1]}, "
+                    f"as a multiset; they name entities {named[0]} and {named[1]}.",
+                )
+        cls._check_isoform_entries(
+            [
+                row
+                for row in rows
+                if row.resolution_basis == ResolutionBasis.ISOFORM_ENTRY
+            ],
+            using,
+        )
+
+    @classmethod
+    def _check_isoform_entries(cls, rows, using):
+        """isoform_entry maps a named protein_isoform to its protein entry."""
+        if not rows:
+            return
+        ids = {row.entity_id for row in rows} | {row.stated_entity_id for row in rows}
+        types = dict(
+            Entity._base_manager.using(using)
+            .filter(pk__in=ids)
+            .values_list("pk", "entity_type_id")
+        )
+        for row in rows:
+            for name, pk, wanted in (
+                ("entity", row.entity_id, "protein"),
+                ("stated_entity", row.stated_entity_id, "protein_isoform"),
+            ):
+                if types.get(pk) != wanted:
+                    raise _refusal(
+                        cls,
+                        name,
+                        f"of an isoform_entry participant is a {wanted}; entity "
+                        f"{pk} is a {types.get(pk)}.",
+                    )
+
+
+class EvidenceMethod(AssertionPart):
+    """A method the source names for the assertion: a PSI-MI detection or
+    participant-identification method, or an ECO evidence code."""
+
+    # The ontology each role's terms come from.
+    ROLE_ONTOLOGIES = {
+        MethodRole.DETECTION: "psi-mi",
+        MethodRole.PARTICIPANT_IDENTIFICATION: "psi-mi",
+        MethodRole.EVIDENCE_CODE: "eco",
+    }
+
+    assertion = GuardedForeignKey(
+        EvidenceAssertion, on_delete=models.CASCADE, related_name="methods"
+    )
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    term = GuardedForeignKey(Term, on_delete=models.PROTECT, related_name="+")
+    role = models.CharField(max_length=32, choices=MethodRole.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assertion", "term", "role"], name="graph_evmethod_unique"
+            ),
+            models.CheckConstraint(
+                check=Q(role__in=MethodRole.values), name="graph_evmethod_role_valid"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.role} {self.term_id}"
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        for row in rows:
+            _check_closed(cls, "role", row.role, MethodRole)
+        found = dict(
+            Term._base_manager.using(using)
+            .filter(pk__in={row.term_id for row in rows} - {None})
+            .values_list("pk", "ontology")
+        )
+        for row in rows:
+            if row.term_id not in found:
+                raise _refusal(cls, "term", f"names no term: {row.term_id!r}.")
+            wanted = cls.ROLE_ONTOLOGIES[row.role]
+            if found[row.term_id] != wanted:
+                raise _refusal(
+                    cls,
+                    "term",
+                    f"a {row.role} method is a {wanted} term; {row.term_id} is "
+                    f"{found[row.term_id]}.",
+                )
+
+
+class EvidencePublication(AssertionPart):
+    """A paper the assertion cites, with its role. At most one paper reports
+    an assertion (reported_in): a record that reports several gives one
+    assertion per paper (graph.claims)."""
+
+    assertion = GuardedForeignKey(
+        EvidenceAssertion, on_delete=models.CASCADE, related_name="publications"
+    )
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    publication = GuardedForeignKey(
+        Publication, on_delete=models.PROTECT, related_name="+"
+    )
+    role = models.CharField(max_length=24, choices=EvidencePublicationRole.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assertion", "publication", "role"],
+                name="graph_evpub_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["assertion"],
+                condition=Q(role=EvidencePublicationRole.REPORTED_IN),
+                name="graph_evpub_one_reported_in",
+            ),
+            models.CheckConstraint(
+                check=Q(role__in=EvidencePublicationRole.values),
+                name="graph_evpub_role_valid",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.role} {self.publication_id}"
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        for row in rows:
+            _check_closed(cls, "role", row.role, EvidencePublicationRole)
+        papers = {
+            pk: (is_synthetic, dataset_id)
+            for pk, is_synthetic, dataset_id in Publication._base_manager.using(using)
+            .filter(pk__in={row.publication_id for row in rows} - {None})
+            .values_list("pk", "is_synthetic", "local_dataset_id")
+        }
+        for row in rows:
+            paper = papers.get(row.publication_id)
+            if paper is None:
+                raise _refusal(
+                    cls,
+                    "publication",
+                    f"names no publication: {row.publication_id!r}.",
+                )
+            release = releases[row.release_id]
+            is_synthetic, dataset_id = paper
+            if is_synthetic != release.is_synthetic:
+                raise _refusal(
+                    cls,
+                    "publication",
+                    "a synthetic release cites only synthetic papers, and no other "
+                    f"release cites one; publication {row.publication_id} is "
+                    f"{'' if is_synthetic else 'not '}synthetic, release "
+                    f"{release.pk} is {'' if release.is_synthetic else 'not '}"
+                    "synthetic.",
+                )
+            if dataset_id is not None and dataset_id != release.dataset_id:
+                raise _refusal(
+                    cls,
+                    "publication",
+                    "a local publication is cited by its own dataset's releases; "
+                    f"publication {row.publication_id} is local to dataset "
+                    f"{dataset_id}, release {release.pk} is in dataset "
+                    f"{release.dataset_id}.",
+                )
+
+
+class EvidenceScore(AssertionPart):
+    """One score on an assertion, of a typed score type: the raw value
+    verbatim, and its value as a finite float, or NULL when the raw value
+    gives none (graph.scores). One per score type; types are never pooled."""
+
+    assertion = GuardedForeignKey(
+        EvidenceAssertion, on_delete=models.CASCADE, related_name="scores"
+    )
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    score_type = GuardedForeignKey(
+        ScoreType, on_delete=models.PROTECT, related_name="+"
+    )
+    value = models.FloatField(null=True, blank=True)
+    # Verbatim, never blank.
+    raw_value = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assertion", "score_type"], name="graph_score_one_per_type"
+            ),
+            models.CheckConstraint(
+                check=_finite("value"), name="graph_score_value_finite"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["score_type", "value"], name="graph_score_type_value"),
+        ]
+
+    def __str__(self):
+        return f"{self.score_type_id} {self.raw_value}"
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        # graph.scores imports this module, so it is imported here.
+        from .scores import score_value_problem
+
+        type_ids = {row.score_type_id for row in rows} - {None}
+        share_lock(ScoreType, using, type_ids)
+        types = {
+            row["slug"]: row
+            for row in ScoreType.objects.using(using)
+            .filter(pk__in=type_ids)
+            .values("slug", "value_kind", "range_min", "range_max")
+        }
+        for row in rows:
+            _check_text(cls, "raw_value", row.raw_value, 255)
+            score_type = types.get(row.score_type_id)
+            if score_type is None:
+                raise _refusal(
+                    cls, "score_type", f"names no score type: {row.score_type_id!r}."
+                )
+            release = releases[row.release_id]
+            source = row.score_type_id.split(":", 1)[0]
+            if release.is_synthetic and source not in ("synthetic", "stats"):
+                raise _refusal(
+                    cls,
+                    "score_type",
+                    "a synthetic release's scores are synthetic: or stats: types; "
+                    f"{row.score_type_id} is neither.",
+                )
+            if not release.is_synthetic and source == "synthetic":
+                raise _refusal(
+                    cls,
+                    "score_type",
+                    f"synthetic: score types belong to synthetic releases; release "
+                    f"{release.pk} is not synthetic.",
+                )
+            if row.value is None:
+                continue
+            value = row.value
+            try:
+                finite = (
+                    not isinstance(value, bool)
+                    and isinstance(value, (int, float))
+                    and math.isfinite(value)
+                )
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise _refusal(
+                    cls, "value", f"is a finite number, or NULL; not {value!r}."
+                )
+            problem = score_value_problem(
+                score_type["value_kind"],
+                score_type["range_min"],
+                score_type["range_max"],
+                value,
+            )
+            if problem:
+                raise _refusal(cls, "value", f"{problem} ({row.score_type_id}).")
+
+
+class EvidenceContext(AssertionPart):
+    """One stated context of an assertion: a facet, with a term, a host
+    taxon or neither, and the raw value as written. An absent facet means
+    not stated, never all."""
+
+    assertion = GuardedForeignKey(
+        EvidenceAssertion, on_delete=models.CASCADE, related_name="contexts"
+    )
+    release = GuardedForeignKey(
+        DatasetRelease, on_delete=models.CASCADE, related_name="+"
+    )
+    facet = models.CharField(max_length=24, choices=ContextFacet.choices)
+    term = GuardedForeignKey(
+        Term, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    # A registered organism, for host_taxon only.
+    taxon = GuardedForeignKey(
+        Taxon, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
+    )
+    label = models.CharField(max_length=255, blank=True)
+    # As written, never blank.
+    raw_value = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assertion", "facet", "raw_value"],
+                name="graph_context_unique",
+            ),
+            models.CheckConstraint(
+                check=Q(facet__in=ContextFacet.values),
+                name="graph_context_facet_valid",
+            ),
+            models.CheckConstraint(
+                check=~Q(term__isnull=False, taxon__isnull=False),
+                name="graph_context_term_or_taxon",
+            ),
+            models.CheckConstraint(
+                check=Q(taxon__isnull=True) | Q(facet=ContextFacet.HOST_TAXON),
+                name="graph_context_taxon_host",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.facet} {self.raw_value}"
+
+    @classmethod
+    def check_parts(cls, rows, assertions, using, releases):
+        for row in rows:
+            _check_closed(cls, "facet", row.facet, ContextFacet)
+            _check_text(cls, "raw_value", row.raw_value, 255)
+            _check_text(cls, "label", row.label, 255, blank=True)
+            host = row.facet == ContextFacet.HOST_TAXON
+            if row.taxon_id is not None and not host:
+                raise _refusal(
+                    cls, "taxon", f"is set for host_taxon only; this is {row.facet}."
+                )
+            if host and row.term_id is not None:
+                raise _refusal(
+                    cls,
+                    "term",
+                    "a host taxon is a registered taxon or the raw value alone, "
+                    "never a term.",
+                )
+            release = releases[row.release_id]
+            if release.is_synthetic and row.taxon_id not in (None, SYNTHETIC_TAXON):
+                raise _refusal(
+                    cls,
+                    "taxon",
+                    "a synthetic release's host taxon is the synthetic construct "
+                    f"({SYNTHETIC_TAXON}) or unregistered; not {row.taxon_id}.",
+                )
+            if not release.is_synthetic and row.taxon_id == SYNTHETIC_TAXON:
+                raise _refusal(
+                    cls,
+                    "taxon",
+                    f"the synthetic construct ({SYNTHETIC_TAXON}) is the host taxon "
+                    f"of synthetic releases only; release {release.pk} is not "
+                    "synthetic.",
+                )

@@ -97,6 +97,18 @@ No version has been tagged yet. Everything below is in development towards
   withdrawn release is hidden at once. Still behind `TYPED_GRAPH_ENABLED`
   and shown to no visitor; with it on, staff see the catalogue and licensing
   records in the Django admin.
+- Relationships between typed entities, and the evidence each release states
+  for them: typed relationships (directed, or one per pair for symmetric
+  types), relationship and score types, vocabulary terms, and evidence
+  assertions tied to their source records, with outcomes (supported, tested
+  and not found, inconclusive, not significant), effects, genetic signs,
+  physical-interaction levels, methods, publications, scores, contexts and
+  the participants as the source named them. Each relationship's summary
+  counts only evidence from releases the viewer may see, and counts records
+  of one observation once. Recording a record's evidence again changes
+  nothing, and contradictory findings are kept side by side. Still behind
+  `TYPED_GRAPH_ENABLED` and shown to no visitor; with it on, staff see the
+  relationship types, score types and terms in the Django admin, read-only.
 
 ### Fixed
 

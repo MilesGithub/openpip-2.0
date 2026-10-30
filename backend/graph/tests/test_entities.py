@@ -5,6 +5,7 @@ import time
 
 import pytest
 from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from graph.entities import (
     IdentityConflict,
@@ -15,10 +16,18 @@ from graph.entities import (
     create_entity,
 )
 from graph.identity import identity_key
-from graph.models import Entity, EntityIdentifier, IdentifierNamespace, IdentifierRole
+from graph.models import (
+    Entity,
+    EntityIdentifier,
+    EntityType,
+    IdentifierNamespace,
+    IdentifierRole,
+    ImmutableRecordError,
+)
 from graph.tests.factories import (
     EntityFactory,
     EntityIdentifierFactory,
+    EntityTypeFactory,
     TaxonFactory,
 )
 
@@ -341,3 +350,153 @@ def _a_backend_waits_on_a_lock(seconds=20) -> bool:
                 return True
             time.sleep(0.05)
     return False
+
+
+# ── What an entity is never changes ─────────────────────────────────────────
+# Its type, identity key and taxon: a retyped entity is a new entity and an
+# audited merge, and the evidence rules read the type and taxon (endpoint
+# types, synthetic separation).
+
+
+def entity_row(entity) -> dict:
+    return Entity._base_manager.filter(pk=entity.pk).values().get()
+
+
+def frozen_value(field):
+    """A value of the field that a human gene entity does not have."""
+    if field in ("entity_type", "entity_type_id"):
+        protein = EntityTypeFactory(slug="protein")
+        return protein if field == "entity_type" else protein.pk
+    if field == "identity_key":
+        return "test||entity-moved"
+    fly = TaxonFactory(taxid=7227, scientific_name="Drosophila melanogaster")
+    return fly if field == "taxon" else fly.pk
+
+
+FROZEN = ["entity_type", "entity_type_id", "identity_key", "taxon", "taxon_id"]
+
+
+@pytest.mark.parametrize(
+    "path", ["save", "save_update_fields", "update", "bulk_update"]
+)
+@pytest.mark.parametrize("field", FROZEN)
+def test_an_entitys_type_identity_key_and_taxon_never_change(db, field, path):
+    entity = EntityFactory()
+    before = entity_row(entity)
+    value = frozen_value(field)
+    name = field.removesuffix("_id")
+    with pytest.raises(ImmutableRecordError, match=f"Entity.{name}: is what"):
+        if path == "update":
+            Entity.objects.filter(pk=entity.pk).update(**{field: value})
+        else:
+            setattr(entity, field, value)
+            if path == "save":
+                entity.save()
+            elif path == "save_update_fields":
+                entity.save(update_fields=[field])
+            else:
+                Entity.objects.bulk_update([entity], [field])
+    assert entity_row(entity) == before
+
+
+def test_a_queryset_update_naming_a_frozen_field_is_refused_whatever_the_value(db):
+    entity = EntityFactory()
+    for field, value in (
+        ("taxon", entity.taxon),
+        ("entity_type_id", entity.entity_type_id),
+        ("identity_key", entity.identity_key),
+    ):
+        with pytest.raises(ImmutableRecordError, match="is what the entity is"):
+            Entity.objects.filter(pk=entity.pk).update(**{field: value})
+
+
+PATHS_BY_MANAGER = {
+    "entity_type.entities.add": lambda entity, protein, fly: protein.entities.add(
+        entity
+    ),
+    "entity_type.entities.set": lambda entity, protein, fly: protein.entities.set(
+        [entity]
+    ),
+    "taxon.entities.add": lambda entity, protein, fly: fly.entities.add(entity),
+    "taxon.entities.set": lambda entity, protein, fly: fly.entities.set([entity]),
+    "taxon.entities.remove": lambda entity, protein, fly: (
+        entity.taxon.entities.remove(entity)
+    ),
+    "taxon.entities.clear": lambda entity, protein, fly: entity.taxon.entities.clear(),
+}
+
+
+@pytest.mark.parametrize("path", sorted(PATHS_BY_MANAGER))
+def test_no_reverse_manager_moves_an_entity_to_another_type_or_taxon(db, path):
+    """Django's reverse add() writes with one plain update(); through a
+    GuardedForeignKey it saves each entity, whose save() refuses."""
+    entity = EntityFactory()
+    protein = EntityTypeFactory(slug="protein")
+    fly = TaxonFactory(taxid=7227, scientific_name="Drosophila melanogaster")
+    before = entity_row(entity)
+    with pytest.raises(ImmutableRecordError, match=r"Entity\.(entity_type|taxon)"):
+        PATHS_BY_MANAGER[path](entity, protein, fly)
+    assert entity_row(entity) == before
+    assert not protein.entities.exists() and not fly.entities.exists()
+
+
+def test_an_entity_is_never_upserted(db):
+    entity = EntityFactory()
+    again = Entity(
+        entity_type=EntityTypeFactory(slug="protein"),
+        identity_key=entity.identity_key,
+        label="moved",
+        label_key="MOVED",
+        taxon=entity.taxon,
+    )
+    with pytest.raises(ImmutableRecordError, match="update_conflicts"):
+        Entity.objects.bulk_create(
+            [again],
+            update_conflicts=True,
+            unique_fields=["identity_key"],
+            update_fields=["entity_type"],
+        )
+    assert entity_row(entity)["entity_type_id"] == "gene"
+
+
+def test_an_entitys_label_and_description_still_change(db):
+    entity = EntityFactory()
+    entity.label = "Renamed"
+    entity.save()
+    Entity.objects.filter(pk=entity.pk).update(description="Plain text.")
+    entity.label_key = "RENAMED"
+    Entity.objects.bulk_update([entity], ["label_key"])
+    row = entity_row(entity)
+    assert (row["label"], row["label_key"], row["description"]) == (
+        "Renamed",
+        "RENAMED",
+        "Plain text.",
+    )
+
+
+def test_create_entity_reads_its_type_and_namespace_as_stored(registry):
+    # Rows given by the caller are read again: their attributes in memory are
+    # never trusted.
+    stale = EntityType.objects.get(slug="gene")
+    stale.taxon_policy = "forbidden"
+    namespace = IdentifierNamespace.objects.get(slug="hgnc")
+    namespace.fixed_taxon_id = 7227
+    gene = create_entity(stale, "TP53", 9606, namespace, "HGNC:11998")
+    assert (gene.entity_type_id, gene.taxon_id) == ("gene", 9606)
+
+
+@pytest.mark.postgres
+def test_create_entity_holds_its_type_and_namespace_in_shared_mode(registry):
+    """So graph_sync_registry, which locks a row before changing it, waits
+    for the entity to commit and then counts it."""
+    with CaptureQueriesContext(connection) as queries:
+        create_entity("protein", "TP53", 9606, "uniprotkb", "P04637")
+    sql = [query["sql"] for query in queries.captured_queries]
+    shared = [n for n, text in enumerate(sql) if "FOR SHARE" in text]
+    inserting = [
+        n for n, text in enumerate(sql) if 'INSERT INTO "graph_entity"' in text
+    ]
+    assert len(shared) == 2 and inserting
+    assert '"graph_entitytype"' in sql[shared[0]]
+    assert '"graph_identifiernamespace"' in sql[shared[1]]
+    assert shared[1] < inserting[0]
