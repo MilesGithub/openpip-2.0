@@ -19,6 +19,16 @@ the encodes and isoform_of links between their genes, proteins and
 isoforms; with methods of each role, publications, scores and contexts.
 PSICQUIC still serves the two legacy interactions and nothing typed.
 
+A lab's next release of that dataset is then registered from its files with
+graph_register_release, approved for internal use, and dry-run with
+graph_import, as an operator would. Its rows state the same strings: rows
+that map to the typed entities and conflict with the published evidence, a
+cross-reference that is only a candidate, an identifier a commit would
+create an entity for, a new isoform pair, a rejected row and two unstored
+ones, citing the legacy dataset's PubMed id. The dry run writes only its
+import run and the release's source records, and the legacy responses, the
+legacy row counts and PSICQUIC stay as they were.
+
 The typed records point at the legacy user table only through SET_NULL keys
 with a username kept beside each, so deleting an account in the Django admin
 still works.
@@ -26,6 +36,7 @@ still works.
 
 import datetime
 import io
+import json
 
 import pytest
 from django.apps import apps
@@ -77,6 +88,7 @@ from graph.models import (
     Permission,
     Polarity,
     PublicationRole,
+    RecordStatus,
     Relationship,
     RelationshipFamily,
     RelationshipType,
@@ -90,6 +102,7 @@ from graph.models import (
     ShareAlike,
     SourceDataset,
     SourceDatasetPublication,
+    SourceRecord,
     UsageApproval,
 )
 from graph.publications import get_or_create_publication
@@ -102,6 +115,7 @@ from graph.tests.factories import (
     SourceFileFactory,
     SourceRecordFactory,
 )
+from graph.tests.ingest_helpers import tsv
 from graph.visibility import Purpose, visible_release_ids
 from interactions.models import InteractionInteractionNetworks, InteractionNetwork
 from interactions.tests.factories import (
@@ -224,6 +238,98 @@ TYPED_ONLY = (
     "ECO:0000353",
     "HCT116",
 )
+# The lab's next release of the compat dataset, v4, as its canonical_tsv_v1
+# file states it from line 2 on: by the typed entities' identifiers, the
+# legacy strings among them.
+LAB_REGULATION = {
+    "subject_namespace": "hgnc",
+    "subject_id": "HGNC:11998",
+    "subject_type": "gene",
+    "subject_taxon": "9606",
+    "object_namespace": "hgnc",
+    "object_id": "HGNC:6973",
+    "object_type": "gene",
+    "object_taxon": "9606",
+    "relationship_type": "transcriptional_regulation",
+    "outcome": "supported",
+    "evidence_basis": "experimental",
+    "assertion_method": "manual_assertion",
+}
+LAB_BINDING = {
+    **LAB_REGULATION,
+    "subject_namespace": "uniprotkb",
+    "subject_id": "P04637",
+    "subject_type": "protein",
+    "object_namespace": "uniprotkb",
+    "object_id": "Q00987",
+    "object_type": "protein",
+    "relationship_type": "physical_interaction",
+}
+LAB_INHIBITS = {
+    **LAB_REGULATION,
+    "record_id": "compat-lab-1",
+    "effect": "inhibiting",
+    "method": "MI:0402",
+    "publications": "pmid:12345678",
+}
+LAB_ROWS = [
+    # TP53 inhibiting MDM2, citing the legacy dataset's paper: against v2's
+    # activating finding, an effect conflict.
+    LAB_INHIBITS,
+    # Not detected in a two-hybrid test: against v2's physical association,
+    # an outcome conflict.
+    {
+        **LAB_BINDING,
+        "record_id": "compat-lab-2",
+        "outcome": "tested_absent",
+        "interaction_type": "MI:0915",
+        "method": "MI:0018",
+        "publications": "ref:compat-lab-paper",
+    },
+    # TP53's NCBI Gene id, which only a cross-reference holds: a candidate,
+    # so the record is unresolved.
+    {
+        **LAB_REGULATION,
+        "record_id": "compat-lab-3",
+        "subject_namespace": "ncbigene",
+        "subject_id": "7157",
+    },
+    # An HGNC id that no entity holds: a commit with --create-entities
+    # would create it.
+    {
+        **LAB_REGULATION,
+        "record_id": "compat-lab-4",
+        "object_id": "HGNC:999999",
+        "object_label": "Compat lab gene",
+    },
+    # TP53's isoform binding MDM2: a new relationship.
+    {
+        **LAB_BINDING,
+        "record_id": "compat-lab-5",
+        "subject_id": "P04637-2",
+        "subject_type": "protein_isoform",
+        "interaction_type": "MI:0407",
+    },
+    # "negative" is no effect: rejected.
+    {**LAB_REGULATION, "record_id": "compat-lab-6", "effect": "negative"},
+    # Unstored: a record id no record is stored by, and line 2 again.
+    {**LAB_REGULATION, "record_id": "-compat-lab"},
+    LAB_INHIBITS,
+]
+LAB_MANIFEST = {
+    "publications": {
+        "compat-lab-paper": {
+            "title": "Compat lab paper",
+            "year": 2026,
+            "is_synthetic": False,
+        }
+    },
+    "terms": {
+        curie: TERMS[curie] for curie in ("MI:0018", "MI:0402", "MI:0407", "MI:0915")
+    },
+}
+# Strings only the lab release's files hold.
+LAB_ONLY = ("compat-lab", "HGNC:999999", "Compat lab")
 
 
 def protein(gene_name, uniprot_id, ensembl_id, entrez_id, organism):
@@ -243,6 +349,16 @@ def protein(gene_name, uniprot_id, ensembl_id, entrez_id, organism):
         )
     ProteinOrganism.objects.create(protein=made, organism=organism)
     return made
+
+
+@pytest.fixture(autouse=True)
+def graph_files_root(settings, tmp_path):
+    """Release files these tests store go under a temporary directory, never
+    under the real GRAPH_FILES_ROOT (backend/graph_files in a checkout, which
+    the dev stack bind-mounts). graph.storage reads the setting when it
+    runs."""
+    settings.GRAPH_FILES_ROOT = tmp_path / "graph_files"
+    return settings.GRAPH_FILES_ROOT
 
 
 @pytest.fixture
@@ -321,16 +437,39 @@ def home_network_keys() -> set[str]:
     return set(response.json())
 
 
-def legacy_row_counts() -> dict[str, int]:
+def row_counts(left_out=()) -> dict[str, int]:
+    """{table: its row count}, for every table but those of the apps left
+    out."""
     counts = {}
     with connection.cursor() as cursor:
         for model in apps.get_models(include_auto_created=True):
-            if model._meta.app_label in TYPED_APPS or model._meta.proxy:
+            if model._meta.app_label in left_out or model._meta.proxy:
                 continue
             table = model._meta.db_table
             cursor.execute(f"SELECT COUNT(*) FROM {connection.ops.quote_name(table)}")
             counts[table] = cursor.fetchone()[0]
     return counts
+
+
+def legacy_row_counts() -> dict[str, int]:
+    return row_counts(left_out=TYPED_APPS)
+
+
+def table_contents(left_out=("graph_importrun", "graph_sourcerecord")) -> dict:
+    """{table: its rows in primary-key order}, for every table but those
+    left out, so that an updated row shows as well as a new one."""
+    contents = {}
+    quote = connection.ops.quote_name
+    with connection.cursor() as cursor:
+        for model in apps.get_models(include_auto_created=True):
+            table = model._meta.db_table
+            if model._meta.proxy or table in left_out:
+                continue
+            cursor.execute(
+                f"SELECT * FROM {quote(table)} ORDER BY {quote(model._meta.pk.column)}"
+            )
+            contents[table] = cursor.fetchall()
+    return contents
 
 
 def release_with_terms(dataset, version, paper, approver, supersedes=None, records=()):
@@ -366,6 +505,13 @@ def release_with_terms(dataset, version, paper, approver, supersedes=None, recor
                 record_key=key,
                 raw=RECORDS[key],
             )
+    record_open_terms(release, approver)
+    return release
+
+
+def record_open_terms(release, approver):
+    """Open terms recorded for the release, and its dataset's due diligence
+    confirmed after them, by the approver."""
     record_licence(
         release,
         recorded_by=approver,
@@ -378,8 +524,7 @@ def release_with_terms(dataset, version, paper, approver, supersedes=None, recor
         share_alike=ShareAlike.NO,
         attribution="Compat, PubMed 12345678.",
     )
-    confirm_due_diligence(dataset.due_diligence, by=approver)
-    return release
+    confirm_due_diligence(release.dataset.due_diligence, by=approver)
 
 
 def decide(release, scope, approver):
@@ -748,6 +893,71 @@ def add_evidence(release, entities, approver):
     decide(v3, ApprovalScope.INTERNAL, approver)
 
 
+def register_and_dry_run(directory, approver) -> ImportRun:
+    """The lab's release v4 of the compat dataset, after add_typed_rows: its
+    files (LAB_ROWS and LAB_MANIFEST) registered with graph_register_release,
+    open terms and an internal approval recorded by the approver, then
+    dry-run with graph_import --dry-run --create-entities, with a report
+    file. The dry run writes only its import run and the release's source
+    records, which this checks over every table, typed and legacy. Returns
+    the run."""
+    folder = directory / "incoming"
+    folder.mkdir()
+    data = folder / "compat-lab.tsv"
+    data.write_bytes(tsv(*LAB_ROWS))
+    manifest = folder / "manifest.json"
+    manifest.write_text(json.dumps(LAB_MANIFEST))
+    call_command(
+        "graph_register_release",
+        "--dataset",
+        "compat",
+        "--version",
+        "v4",
+        "--adapter",
+        "canonical_tsv_v1",
+        "--file",
+        str(data),
+        "--manifest",
+        str(manifest),
+        "--taxon",
+        "9606",
+        "--as",
+        approver.username,
+        stdout=io.StringIO(),
+    )
+    release = DatasetRelease.objects.get(dataset__slug="compat", version="v4")
+    record_open_terms(release, approver)
+    decide(release, ApprovalScope.INTERNAL, approver)
+
+    before = row_counts()
+    contents = table_contents()
+    out = io.StringIO()
+    call_command(
+        "graph_import",
+        "--release",
+        str(release.pk),
+        "--dry-run",
+        "--create-entities",
+        "--report-file",
+        str(directory / "report.jsonl"),
+        "--as",
+        approver.username,
+        stdout=out,
+    )
+    after = row_counts()
+    changed = {
+        table: after[table] - before[table]
+        for table in after
+        if after[table] != before[table]
+    }
+    assert changed == {"graph_importrun": 1, "graph_sourcerecord": 6}
+    # Nor is any other row updated.
+    assert table_contents() == contents
+    run = ImportRun.objects.get(release=release, mode=ImportMode.DRY_RUN)
+    assert f"Dry run {run.pk} of release {release.pk}: ok." in out.getvalue()
+    return run
+
+
 def test_legacy_responses_are_byte_identical_with_typed_rows_present(
     legacy, regular_user, admin_user, settings
 ):
@@ -826,6 +1036,83 @@ def test_legacy_responses_are_byte_identical_with_typed_rows_present(
         assert typed not in tab28, typed
 
 
+def test_legacy_responses_are_byte_identical_after_a_registration_and_a_dry_run(
+    legacy, regular_user, admin_user, settings, tmp_path
+):
+    before = legacy_responses(regular_user, legacy)
+    home_keys = home_network_keys()
+    counts = legacy_row_counts()
+    assert all(status == 200 for status, _ in before.values()), {
+        name: status for name, (status, _) in before.items()
+    }
+
+    add_typed_rows(settings, approver=admin_user)
+    run = register_and_dry_run(tmp_path, admin_user)
+    # The dry run read the typed rows that hold the legacy strings.
+    report = run.report
+    assert (run.state, report["verdict"]) == (ImportState.COMPLETED, "ok")
+    assert dict(
+        SourceRecord.objects.filter(release=run.release).values_list(
+            "record_key", "status"
+        )
+    ) == {
+        "compat-lab-1": RecordStatus.MAPPED,
+        "compat-lab-2": RecordStatus.MAPPED,
+        "compat-lab-3": RecordStatus.UNRESOLVED,
+        "compat-lab-4": RecordStatus.MAPPED,
+        "compat-lab-5": RecordStatus.MAPPED,
+        "compat-lab-6": RecordStatus.REJECTED,
+    }
+    assert [
+        (entry["line"], entry["codes"]) for entry in report["unstored"]["entries"]
+    ] == [(8, ["bad_record_id"]), (9, ["duplicate_record"])]
+    [candidate] = [
+        entry
+        for entry in report["identifiers"]["entries"]
+        if entry["status"] == "candidate"
+    ]
+    assert (candidate["namespace"], candidate["lookup"]) == ("ncbigene", "7157")
+    assert [found["primary"] for found in candidate["candidates"]] == [
+        "hgnc:HGNC:11998"
+    ]
+    [planned] = report["would_create"]["entries"]
+    assert (planned["identity_key"], planned["label"]) == (
+        "hgnc|t:9606|HGNC:999999",
+        "Compat lab gene",
+    )
+    v2 = DatasetRelease.objects.get(version="v2")
+    assert {
+        entry["relationship"]["type"]: (entry["kinds"], entry["other_release"])
+        for entry in report["conflicts"]["entries"]
+    } == {
+        "transcriptional_regulation": (["effect"], v2.pk),
+        "physical_interaction": (["outcome"], v2.pk),
+    }
+    assert (report["relationships"]["existing"], report["relationships"]["new"]) == (
+        2,
+        2,
+    )
+    assert {
+        (entry["kind"], entry["value"]): entry["status"]
+        for entry in report["publications"]["entries"]
+    } == {("pmid", "12345678"): "found", ("local", "compat-lab-paper"): "new"}
+
+    assert legacy_row_counts() == counts
+    after = legacy_responses(regular_user, legacy)
+    for name in before:
+        assert after[name] == before[name], f"{name} changed"
+    assert home_network_keys() == home_keys
+    assert legacy_row_counts() == counts
+    # PSICQUIC serves the two legacy interactions, and nothing the release
+    # states.
+    tab28 = after["psicquic tab28"][1].decode()
+    header, *rows = tab28.split("\n")
+    assert header.startswith("#") and len(rows) == 2
+    assert after["psicquic count"][1] == b"2"
+    for typed in (*TYPED_ONLY, *LAB_ONLY):
+        assert typed not in tab28, typed
+
+
 def actors(model, name) -> set:
     """(account id, username snapshot) pairs of one actor field."""
     return set(model.objects.values_list(f"{name}_id", f"{name}_username"))
@@ -833,9 +1120,11 @@ def actors(model, name) -> set:
 
 @pytest.mark.parametrize("switch", [False, True], ids=["switch off", "switch on"])
 def test_deleting_a_legacy_user_in_the_django_admin_keeps_the_typed_records(
-    legacy, admin_user, settings, client, switch
+    legacy, admin_user, settings, client, tmp_path, switch
 ):
     add_typed_rows(settings, approver=admin_user)
+    # The account also registered a release and dry-ran it.
+    register_and_dry_run(tmp_path, admin_user)
     settings.TYPED_GRAPH_ENABLED = switch
     approvals = UsageApproval.objects.count()
     assertions = EvidenceAssertion.objects.count()
@@ -860,6 +1149,7 @@ def test_deleting_a_legacy_user_in_the_django_admin_keeps_the_typed_records(
     assert actors(ReleaseLicence, "recorded_by") == {(None, username)}
     assert actors(DueDiligenceChange, "changed_by") == {(None, username)}
     assert actors(ImportRun, "triggered_by") == {(None, username)}
+    assert ImportRun.objects.filter(mode=ImportMode.DRY_RUN).count() == 1
     assert (None, username) in actors(DatasetRelease, "published_by")
 
 

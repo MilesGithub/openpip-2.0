@@ -200,3 +200,11 @@ CELERY_RESULT_EXPIRES = 3600  # 1 hour
 # its commands refuse to write. The app is installed and migrated either way,
 # so the migration state never depends on the switch.
 TYPED_GRAPH_ENABLED = env.bool("TYPED_GRAPH_ENABLED", default=False)
+
+# Private storage for the typed graph's release files (graph.storage), laid out
+# as releases/<release>/<sha256>/content. Outside MEDIA_ROOT and STATIC_ROOT,
+# because MEDIA_ROOT is served when DEBUG is on, and no URL pattern serves it.
+# Deliberately not read from the environment. Production keeps it in the
+# graph_files volume (docker-compose.prod.yml); it never belongs in a commit
+# or an image (.gitignore, backend/.dockerignore).
+GRAPH_FILES_ROOT = BASE_DIR / "graph_files"

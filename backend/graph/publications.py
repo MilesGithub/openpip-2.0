@@ -14,18 +14,19 @@ the call.
 Identifiers are stored normalized, by the functions below, each citing the
 authority its rule comes from. The Publication model refuses any other form
 on every write path.
+
+find_publications finds the rows that identifiers name, read-only and
+without a lock: an import's dry run reads what its commit would attach to,
+and get_or_create_publication finds its candidates with it.
 """
 
 import re
 import string
 from dataclasses import dataclass
-from functools import reduce
-from operator import or_
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 
 from .models import HTTP_URL, ImmutableRecordError, Publication, SourceDataset
 
@@ -171,6 +172,66 @@ IDENTIFIER_NORMALIZERS = {
 }
 # The lookup each identifier is matched by, in identity precedence.
 PRECEDENCE = ("pmid", "doi_lookup", "pmcid", "imex_id")
+# The kind find_publications names each lookup by, as a paper key does
+# (graph.claims.STATED_IDENTIFIERS), and how a stated value becomes it.
+LOOKUP_KINDS = {
+    "pmid": ("pmid", normalize_pmid),
+    "doi_lookup": ("doi", lambda value: doi_lookup(normalize_doi(value))),
+    "pmcid": ("pmcid", normalize_pmcid),
+    "imex_id": ("imex", normalize_imex),
+}
+
+
+def find_publications(
+    *, pmids=(), dois=(), pmcids=(), imex_ids=(), local=(None, ())
+) -> dict:
+    """{(kind, value): publication} for the stored papers these identifiers
+    name. Read-only and taking no lock, so an import's dry run finds what its
+    commit would attach to; get_or_create_publication finds rows the same
+    way, then locks the one it attaches to.
+
+    Each value is normalized as the rows store it, and keyed in that form,
+    as a paper key states it (graph.claims): ("pmid", "17081976"), ("doi",
+    the DOI with its ASCII letters lower-cased), ("pmcid", "PMC2600426"),
+    ("imex", "IM-11990"), ("local", key). local is (dataset, keys): a local
+    key is looked up only within its own dataset, a row or its id. A value no
+    row holds is absent; one that is not an identifier of its kind raises
+    PublicationError. One query per kind of identifier given.
+    """
+    found = {}
+    for name, values in (
+        ("pmid", pmids),
+        ("doi_lookup", dois),
+        ("pmcid", pmcids),
+        ("imex_id", imex_ids),
+    ):
+        kind, normalize = LOOKUP_KINDS[name]
+        wanted = {normalize(value) for value in _values(values, kind)}
+        if not wanted:
+            continue
+        for row in Publication.objects.filter(**{f"{name}__in": wanted}):
+            found[kind, getattr(row, name)] = row
+    dataset, keys = local
+    keys = {_text(key, "local key") for key in _values(keys, "local key")}
+    keys.discard("")
+    if keys:
+        dataset_id = _dataset_id(dataset)
+        if dataset_id is None:
+            raise PublicationError(
+                "A local key is unique within its dataset: give the dataset too."
+            )
+        rows = Publication.objects.filter(
+            local_dataset_id=dataset_id, local_key__in=keys
+        )
+        for row in rows:
+            found["local", row.local_key] = row
+    return found
+
+
+def _values(values, kind) -> list:
+    if isinstance(values, (str, bytes)):
+        raise TypeError(f"The {kind} values are a list of strings, not {values!r}.")
+    return list(values)
 
 
 # ── One row per paper ───────────────────────────────────────────────────────
@@ -349,31 +410,24 @@ def _year(value):
 
 def _attach(keys, dataset_id, local_key):
     """The row the call attaches to, by identity precedence, locked; None
-    when none matches."""
-    conditions = [Q(**{name: value}) for name, value in keys.items() if value]
-    if local_key:
-        conditions.append(Q(local_dataset_id=dataset_id, local_key=local_key))
-    rows = list(Publication.objects.filter(reduce(or_, conditions)).order_by("pk"))
+    when none matches. The rows are found by find_publications."""
+    found = find_publications(
+        pmids=[keys["pmid"]] if keys["pmid"] else (),
+        dois=[keys["doi_lookup"]] if keys["doi_lookup"] else (),
+        pmcids=[keys["pmcid"]] if keys["pmcid"] else (),
+        imex_ids=[keys["imex_id"]] if keys["imex_id"] else (),
+        local=(dataset_id, [local_key] if local_key else ()),
+    )
     chosen = next(
         (
-            row
+            found[LOOKUP_KINDS[name][0], keys[name]]
             for name in PRECEDENCE
-            if keys[name]
-            for row in rows
-            if getattr(row, name) == keys[name]
+            if keys[name] and (LOOKUP_KINDS[name][0], keys[name]) in found
         ),
         None,
     )
-    if chosen is None:
-        chosen = next(
-            (
-                row
-                for row in rows
-                if local_key
-                and (row.local_dataset_id, row.local_key) == (dataset_id, local_key)
-            ),
-            None,
-        )
+    if chosen is None and local_key:
+        chosen = found.get(("local", local_key))
     if chosen is None:
         return None
     return Publication.objects.select_for_update().filter(pk=chosen.pk).first()

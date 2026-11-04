@@ -250,7 +250,7 @@ empty registry tables. The Django admin shows registries read-only.
 | `IdentifierNamespace` | slug, label, CURIE prefix, allowed entity types (M2M), scope (`global` / `taxon` / `assembly`), fixed taxon for organism-owned nomenclatures, case policy (`exact` / `upper` / `insensitive`), version policy, `defines_identity` (an import run with `--create-entities` may create entities of its types; section 4.1), pattern, URL template, the authority document its rules were copied from |
 | `RelationshipType` | slug, label, a definition saying what the edge claims and what it does not, family (G3's check lists every family of section 4.2, so a later family needs no constraint change), orientation (`symmetric` / `directed` / `role_ordered`), polarity (`none` / `effect` / `genetic_sign`), allowed subject and object types (M2M) with role labels, identity qualifiers (none in G3: every type declares `[]` until P2), whether self-pairs are allowed, PSI-MI crosswalk anchors, display tokens, `is_reference` (a link between entity layers rather than an evidence-backed claim) |
 | `ScoreType` | slug (`<source>:<name>` or `stats:<name>`), label, definition, value kind (`probability`, `p_value`, `q_value`, `rank`, `count`, `continuous`), direction (`higher_is_stronger`, `lower_is_stronger`, `signed`, `unordered`), range, unit, null model, defining document, `comparable_across_datasets` (default false) |
-| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (the primary key, in canonical form such as `MI:0915` or `ECO:0000353`; `graph.terms` accepts the MI and ECO prefixes, and others arrive with the first adapter that maps them), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …; derived from the prefix by code, with no database check, so an ontology is added without a constraint change), label, the release whose commit supplied the label (`label_release`, written only when the term is created, and on every insert path only naming a draft release; a term never changes, so it keeps naming that release after the release moves past draft, and is emptied only if that draft release is deleted), definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one. G3 creates one only inside a commit that may record evidence (a draft release, a running commit run, an effective `internal` approval unless the release is synthetic), race-safely; a term keeps its first label, and a later label that differs, or one that differs from the PSI-MI crosswalk's, is reported and never written. A crosswalk term keeps the crosswalk's label, and `label_release` names the release whose commit created the term only when that commit stated the crosswalk's label; otherwise it stays empty, even after a later release states that label. A label is shown beside real evidence only while the release that supplied it is visible to the caller and not synthetic (D12), so the synthetic demo never labels a term that real evidence names. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1), a subset of G3's PSI-MI physical crosswalk (D20); V1 is what later lets crosswalks and filters work by subtree |
+| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (the primary key, in canonical form such as `MI:0915` or `ECO:0000353`; `graph.terms` accepts the MI and ECO prefixes, and others arrive with the first adapter that maps them), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …; derived from the prefix by code, with no database check, so an ontology is added without a constraint change), label, the release whose commit supplied the label (`label_release`, written only when the term is created, and on every insert path only naming a draft release; a term never changes, so it keeps naming that release after the release moves past draft, and is emptied only if that draft release is deleted), definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one; in G4 a release's manifest declares every CURIE its rows use, with the source's label, which is the label its commit passes (section 8). G3 creates one only inside a commit that may record evidence (a draft release, a running commit run, an effective `internal` approval unless the release is synthetic), race-safely; a term keeps its first label, and a later label that differs, or one that differs from the PSI-MI crosswalk's, is reported and never written. A crosswalk term keeps the crosswalk's label, and `label_release` names the release whose commit created the term only when that commit stated the crosswalk's label; otherwise it stays empty, even after a later release states that label. A label is shown beside real evidence only while the release that supplied it is visible to the caller and not synthetic (D12), so the synthetic demo never labels a term that real evidence names. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1), a subset of G3's PSI-MI physical crosswalk (D20); V1 is what later lets crosswalks and filters work by subtree |
 
 **At most one identity namespace per entity type and taxon.** For each
 entity type and taxon, at most one namespace defines identity:
@@ -387,9 +387,9 @@ scan. Django limits index names to 30 characters.
 | `Publication` | pmid, doi (as given) and `doi_lookup` (lower case), pmcid, imex id, title, authors, journal, year, url, `is_synthetic` (fixed when the row is created; G3), and `local_key` with `local_dataset` (FK SourceDataset, null) for a publication that has none of those identifiers | partial unique on each identifier when not blank, and on (local_dataset, local_key) when `local_key` is not blank. Identifiers of one paper in one row are merged into one publication; for example IntAct's `imex:IM-11990\|pubmed:17081976` is one paper. A local key comes from the release manifest (section 8), so a title-only paper, such as the fixture's synthetic ones, is the same row in every release of its dataset |
 | `SourceDatasetPublication`, `ReleasePublication` | dataset or release, publication, role (`primary`, `describes`, `update`, `erratum`, `related`) | unique (parent, publication, role) |
 | `DatasetRelease` | dataset, version (the source's label, URL-safe), release date, retrieved at, source URL, `kind` (`evidence` or `reference`, declared by the adapter's spec), status (`draft`, `staged`, `published`, `superseded`, `withdrawn`), `supersedes` (a foreign key to the release it corrects, which has the same dataset and `is_synthetic`), `is_synthetic`, `embargo_until`, declared taxa (M2M through `ReleaseTaxon`), adapter, adapter version and mapping version, `store_raw_rows` (default true), `stats` (JSON, computed at commit), withdrawn at and reason | unique (dataset, version). `supersedes` is unique among releases that were published, so a release is corrected by at most one, and a correction withdrawn before it was published frees the release it named (G2) |
-| `SourceFile` | release, role (`data`, `entities`, `manifest`, `readme`, `licence_text`, `supplementary`), original name, storage path, media type, size, sha256, retrieved from | unique (release, sha256); several files per release |
-| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters, checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it `abandoned` |
-| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues | unique (release, record_key). Status and issues are the only fields a later dry run or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable. A record that evidence was recorded from stays `mapped`, since its assertions rest on that mapping (G3) |
+| `SourceFile` | release, role (`data`, `entities`, `manifest`, `readme`, `licence_text`, `supplementary`), original name (text only, which never builds a path; G4), storage path (exactly `releases/<release id>/<sha256>/content`; G4), media type, size, sha256, retrieved from | unique (release, sha256); several files per release |
+| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters (a dry run's: `create_entities`, the resolution file's SHA-256 and entries, the registry version; G4), checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it `abandoned`. A dry run runs only on a draft, never beside an open commit run (G4) |
+| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues (at most 20 `{code, field, message, line, severity}`, then `{"code": "more", "count": n}`, its `conflicting_duplicate` issues always among those kept; G4) | unique (release, record_key). Status and issues are the only fields a later dry run (of a draft; G4) or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable. A record that evidence was recorded from stays `mapped`, since its assertions rest on that mapping (G3). A line without a trustworthy record id or values (unreadable, the wrong number of fields, an oversized field, a malformed id, or a later line of a record id already read) gets no record; the report lists it by its line (G4) |
 
 **Superseded releases.** A release becomes `superseded` in the same
 transaction that publishes the release naming it in `supersedes`, and it is
@@ -413,14 +413,27 @@ private:
 
 The files go under a new setting, `GRAPH_FILES_ROOT`, which defaults to
 `BASE_DIR / "graph_files"` and is not read from the environment. They are laid
-out as `releases/<release>/<sha256>/`. No URL pattern serves that root.
+out as `releases/<release id>/<sha256>/content` (G4), directories mode 0700
+and files 0600, the path `SourceFile.storage_path` records exactly; the name
+a file came with stays text. No URL pattern serves that root.
 
+- G4 streams a file in fixed-size chunks into `incoming/`, outside any
+  transaction, hashing and counting as it writes and stopping at its size
+  limit. The registration's one short transaction then creates the release
+  and places its files, and a failure removes every file it placed. A stored
+  file is read only after its recorded path, its type (a regular file, never
+  a symbolic link), its size and its SHA-256 are checked, on the descriptor
+  that is then read.
 - G4 adds a `graph_files` volume for `backend` and `celery` to
-  `docker-compose.prod.yml`, which today persists only `media:/app/mediafiles`
-  (lines 35-36 and 48-49).
+  `docker-compose.prod.yml`, which persisted only `media:/app/mediafiles`.
 - It also adds `backend/graph_files/` to `.gitignore`, because the dev stack
-  bind-mounts `./backend` (`docker-compose.yml:41-42`).
-- A G4 test asserts that the root is not inside `MEDIA_ROOT` or `STATIC_ROOT`.
+  bind-mounts `./backend` (`docker-compose.yml:41-42`), and `graph_files/`
+  to `backend/.dockerignore`, so release files reach no commit and no image.
+- G4's tests assert that the root neither lies inside nor contains
+  `MEDIA_ROOT` or `STATIC_ROOT`, that no URL pattern serves it, that
+  traversal URLs under `/media/` and `/static/` answer 400 or 404 and never
+  the file (Django 5.0.6's `serve()` answers `..` with a 400), and that the
+  production compose file mounts it.
 
 Release files are never served directly. Exports go through the bulk-download
 gate.
@@ -764,14 +777,19 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   identifier, and a record's status follows from them:
   - a record whose identifiers all map is `mapped`. An identifier maps when
     it is `resolved`, or when it is a `candidate` that an adapter rule or a
-    reviewed resolution file accepts (Creation, below). The dry-run report
-    lists every record mapped through a candidate;
+    reviewed resolution file accepts (Creation, below). Until RF1a stores
+    the identifiers that the rules `xref_unique` and `alias_unique` read,
+    only a resolution file accepts one (G4). The dry-run report lists every
+    record mapped through a candidate;
   - an `unmatched` identifier, or a `candidate` that nothing accepts, makes
     the record `unresolved`, with any candidate listed;
   - an `ambiguous` identifier makes the record `ambiguous`, with its
     candidates;
   - a record that fails validation is `rejected`, and one the adapter
     deliberately does not import is `skipped`.
+
+  A record to which several of these apply takes the first of `rejected`,
+  `ambiguous`, `unresolved` and `mapped` (G4).
 
   No mapping is invented. The legacy resolvers, which
   disagree with one another (`backend/interactions/search_service.py:159-177`,
@@ -789,7 +807,13 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   - any other release creates `provisional` entities. A reference release that
     later states the identifier makes the entity `active` (RF1a). G2's
     `create_entity(release=...)` records the release that created each
-    entity, the first writer, and nothing more.
+    entity, the first writer, and nothing more. G4 gives these rules
+    read-only forms that `create_entity` itself calls:
+    `graph.entities.identifier_problem` (the value is an identifier of its
+    namespace for the stated type and taxon) and `creation_problem` (it
+    would create an entity); and `graph.publications.find_publications`,
+    through which `get_or_create_publication` finds its rows. The dry run
+    asks them what a commit would do.
 
   A value that an existing entity of the declared type and taxon already
   holds, in any role, never creates a new entity. The record then maps only
@@ -797,7 +821,11 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   an adapter rule or a resolution file accepts, or not at all, when it is
   reported with its candidates. A UniProtKB accession that is now another
   entry's secondary accession is therefore reported, never turned into a
-  new entity. The dry run lists every entity a commit would create. Without the flag, a record whose
+  new entity. The dry run lists every entity a commit would create, with or
+  without the flag (G4): each is planned once per identity key, on every
+  side of every row that names it, and labelled by the first non-blank
+  label a mapped row gives it, else its identifier as written; a later,
+  different label is reported and never used. Without the flag, a record whose
   identifier names no entity stays `unresolved`. If the bridge is ever built,
   it too creates entities, from legacy UniProtKB accessions (D11).
 
@@ -832,8 +860,16 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
     assertions mapped through a UniProt release that has since been
     withdrawn.
 
+  G4's adapter protocol declares `isoform_specific`, and refuses `false`
+  until R2 implements this mapping; `canonical_tsv_v1` is isoform-specific,
+  taking each identifier as stated.
+
   The only other way to map a record is a reviewed resolution file: the
-  namespace, value, chosen entity, rationale and reviewer. It is kept in the
+  namespace, value, type and taxon, the chosen entity, rationale and
+  reviewer, and since G4 the chosen entity's own identifier, which must
+  resolve to exactly that entity, so a mistyped id is caught. An entry
+  applies only where the resolver gives no exact match, and one that
+  contradicts a `resolved` identifier rejects the record. It is kept in the
   import run's parameters and report, and recorded as basis `curated`. Every
   import run records, in its parameters, the reference releases its
   resolution used.
@@ -843,7 +879,11 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   `encodes`, just as a regulator stated as a gene is never upgraded to its
   protein (section 4.2). It is reported as `unresolved`, listing the gene and
   the protein entries that a visible mapping release links to it, unless a
-  reviewed resolution file maps it (open question B4).
+  reviewed resolution file maps it (open question B4). In G4's
+  `canonical_tsv_v1`, whose rows declare each endpoint's type, such a row is
+  rejected instead, by G3's endpoint-type rule (rule 2); the unresolved path,
+  with the linked protein entries as candidates, arrives with the adapters
+  of M1 and R2.
 - **Visibility.** An entity is visible only if a release the caller may see
   created it, states one of its identifiers (`EntityIdentifierSource`, from
   RF1a), or carries an assertion on one of its relationships. An entity whose
@@ -873,7 +913,7 @@ basis, method, score, context, publication, release and participant roles
 | Functional and statistical association | `functional_association`, `coexpression`, `coessentiality` (later) | Unordered | None | Not binding and not regulation; method and threshold on each assertion |
 | Phenotype and disease association (Phase 5) | `gene_disease_association`, `variant_phenotype_association`, `eqtl_association` | Role-ordered (subject, trait or gene); never drawn as causal | None by default. A type whose claim is defined by its context declares that facet as an identity qualifier; for example an eQTL type may include the tissue | Effect size, risk direction and p-values are typed scores |
 | Membership (P3) | `has_component`, `has_participant` | Ordered (container, member) | The member's role | Evidence-backed (method, publication, score, stoichiometry). Never expanded into all-to-all PPIs. The legacy `complex` tables (`backend/proteins/models.py:119-145`) carry no roles or evidence and are not bridged as PPIs |
-| Reference | `encodes` (gene → protein entry), `isoform_of` (protein isoform → protein entry), `transcribed_from`, `mature_form_of` | Role-ordered | None | Evidence comes from an approved, versioned release that states the link, such as a crosswalk or reference release, and never from shared identifiers or labels. The synthetic fixture states its own `encodes` links. These are the only links that cross entity layers, and they are what section 4.6 follows |
+| Reference | `encodes` (gene → protein entry), `isoform_of` (protein isoform → protein entry), `transcribed_from`, `mature_form_of` | Role-ordered | None | Evidence comes from an approved, versioned release that states the link, such as a crosswalk or reference release, and never from shared identifiers or labels. The synthetic fixture states its own `encodes` links. Until RF1a's reference adapters, G4's `canonical_tsv_v1` accepts these types only in a synthetic release, because a link a lab states would become mapping authority for B12 and X1 (section 8). These are the only links that cross entity layers, and they are what section 4.6 follows |
 
 Consequences:
 
@@ -925,10 +965,10 @@ every other. `not_applicable` is a summary value and is never stored.
 
 | Level | Key | Behaviour on re-import |
 |---|---|---|
-| Release | `(dataset, version)` | A known version with a different checksum is refused; it must be a new release |
+| Release | `(dataset, version)` | A known version with a different checksum is refused; it must be a new release. In G4, `graph_register_release` with the same files and options writes nothing, and puts back a stored copy that was lost or changed; a draft whose records hold no evidence takes the code's new adapter or mapping version, and its source records are deleted, to be read again by the next dry run; any other difference is refused, naming it |
 | Source file | `(release, sha256)` | A committed release's files never change |
-| Source record | `(release, record_key)`. The key is the source's own record id where it has one, else the line number in the checksummed file, else a content hash plus occurrence | Same key and same `raw_sha256`: no-op. Same key with different content in a committed release: hard error |
-| Assertion | `(source_record, assertion_key)`, content-derived | No-op, decided per record (G3): recording a record's claims again writes nothing when they give exactly the assertions the record holds, read back and compared (relationship, outcome, basis, method, effect, sign, terms, level, the source's wording, evidence group, qualifiers as canonical JSON text, and each kind of part as a set), and any difference is refused (`ClaimConflict`) with nothing written, because a stored assertion never changes. Keys come from each claim's key part and the identifiers the record states for its papers, never from stored rows (section 3.6). A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft`, then running a fresh dry run and commit. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
+| Source record | `(release, record_key)`. The key is the source's own record id where it has one, else the line number in the checksummed file, else a content hash plus occurrence | Same key and same `raw_sha256`: no-op. Same key with different content in a committed release: hard error. Within one file (G4), a later line with a key already read is stored nowhere: with the same content it is a duplicate, and with other content it also rejects the first line's record, naming both lines, so neither version is imported |
+| Assertion | `(source_record, assertion_key)`, content-derived | No-op, decided per record (G3): recording a record's claims again writes nothing when they give exactly the assertions the record holds, read back and compared (relationship, outcome, basis, method, effect, sign, terms, level, the source's wording, evidence group, qualifiers as canonical JSON text, and each kind of part as a set), and any difference is refused (`ClaimConflict`) with nothing written, because a stored assertion never changes. Keys come from each claim's key part and the identifiers the record states for its papers, never from stored rows (section 3.6). A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft`, then running a fresh dry run and commit. Before that dry run, re-registering the draft with G4's `graph_register_release` gives it the code's versions and deletes any source records left. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
 | Entity | `identity_key` | `ON CONFLICT DO NOTHING`, then re-select |
 | Relationship | `(relationship_type, subject, object, qualifier_key)` | `ON CONFLICT DO NOTHING`, then re-select. A batch's missing relationships are created in canonical order (type, subject id, object id; G3's `create_relationships`), so two commits that share pairs never deadlock |
 | Non-primary identifier (from RF1a) | `(entity, namespace, lookup, scope_key, role)` | `ON CONFLICT DO NOTHING`, then re-select |
@@ -2227,14 +2267,35 @@ All of them refuse to write while the switch is off.
   (section 3.3). `--check` writes nothing and exits 1 if the tables and the
   JSON differ in any way: a sync would write something, a change would be
   refused, or a row is missing from the JSON.
-- `graph_register_release --dataset --version --file [--source-url] [--synthetic]`.
+- `graph_register_release --dataset SLUG --version V --adapter NAME --file
+  PATH [--manifest PATH] [--source-url URL] [--release-date YYYY-MM-DD]
+  [--supersedes VERSION] [--taxon N ...] [--embargo-until ISO8601]
+  [--synthetic] [--no-raw-rows] --as USERNAME` (G4). It records the
+  adapter, its version, mapping version and kind on the draft release with
+  every option, so a dry run writes only its run and the records, and
+  stores the data file and the manifest privately (section 3.5). Data
+  sources, datasets, licence snapshots and due diligence are recorded in
+  the admin, and in G4 approvals with `graph.approvals.record_decision`
+  until `graph_approve`. Registering the same files and options again
+  writes nothing; a draft without evidence takes a new adapter version and
+  loses its records (section 4.4); any other difference is refused.
   `--synthetic` is checked, not trusted: the dry run rejects a synthetic
   release if any identifier uses a namespace or taxon other than the
   synthetic ones, or if it cites a PMID or DOI. Real data can therefore never
-  skip due diligence by being declared synthetic.
-- `graph_import --release --adapter --dry-run [--create-entities]
-  [--resolutions FILE]` and `graph_import --release --commit
-  [--create-entities] [--resolutions FILE]`.
+  skip due diligence by being declared synthetic. In G4 a synthetic
+  namespace is one fixed to taxon 32630, and the dry run also checks the
+  `SYN-` labels, the host taxa and the resolution targets of every readable
+  row, rejected rows included, and of every unstored row whose cells split
+  into the header's columns (a control character included, so G4 gives such
+  a line its cells though it stays unstored); any violation rejects its row
+  and refuses the release.
+- `graph_import --release ID --dry-run [--create-entities] [--resolutions
+  FILE] [--report-file PATH] --as USERNAME` (G4) and `graph_import --release
+  ID --commit [--create-entities] [--resolutions FILE] --as USERNAME` (G5).
+  The release names its adapter, so there is no `--adapter`; `--as` names
+  an active staff account, the run's `triggered_by`. A dry run runs on a
+  draft only, never while a commit run is open, and `--commit` is refused
+  until G5.
   - The commit is resumable: re-running it continues the release's open
     commit run, completed batches are no-ops through the idempotency keys,
     and the checkpoint only records progress.
@@ -2295,16 +2356,30 @@ All of them refuse to write while the switch is off.
 ## 8. Ingestion pipeline
 
 1. **Register.** Create the source dataset, a draft release and its licence
-   snapshot. The file is streamed and hashed into private storage.
+   snapshot. The file is streamed and hashed into private storage. In G4
+   the data source and the dataset are created in the admin;
+   `graph_register_release` creates the draft release, with the adapter
+   that reads it, its versions and kind, and stores its data file and
+   manifest (sections 3.5, 7.4); the licence snapshot and due diligence are
+   then recorded in the admin, and the `internal` approval with
+   `graph.approvals.record_decision` until G5's `graph_approve`.
 2. **Dry run.** `graph_import --dry-run` parses, validates and resolves. It
    writes only the `ImportRun` report and the source records with their
-   statuses.
+   statuses. In G4 it runs on a draft release only, never while a commit run
+   is open, and needs an effective `internal` approval unless the release is
+   synthetic. It reads the file in batches of at most 500 rows and 32 MiB,
+   planned outside any transaction and each written in one short
+   transaction that checks the release's state and the registry version
+   again.
 
    Validation covers:
    - namespaces, and endpoint types allowed for the relationship type;
    - the type's orientation (a stated `directed` column is only checked);
    - polarity, self-pairs and the taxon policy;
-   - finite scores and duplicate keys;
+   - finite scores and duplicate keys: in G4 `canonical_tsv_v1` rejects NaN
+     and infinity, in any spelling (`score_not_finite`), and other text that
+     is not a number, and keeps a censored value such as `<2.2e-16` with a
+     NULL value and a note, as G3 stores it;
    - no effect or sign on tested-absent or inconclusive rows.
 
    The claims are checked by G3's `graph.claims.check_claims`, which reads
@@ -2321,6 +2396,15 @@ All of them refuse to write while the switch is off.
    - conflicts with other releases (opposite effects, supported versus
      tested-absent), as information;
    - licence status, the adapter version and the registry version.
+
+   In G4 each list keeps 1,000 entries with its total, and the report a
+   16 MiB budget; `--report-file` writes the complete lists as JSON Lines,
+   and every curated mapping and candidate list is also noted on its source
+   record, so nothing the review needs is lost to a cap. The report's
+   verdict is `refused` when the file is refused (its stored copy, its
+   manifest, its encoding or header, or too many lines) or a synthetic
+   release breaks the synthetic rules; G5 refuses to commit a release whose
+   latest dry run was refused.
 3. **Review.** A person reads the report.
 4. **Commit.** `graph_import --commit` works in batches in `record_key` order,
    one transaction per batch.
@@ -2360,26 +2444,43 @@ semantic version, mapping version and a spec:
 - its columns and record-key strategy;
 - the namespaces, entity, relationship and score types it may emit;
 - which identifiers in a row are co-referent (the same publication under
-  several ids);
+  several ids; declared in G4 and refused until M1 implements it);
 - whether the source's analysis is isoform-specific (`isoform_specific`;
-  section 4.1);
+  section 4.1; `false` is declared in G4 and refused until R2 implements
+  it);
+- the PSI-MI interaction types it accepts, each with its D20 level: a
+  subset of G3's crosswalk at the levels it gives (G4);
 - a plain-language note of the changes it makes to the source's data, shown
   with each release's attribution, because CC BY and CC BY-SA require an
   indication of changes;
 - the release metadata it requires.
 
-It implements two methods:
+It implements these methods:
 
 - `iter_records(stream)`, which streams `RawRecord(line_number, record_key,
-  fields)`;
+  fields)`; in G4 `iter_records(stream, ctx)`, since the header's `score:`
+  columns are checked against the registry, and each record also carries
+  its key basis, `raw_sha256` and its reading issues;
 - `map_record(record, ctx)`, which returns proposed entity references,
-  claims (participants, methods, scores, context, publications) and issues.
+  claims (participants, methods, scores, context, publications) and issues;
+- in G4, `synthetic_issues(record, ctx)`, which checks, in a synthetic
+  release, a row that is not stored but whose values could be read (a value
+  too long, a malformed record id, a later line of a record id), so real
+  data is found on every row it can be read from (7.4).
 
 Adapters are pure: they write nothing to the database and make no network
-calls. They treat file content strictly as data: the `csv` module only,
-strict UTF-8 with per-row errors, and no `eval`, pickle or YAML tags. Limits:
-1 MB per line, 200 columns, 10,000 characters per field, 2 GB per file from
-the command line, and later 100 MB for web uploads.
+calls; in G4 they make no query at all, reading an in-memory snapshot of the
+registry that `ctx` carries. They treat file content strictly as data:
+strict UTF-8 with per-row errors, and no `eval`, pickle or YAML tags. G4
+reads bounded binary lines and splits them on tabs instead of using the
+`csv` module, whose quoting lets one record span physical lines and whose
+field limit raises mid-file, so the line limit holds before a value is
+kept. Limits: 1 MiB per line (the header included; a longer line is read to
+its end in bounded chunks, never held whole, and reported), 200 columns,
+10,000 characters per field, 50 papers or methods per cell, 5,000,000
+lines, 2 GiB per file from the command line, 8 MiB per manifest or
+resolution file and 10,000 resolution entries (G4), and later 100 MB for web
+uploads.
 
 **First adapter: `canonical_tsv_v1`**, documented in a new
 `docs/operator-guide/typed-data-format.md` that is added to the nav. Its
@@ -2387,21 +2488,38 @@ columns:
 
 - `record_id`;
 - `subject_namespace`, `subject_id`, `subject_type`, `subject_taxon` and
-  `subject_label`, with the matching `object_*` columns;
-- `relationship_type`, `outcome`, `evidence_basis`, `assertion_method` and
-  `effect`;
+  `subject_label`, with the matching `object_*` columns; an `hgnc` value
+  carries its `HGNC:` prefix, since a bare number could be an NCBI Gene ID
+  (G4);
+- `relationship_type`, `directed`, `outcome`, `evidence_basis`,
+  `assertion_method` and `effect`, and in G4 `genetic_sign`;
 - `method`; `interaction_type`, a PSI-MI CURIE from the adapter's own
   test-pinned list, which sets the assertion's D20 level (G4); and
   `publications`: `pmid:` or `doi:` CURIEs,
   or `ref:<key>` for a publication declared in the release's
-  `manifest.json`, joined by `|`. The manifest's `publications` table gives
+  `manifest.json`, joined by `|`, one identifier per paper (G4). The
+  manifest's `publications` table gives
   each local key a title, a year and `is_synthetic`. That is how a paper with
   no PMID or DOI, such as the fixture's synthetic ones, is cited and keyed
   (section 3.5);
+- in G4, `eco`, and `threshold`, the criteria a `not_significant` row
+  failed (section 4.3);
 - `score:<score_type>`, `context:<facet>` and `qualifier:<key>`;
 - `evidence_group`;
 - `site_residue`, `site_position` and `site_sequence_version`, for
-  site-specific types.
+  site-specific types: they arrive with P2's first site-specific types, and
+  G4's `canonical_tsv_v1` has none of them.
+
+In G4 there is no `interaction_level` column: the level comes from the
+adapter's list for the stated type, and is `not_stated` for a physical row
+that states none. B14's `association` assigned by openPIP is left to
+dataset adapters whose due diligence quotes the assay (R2). Every CURIE a
+row uses (`interaction_type`, `method`, `eco`, `context:*`) is declared,
+with the source's label, in the manifest's `terms` table, whether or not
+the term is stored, so a release's outcome never depends on what another
+release committed first, and the commit records each term with the
+source's own label. `encodes` and `isoform_of` rows are accepted only in a
+synthetic release until RF1a's reference adapters (section 4.2).
 
 It differs from the brief's illustrative CSV (brief §5) on purpose:
 
@@ -2807,6 +2925,61 @@ for relationships and evidence before they were built:
   G3);
 - colocalization and genetic interaction are never physical, with their
   whole PSI-MI subtrees (4.2, D20).
+
+**Four independent reviews of G4's specification** then refined the import
+framework, `canonical_tsv_v1` and the dry run before they were built
+(IMPLEMENTATION_PLAN.md, G4):
+
+- `graph_register_release` records the adapter, its versions and kind with
+  every option a release needs, so a dry run writes only its run and the
+  records; `graph_import` takes no `--adapter`. Re-registering a draft
+  without evidence under a new adapter version deletes its records, which
+  with G5's discard is the discard and re-import (4.4, 7.4);
+- data sources, datasets, licence snapshots and due diligence are recorded
+  in the admin, and approvals with `record_decision` until G5's
+  `graph_approve`; both commands take an active staff account (7.4, 8);
+- a synthetic namespace is one fixed to taxon 32630, and any synthetic
+  violation rejects its row and refuses the release (7.4);
+- until RF1a, a candidate maps only through a reviewed resolution file,
+  whose entries name their target by its identifier (4.1);
+- `isoform_specific: false` and co-referent publication ids are declared
+  and refused until R2 and M1, and a canonical row that states a gene where
+  the type needs a protein is rejected (4.1, 8; open question B4);
+- a record takes the first of `rejected`, `ambiguous`, `unresolved` and
+  `mapped` (4.1);
+- `canonical_tsv_v1` has no level column, so an untyped physical row is at
+  `not_stated` (8; open question B14);
+- it reads bounded binary lines split on tabs, not with the `csv` module,
+  so its limits hold before a value is kept; it adds `genetic_sign`, `eco`
+  and `threshold`, takes one identifier per paper and `HGNC:` values only,
+  and its manifest declares every term with its label (8);
+- NaN and infinity are rejected, and censored scores kept with a note (8);
+- only rows without a trustworthy record id or values go unstored, and a
+  conflicting duplicate rejects both versions (3.5, 4.4);
+- reference links only in synthetic releases until RF1a (4.2, 8);
+- report lists are capped, with the complete lists in a report file and
+  every curated mapping and candidate list on its record (8);
+- dry runs run on drafts only, never beside an open commit run (3.5, 8);
+- G1's and G2's rules gained read-only forms, `identifier_problem`,
+  `creation_problem` and `find_publications`, which the import and their
+  own write paths share (4.1);
+- release files are streamed outside any transaction, placed in the
+  registration's, and read only after their path, type, size and checksum
+  are checked (3.5);
+- review of the implementation added: a value the file states at two types
+  or taxa, which would create one entity, creates none, and every row that
+  states it is rejected, as a conflicting duplicate rejects both versions,
+  so file order decides nothing; when a later batch changes how earlier
+  rows map, the dry run reads the file a second time, so its records and
+  report follow from the whole file; two papers a row cites that name one
+  stored publication are refused, never merged; a synthetic release is
+  checked on unstored rows whose values can be read too; and a run stops
+  if its release is registered again under another adapter version
+  (4.1, 4.4, 7.4);
+- G3's score and term rules gained read-only forms as well,
+  `graph.scores.score_form` and `graph.terms.checked_label`, which
+  `parse_score` and `get_or_create_term` call and the import reads, so no
+  rule is written twice (8).
 
 ## 15. Owner decisions of 2026-10-29
 

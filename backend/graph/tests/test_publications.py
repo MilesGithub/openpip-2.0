@@ -7,6 +7,7 @@ import time
 
 import pytest
 from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 import graph.publications
 from graph.models import ImmutableRecordError, Publication
@@ -14,6 +15,7 @@ from graph.publications import (
     PublicationConflict,
     PublicationError,
     doi_lookup,
+    find_publications,
     get_or_create_publication,
     normalize_doi,
     normalize_imex,
@@ -649,3 +651,82 @@ def test_an_identifier_written_to_another_row_at_once_becomes_a_conflict(setting
     ]
     assert Publication.objects.get(pk=by_pmid.pk).doi == "10.1000/shared"
     assert Publication.objects.get(pk=by_pmcid.pk).doi == ""
+
+
+# ── Finding papers, read-only ───────────────────────────────────────────────
+
+
+def test_find_publications_keys_each_paper_as_a_paper_key_states_it(switch_on):
+    both = get_or_create_publication(pmid="17081976", doi="10.1000/ABC").publication
+    pmc = get_or_create_publication(pmcid="PMC2600426").publication
+    imex = get_or_create_publication(imex_id="IM-11990").publication
+    dataset, other = SourceDatasetFactory(), SourceDatasetFactory()
+    local = get_or_create_publication(local_dataset=dataset, local_key="paper-a")
+    elsewhere = get_or_create_publication(local_dataset=other, local_key="paper-b")
+    found = find_publications(
+        pmids=["pubmed:017081976", "99999999"],
+        dois=["https://doi.org/10.1000/abc", "10.1000/none"],
+        pmcids=["pmc2600426"],
+        imex_ids=["IM-11990"],
+        local=(dataset, ["paper-a", " paper-a ", "paper-b"]),
+    )
+    # Normalized by G2's normalizers; a DOI by its lookup, case ignored for
+    # ASCII letters only. A value no row holds is absent.
+    assert found == {
+        ("pmid", "17081976"): both,
+        ("doi", "10.1000/abc"): both,
+        ("pmcid", "PMC2600426"): pmc,
+        ("imex", "IM-11990"): imex,
+        ("local", "paper-a"): local.publication,
+    }
+    # A local key is looked up within its own dataset only.
+    assert find_publications(local=(other.pk, ["paper-a"])) == {}
+    assert find_publications(local=(other, ["paper-b"])) == {
+        ("local", "paper-b"): elsewhere.publication
+    }
+    assert find_publications() == {}
+
+
+def test_find_publications_reads_one_query_per_kind_and_never_locks(switch_on):
+    get_or_create_publication(pmid="1", doi="10.1/x")
+    dataset = SourceDatasetFactory()
+    with CaptureQueriesContext(connection) as queries:
+        find_publications(pmids=["1", "2"], dois=["10.1/X"], local=(dataset, ["a"]))
+    sql = [query["sql"].lstrip().upper() for query in queries.captured_queries]
+    # pmid, doi, and for local keys the dataset and the papers.
+    assert len(sql) == 4
+    assert all(text.startswith("SELECT") and "FOR UPDATE" not in text for text in sql)
+
+
+@pytest.mark.parametrize(
+    "call,error,message",
+    [
+        ({"pmids": ["PMC1"]}, PublicationError, "not a PMID"),
+        ({"dois": ["11.1000/x"]}, PublicationError, "not a DOI"),
+        ({"pmcids": ["2600426"]}, PublicationError, "not a PMCID"),
+        ({"imex_ids": ["IM-1-2"]}, PublicationError, "IMEx id"),
+        ({"local": (None, ["paper-a"])}, PublicationError, "give the dataset too"),
+        ({"local": (999_999_999, ["paper-a"])}, PublicationError, "Unknown source"),
+        ({"pmids": "17081976"}, TypeError, "list of strings"),
+    ],
+)
+def test_find_publications_refuses_what_names_no_paper(switch_on, call, error, message):
+    with pytest.raises(error, match=message):
+        find_publications(**call)
+
+
+def test_get_or_create_publication_finds_its_rows_with_find_publications(
+    switch_on, monkeypatch
+):
+    calls = []
+    real = graph.publications.find_publications
+
+    def spy(**kwargs):
+        calls.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(graph.publications, "find_publications", spy)
+    first = get_or_create_publication(pmid="17081976")
+    again = get_or_create_publication(pmid="17081976", doi="10.1000/182")
+    assert first.publication.pk == again.publication.pk
+    assert calls and calls[0]["pmids"] == ["17081976"]

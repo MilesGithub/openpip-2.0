@@ -109,6 +109,22 @@ No version has been tagged yet. Everything below is in development towards
   nothing, and contradictory findings are kept side by side. Still behind
   `TYPED_GRAPH_ENABLED` and shown to no visitor; with it on, staff see the
   relationship types, score types and terms in the Django admin, read-only.
+- Registering and checking releases of typed data, described in the
+  operator guide's new Typed data format page. `manage.py
+  graph_register_release` registers a release with the adapter that reads
+  it and stores its data file and manifest in private storage, which nothing
+  serves: in production, a third volume, `graph_files`, to back up with the
+  database. `manage.py graph_import --dry-run` reads a release in openPIP's
+  own tab-separated format, `canonical_tsv_v1`, maps every identifier
+  without guessing (an identifier that is only a candidate maps through a
+  reviewed resolution file alone), checks every row against the evidence
+  rules, and reports rejected rows by line number, unresolved and ambiguous
+  identifiers with their candidates, the entities and relationships an
+  import would create, and conflicts with other releases. A dry run writes
+  only its run and the release's source records; a release of real data
+  needs an approval first, and a synthetic release is checked, not trusted.
+  Importing a release's evidence is not available yet. Still behind
+  `TYPED_GRAPH_ENABLED`, and shown to no visitor.
 
 ### Fixed
 

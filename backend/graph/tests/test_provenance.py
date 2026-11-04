@@ -1582,7 +1582,8 @@ def record_content_value(field, record):
         "import_run": lambda: ImportRunFactory(release=record.release, file=None),
         "record_key": lambda: "another-key",
         "record_key_basis": lambda: RecordKeyBasis.LINE_NUMBER,
-        "line_number": lambda: 99,
+        # Never the record's own: the factory's sequence reaches any fixed value.
+        "line_number": lambda: record.line_number + 1,
         "raw": lambda: {"id": "changed"},
         "raw_sha256": lambda: "0" * 64,
     }[field]()
