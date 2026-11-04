@@ -127,10 +127,10 @@ guard is written once and then runs in every later PR's default suite.
 
 | Contract | Existing coverage | Added guard (issue) |
 |---|---|---|
-| `GET /api/search`: shape, ordering, `''` for missing text, query protein in `interactor_A` | `backend/interactions/tests/test_search_service.py` and `test_views.py`; the opt-in parity suite | `backend/tests/compat/test_legacy_contracts.py` (G1). It pins the shape in the default suite, and checks that responses are byte-identical before and after typed rows using the same strings are created |
+| `GET /api/search`: shape, ordering, `''` for missing text, query protein in `interactor_A` | `backend/interactions/tests/test_search_service.py` and `test_views.py`; the opt-in parity suite | `backend/tests/compat/test_legacy_contracts.py` (G1). It pins the shape in the default suite, and checks that responses are byte-identical before and after typed rows using the same strings are created, and after a release stating them is registered and dry-run (G4) |
 | `POST /api/search/interactors`, `/api/proteins`, `/api/proteins/autocomplete`, `/api/proteins/{identifier}`, `/api/datasets`, `/api/counts` | Each app's `test_views.py` | The same file (G1): byte-identical with typed rows present |
 | `GET /api/home/network` | `interactions/tests` | Key set only, because the endpoint samples with `ORDER BY RANDOM()` (G1) |
-| PSICQUIC: MIQL subset, MITAB 2.5–2.8, column 36 from `negative`, round trips | `backend/psicquic/tests/` (`test_mitab.py`, `test_miql.py`, `test_negative_flag.py`, `test_upload_roundtrip.py`, `test_real_intact_file.py` and others) | Byte-identical `query?q=*&format=tab28` and `query/count` output with typed rows present (G1). Typed relationships never appear (G3) |
+| PSICQUIC: MIQL subset, MITAB 2.5–2.8, column 36 from `negative`, round trips | `backend/psicquic/tests/` (`test_mitab.py`, `test_miql.py`, `test_negative_flag.py`, `test_upload_roundtrip.py`, `test_real_intact_file.py` and others) | Byte-identical `query?q=*&format=tab28` and `query/count` output with typed rows present (G1). Typed relationships never appear (G3), nor anything a registered and dry-run release states (G4) |
 | Legacy importer rules: dataset found by name, pair reuse in either orientation, first writer's score | `backend/datasets/tests/test_upload_parser.py` (dataset by name, lines 141-168; first writer's score, lines 399-420), `test_upload.py` and `test_task.py`. Reuse in the reverse orientation is covered only by `backend/psicquic/tests/test_real_intact_file.py:49-55` | Unchanged. Legacy table row counts are asserted unchanged after every typed import (G4, G5) |
 | Dataset downloads and `datasets.zip` | `backend/datasets/tests/test_download_public.py`, `test_views.py` | No typed code touches them, and the import fence keeps it that way (G1) |
 | Saved networks; saved, shared and public views | `backend/interactions/tests/test_networks.py` (saved networks) and `backend/sharing/tests/test_views.py` (saved, shared and public views); the frontend sharing tests | Byte-identical `/api/networks` responses with typed rows present (G1). Every existing `ViewState` fixture restores exactly as before. A state without `kind` takes the legacy path, and the three view pages check `kind` before calling the search page (S1) |
@@ -206,7 +206,20 @@ Each group maps to the essential tests in brief §9.
   makes the record `unresolved`; an `ambiguous` one makes it `ambiguous`.
   Either way it is reported with its candidates and not imported. A gene
   identifier where the type needs a protein is never mapped through
-  `encodes` (B4).
+  `encodes` (B4). In G4, until RF1a stores the identifiers that the
+  cross-reference and alias rules read, a candidate or an ambiguous
+  identifier maps only through a resolution entry that names one of its
+  candidates; an entry names its target by an identifier that must resolve
+  to exactly the chosen entity, and one that contradicts a `resolved`
+  identifier rejects the record. Each endpoint rule rejects with its own
+  code, in order: the registry's namespace, type and taxon, and
+  `identifier_problem`; the primary holder's type and taxon in a global
+  identity namespace; then the resolver. In `canonical_tsv_v1`, whose rows
+  declare each endpoint's type, a gene where the type needs a protein is
+  rejected by G3's rule 2 (B4's unresolved path arrives with M1 and R2). A
+  record takes the first of `rejected`, `ambiguous`, `unresolved` and
+  `mapped`. `identifier_problem` and `creation_problem` agree with
+  `create_entity` on every case.
 - **Case and version.**
   - A case-exact namespace keeps `h` and `H` (or `dl` and `Dl`) as distinct
     primary identifiers.
@@ -399,10 +412,43 @@ match for every context.
   deletes no entity, relationship or primary identifier; `graph_check`
   reports provisional entities left without assertions.
 - **Private files (G4).** The release file root is outside `MEDIA_ROOT` and
-  `STATIC_ROOT`.
+  `STATIC_ROOT`, and contains neither. No URL pattern serves it: traversal
+  URLs under `/media/` and `/static/` answer 400 or 404, with DEBUG on and
+  off, never the file. `.gitignore` and `backend/.dockerignore` leave it
+  out, and the production compose file mounts it for `backend` and
+  `celery` inside their `!override` lists. Files are stored as
+  `releases/<release id>/<sha256>/content`, mode 0600 in directories 0700;
+  a FIFO or a device is refused, a file over its limit or one that would
+  leave too little free space writes nothing, and a name like a path never
+  reaches one. A stored file that was tampered with, truncated, swapped or
+  replaced by a symbolic link, or a row whose storage path differs, is
+  refused before it is read.
+- **Registration (G4).** A new release records its adapter, versions, kind
+  and options, with its files, in one transaction, and a failure leaves no
+  row and no file. The same files and options again write nothing, and put
+  back a lost or changed copy; a draft without evidence takes a new adapter
+  version and loses its records; every other difference is refused, naming
+  it. Nothing is read or written while the switch is off.
+- **Dry runs (G4).** A dry run writes only its run and the release's source
+  records (row counts of every other table, legacy ones included, do not
+  change). It runs on a draft only, never beside an open commit run, and
+  its preconditions are checked in order. A re-run updates statuses and
+  issues only; a record that holds evidence stays `mapped`, and is listed
+  under `would_change`. A release that changes mid-run stops it as failed,
+  keeping the batches written. A conflicting duplicate, even across
+  batches, rejects both versions. Query counts per batch do not grow with
+  the batch.
 - **Synthetic is checked (G4).** A release registered with `--synthetic` is
   rejected if any identifier uses a non-synthetic namespace or taxon, or if
-  it cites a PMID or DOI.
+  it cites a PMID or DOI. A synthetic namespace is one fixed to taxon
+  32630. Every readable row is checked, rejected ones included: its
+  namespaces and taxa, `SYN-` labels, PMIDs and DOIs, host taxa and
+  resolution targets. So is every unstored row whose cells split into the
+  header's columns (a field over 10,000 characters, a malformed
+  `record_id`, a control character, a later line of a `record_id`); a line
+  too long, not UTF-8 or with another number of fields is not. Any violation rejects the row and makes the run's
+  verdict `refused`, so a mixed file is refused as a whole. A synthetic
+  release needs no approval to be dry-run.
 
 ### 5.5 Licensing and visibility (G2, A1, A2, B1, C1, E1)
 
@@ -542,13 +588,31 @@ identifiers.
 
 - **Invalid files** are reported per row, never fatal: wrong encoding, a
   missing header, unknown columns, oversized lines and fields, too many
-  columns.
+  columns. In G4 a row that cannot be read (too long, bad UTF-8, a control
+  character, the wrong field count, an oversized field, a malformed record
+  id) is unstored and listed by its line, and the run goes on; a file that
+  cannot be read as a whole (UTF-16 or UTF-32, a header that does not
+  decode or is missing, unknown, missing or duplicate columns, too many
+  columns or lines) is reported as a file error with the verdict `refused`,
+  writing no record when its header is at fault. Lines of exactly
+  `MAX_LINE_BYTES` are read, with LF and with CRLF, and one byte more is
+  refused; a 64 MiB line without LF is read in bounded chunks, with a
+  `tracemalloc` peak under 8 MiB; a CR inside a field is refused, and
+  U+2028 inside a field is text and changes no line number.
 - **Malicious strings** are stored and rendered as text: HTML and script
   tags, CSV formula prefixes, path traversal in file names, extremely long
-  identifiers.
+  identifiers. In G4 a file's original name is only text and never builds a
+  path, and the release manifest and resolution files are strict JSON
+  (deep nesting, 5,000-digit numbers, `1e999`, NaN, duplicate keys, UTF-16,
+  a byte order mark, oversize, escaped NUL, surrogates and controls, and
+  `true` as an integer are refused).
 - **Semantic rejections.** Each of these is rejected with a reason and a
   physical line number: direction mismatches, effects on symmetric types,
-  unknown types, namespaces and taxa, and non-finite scores.
+  unknown types, namespaces and taxa, and non-finite scores. In G4
+  `canonical_tsv_v1` rejects NaN and infinity in any spelling
+  (`score_not_finite`) and text that is not a number
+  (`score_not_a_number`); a censored value such as `<2.2e-16` is kept with
+  a NULL value and a note, as G3 stores it.
 - **One committer.** Only one committing run is allowed per release; a
   concurrent second commit is refused by the partial unique constraint.
 - **Celery (I1).** The payload is an id, never file content, and a worker
@@ -781,6 +845,10 @@ repository.
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.
+- **Release files (G4).** Every file a test registers goes under its own
+  temporary `GRAPH_FILES_ROOT` (an autouse fixture in the graph tests, and
+  in the legacy-contract tests), and the session fails if anything appears
+  under the real one, which the dev stack bind-mounts.
 - **No new third-party data** is added for tests, unless it is already in the
   repository with known provenance. M1 can reuse the IntAct sample that the
   PSICQUIC tests already use.

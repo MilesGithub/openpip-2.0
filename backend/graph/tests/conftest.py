@@ -1,7 +1,9 @@
 import io
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from django.conf import settings as django_settings
 from django.core.management import call_command
 
 from graph.models import CasePolicy, Scope, VersionPolicy
@@ -16,6 +18,36 @@ TAXON_A = 999_999_901
 TAXON_B = 999_999_902
 TAXON_C = 999_999_903
 TAXON_D = 999_999_904
+
+
+def _tree(root) -> set:
+    """Every path under root, relative to it; None when root is absent."""
+    root = Path(root)
+    if not root.exists():
+        return None
+    return {str(path.relative_to(root)) for path in root.rglob("*")}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def default_graph_files_root():
+    """The real GRAPH_FILES_ROOT (BASE_DIR/graph_files in a checkout, which the
+    dev stack bind-mounts) as the session found it. The suite never writes
+    there: the session fails at its end if anything under it changed, and
+    test_storage asserts it while the suite runs."""
+    root = Path(django_settings.BASE_DIR) / "graph_files"
+    before = _tree(root)
+    yield SimpleNamespace(path=root, before=before, now=lambda: _tree(root))
+    assert _tree(root) == before, f"the test suite wrote under {root}"
+
+
+@pytest.fixture(autouse=True)
+def graph_files_root(settings, tmp_path):
+    """Each test stores release files under its own temporary directory,
+    never under the real GRAPH_FILES_ROOT. graph.storage reads the setting
+    when it runs, so this applies to every call a test makes."""
+    root = tmp_path / "graph_files"
+    settings.GRAPH_FILES_ROOT = root
+    return root
 
 
 @pytest.fixture

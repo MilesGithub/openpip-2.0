@@ -1,5 +1,7 @@
 """Database constraints on entities and identifiers, and the write path's rules."""
 
+import copy
+import pickle
 import threading
 import time
 
@@ -8,27 +10,37 @@ from django.db import IntegrityError, connection, transaction
 from django.test.utils import CaptureQueriesContext
 
 from graph.entities import (
+    EntityError,
     IdentityConflict,
     IdentityNamespaceError,
     NamespaceTypeError,
     TaxonPolicyError,
     add_identifier,
     create_entity,
+    creation_problem,
+    creation_problems,
+    identifier_problem,
+    identifier_problems,
 )
-from graph.identity import identity_key
+from graph.identity import InvalidIdentifier, identity_key
 from graph.models import (
+    ApprovalScope,
     Entity,
     EntityIdentifier,
     EntityType,
     IdentifierNamespace,
     IdentifierRole,
     ImmutableRecordError,
+    ReleaseStatus,
 )
 from graph.tests.factories import (
+    DatasetReleaseFactory,
     EntityFactory,
     EntityIdentifierFactory,
     EntityTypeFactory,
     TaxonFactory,
+    approvable_release,
+    approve,
 )
 
 
@@ -500,3 +512,456 @@ def test_create_entity_holds_its_type_and_namespace_in_shared_mode(registry):
     assert '"graph_entitytype"' in sql[shared[0]]
     assert '"graph_identifiernamespace"' in sql[shared[1]]
     assert shared[1] < inserting[0]
+
+
+# ── Read-only: identifier_problem and creation_problem ─────────────────────
+# Each case is one create_entity call. Asked first, creation_problem says
+# what the call will do, and the call then does exactly that: it creates the
+# entity when there is no problem, returns the existing one when the problem
+# is entity_exists, and otherwise raises the problem's exception type with
+# its words. identifier_problem refuses only what the call refuses.
+
+
+def _existing_tp53():
+    return create_entity("protein", "TP53", 9606, "uniprotkb", "P04637")
+
+
+def _held_as_an_alias():
+    EntityIdentifierFactory(
+        entity=_existing_tp53(),
+        namespace=namespace("uniprotkb"),
+        value="Q15086",
+        role=IdentifierRole.ALIAS,
+    )
+
+
+def _introducing(settings):
+    release = approvable_release()
+    approve(release, ApprovalScope.INTERNAL)
+    return release
+
+
+def _synthetic(settings):
+    return DatasetReleaseFactory(is_synthetic=True)
+
+
+def _unapproved(settings):
+    return approvable_release()
+
+
+def _published(settings):
+    release = approvable_release(status=ReleaseStatus.PUBLISHED)
+    approve(release, ApprovalScope.INTERNAL)
+    return release
+
+
+def _switched_off(settings):
+    release = _introducing(settings)
+    settings.TYPED_GRAPH_ENABLED = False
+    return release
+
+
+def _unknown(settings):
+    return 10**12
+
+
+def _not_an_id(settings):
+    return "1"
+
+
+TP53 = ("protein", "TP53", 9606, "uniprotkb", "P04637")
+# name: (entity_type, label, taxon, namespace, value, release, setup)
+CREATION_CASES = {
+    "a new protein entry": (*TP53, None, None),
+    "a new human gene": ("gene", "TP53", 9606, "hgnc", "HGNC:11998", None, None),
+    "a bare number in hgnc": ("gene", "TP53", 9606, "hgnc", "11998", None, None),
+    "a new isoform": (
+        "protein_isoform",
+        "TP53 isoform 2",
+        9606,
+        "uniprotkb",
+        "P04637-2",
+        None,
+        None,
+    ),
+    "a synthetic gene": (
+        "gene",
+        "SYN-G1",
+        32630,
+        "synthetic_gene",
+        "SYN-G1",
+        None,
+        None,
+    ),
+    "a gene without a taxon": ("gene", "TP53", None, "hgnc", "HGNC:11998", None, None),
+    "an unknown taxon": ("gene", "TP53", 123456789, "hgnc", "HGNC:11998", None, None),
+    # A taxid is an int, on both sides: never a string or a float read as one.
+    "a taxon given as text": ("gene", "TP53", "9606", "hgnc", "HGNC:11998", None, None),
+    "a taxon given as a float": (
+        "gene",
+        "TP53",
+        9606.0,
+        "hgnc",
+        "HGNC:11998",
+        None,
+        None,
+    ),
+    "a uniprot accession for a gene": (
+        "gene",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "P04637",
+        None,
+        None,
+    ),
+    "hgnc for a fly gene": ("gene", "h", 7227, "hgnc", "HGNC:4851", None, None),
+    "synthetic_gene for a fly gene": (
+        "gene",
+        "h",
+        7227,
+        "synthetic_gene",
+        "SYN-H",
+        None,
+        None,
+    ),
+    "ncbigene for a human gene": ("gene", "TP53", 9606, "ncbigene", "7157", None, None),
+    "ensembl for a human gene": (
+        "gene",
+        "TP53",
+        9606,
+        "ensembl_gene",
+        "ENSG00000141510",
+        None,
+        None,
+    ),
+    "an isoform as an entry": (
+        "protein",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "P04637-2",
+        None,
+        None,
+    ),
+    "an entry as an isoform": (
+        "protein_isoform",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "P04637",
+        None,
+        None,
+    ),
+    "not an accession": ("protein", "TP53", 9606, "uniprotkb", "XYZ", None, None),
+    "an empty value": ("protein", "TP53", 9606, "uniprotkb", " ", None, None),
+    "a value longer than a column": (
+        "protein",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "P" * 300,
+        None,
+        None,
+    ),
+    "an unknown entity type": (
+        "transcript",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "P04637",
+        None,
+        None,
+    ),
+    "an unknown namespace": ("protein", "TP53", 9606, "nowhere", "P04637", None, None),
+    "a blank label": ("protein", "  ", 9606, "uniprotkb", "P04637", None, None),
+    "a label longer than the column": (
+        "protein",
+        "x" * 256,
+        9606,
+        "uniprotkb",
+        "P04637",
+        None,
+        None,
+    ),
+    "the same entity again": (
+        "protein",
+        "p53",
+        9606,
+        "uniprotkb",
+        "p04637",
+        None,
+        _existing_tp53,
+    ),
+    "an accession of another taxon": (
+        "protein",
+        "p53",
+        7227,
+        "uniprotkb",
+        "P04637",
+        None,
+        _existing_tp53,
+    ),
+    "a value held as an alias": (
+        "protein",
+        "p53",
+        9606,
+        "uniprotkb",
+        "Q15086",
+        None,
+        _held_as_an_alias,
+    ),
+    "a uniprot accession for a synthetic protein": (
+        "protein",
+        "SYN-P2",
+        32630,
+        "uniprotkb",
+        "P12345",
+        None,
+        None,
+    ),
+    "a synthetic isoform as an entry": (
+        "protein",
+        "SYN-P1",
+        32630,
+        "synthetic_protein",
+        "SYN-P1-2",
+        None,
+        None,
+    ),
+    "an approved draft introduces it": (*TP53, _introducing, None),
+    "an approved draft finds it": (*TP53, _introducing, _existing_tp53),
+    "a synthetic release introduces a construct": (
+        "protein",
+        "SYN-P1",
+        32630,
+        "synthetic_protein",
+        "SYN-P1",
+        _synthetic,
+        None,
+    ),
+    "a synthetic release and real data": (*TP53, _synthetic, None),
+    "an unapproved draft": (*TP53, _unapproved, None),
+    "a published release": (*TP53, _published, None),
+    "a published release and an existing entity": (*TP53, _published, _existing_tp53),
+    "an unknown release": (*TP53, _unknown, None),
+    "a release given as text": (*TP53, _not_an_id, None),
+    "a release while the switch is off": (*TP53, _switched_off, None),
+    "a bad value and an unknown release": (
+        "protein",
+        "TP53",
+        9606,
+        "uniprotkb",
+        "XYZ",
+        _unknown,
+        None,
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(CREATION_CASES))
+def test_creation_problem_says_what_create_entity_will_do(registry, settings, case):
+    entity_type, label, taxon, namespace_slug, value, release, setup = CREATION_CASES[
+        case
+    ]
+    if setup:
+        setup()
+    release = release(settings) if release else None
+    problem = creation_problem(
+        entity_type, taxon, namespace_slug, value, label=label, release=release
+    )
+    identifier = identifier_problem(entity_type, taxon, namespace_slug, value)
+    before = Entity.objects.count()
+
+    def call():
+        return create_entity(
+            entity_type, label, taxon, namespace_slug, value, release=release
+        )
+
+    if problem is None:
+        entity = call()
+        assert Entity.objects.count() == before + 1
+        assert entity.identity_key and identifier is None
+    elif problem.code == "entity_exists":
+        assert call().pk == problem.entity_ids[0]
+        assert Entity.objects.count() == before
+    else:
+        with pytest.raises((EntityError, ValueError)) as refused:
+            call()
+        assert type(refused.value) is problem.error
+        assert str(refused.value) == problem
+        if isinstance(refused.value, IdentityConflict):
+            assert refused.value.entity_ids == problem.entity_ids
+        assert Entity.objects.count() == before
+    if identifier is not None:
+        # What identifier_problem refuses, create_entity refuses too, and in
+        # the same words: but a namespace fixed to another taxon is refused
+        # there as defining no identity for the stated one.
+        assert problem is not None and problem.code != "entity_exists"
+        if problem.code == "release_cannot_introduce":
+            return
+        if identifier.code == "taxon_contradiction":
+            assert problem.code == "not_identity_namespace"
+        else:
+            assert (problem, problem.code, problem.error) == (
+                identifier,
+                identifier.code,
+                identifier.error,
+            )
+
+
+@pytest.mark.parametrize(
+    "identifier,code,error,words",
+    [
+        (
+            ("gene", None, "hgnc", "HGNC:11998"),
+            "bad_taxon",
+            TaxonPolicyError,
+            "needs a taxon",
+        ),
+        (
+            ("gene", 123456789, "hgnc", "HGNC:11998"),
+            "unknown_taxon",
+            TaxonPolicyError,
+            "not in the registry",
+        ),
+        (
+            ("gene", 9606, "uniprotkb", "P04637"),
+            "namespace_not_for_type",
+            NamespaceTypeError,
+            "does not identify gene",
+        ),
+        (
+            ("gene", 7227, "hgnc", "HGNC:4851"),
+            "taxon_contradiction",
+            TaxonPolicyError,
+            "belong to taxon 9606, not 7227",
+        ),
+        (
+            ("gene", 9606, "synthetic_gene", "SYN-G1"),
+            "taxon_contradiction",
+            TaxonPolicyError,
+            "belong to taxon 32630",
+        ),
+        (
+            ("protein", 9606, "uniprotkb", "not an accession"),
+            "bad_identifier",
+            InvalidIdentifier,
+            "not a uniprotkb identifier",
+        ),
+        (
+            ("protein", 9606, "uniprotkb", "P04637-2"),
+            "isoform_form",
+            NamespaceTypeError,
+            "protein_isoform identifier",
+        ),
+        (
+            ("protein_isoform", 9606, "uniprotkb", "P04637"),
+            "isoform_form",
+            NamespaceTypeError,
+            "is a protein identifier",
+        ),
+        (
+            ("transcript", 9606, "uniprotkb", "P04637"),
+            "unknown_entity_type",
+            ValueError,
+            "Unknown entity type",
+        ),
+        (
+            ("protein", 9606, "nowhere", "P04637"),
+            "unknown_namespace",
+            ValueError,
+            "Unknown namespace",
+        ),
+        (
+            ("protein", 9606, "uniprotkb", 5),
+            "bad_identifier",
+            InvalidIdentifier,
+            "not a uniprotkb",
+        ),
+    ],
+)
+def test_identifier_problem_names_the_rule_a_value_breaks(
+    registry, identifier, code, error, words
+):
+    problem = identifier_problem(*identifier)
+    assert (problem.code, problem.error) == (code, error)
+    assert words in problem
+    assert isinstance(problem.exception(), error)
+
+
+def test_identifier_problem_reads_rows_as_stored(registry):
+    # As create_entity does: the attributes of a row given are never trusted.
+    stale = EntityType.objects.get(slug="gene")
+    stale.taxon_policy = "forbidden"
+    hgnc = IdentifierNamespace.objects.get(slug="hgnc")
+    hgnc.fixed_taxon_id = 7227
+    assert identifier_problem(stale, 9606, hgnc, "HGNC:11998") is None
+    taxon = TaxonFactory(taxid=9606)
+    assert identifier_problem("gene", taxon, "hgnc", "HGNC:11998") is None
+
+
+def test_the_batch_forms_take_a_constant_number_of_queries(registry):
+    _existing_tp53()
+    no_release = [
+        (case[0], case[2], case[3], case[4], case[1])
+        for case in CREATION_CASES.values()
+        if case[5] is None and case[6] is None
+    ]
+    identifiers = [item[:4] for item in no_release]
+    expected = [identifier_problem(*item) for item in identifiers]
+    with CaptureQueriesContext(connection) as queries:
+        found = identifier_problems(identifiers)
+    assert [(p, getattr(p, "code", None)) for p in found] == [
+        (p, getattr(p, "code", None)) for p in expected
+    ]
+    assert len(queries) <= 4
+    expected = [
+        creation_problem(t, x, n, v, label=label, release=None)
+        for t, x, n, v, label in no_release
+    ]
+    with CaptureQueriesContext(connection) as one:
+        creation_problems(no_release[:1], release=None)
+    with CaptureQueriesContext(connection) as many:
+        found = creation_problems(no_release, release=None)
+    assert found == expected
+    assert len(many) == len(one) <= 8
+
+
+def test_a_problem_keeps_its_code_and_type_when_copied(registry):
+    problem = identifier_problem("gene", 7227, "hgnc", "HGNC:4851")
+    for again in (
+        copy.copy(problem),
+        copy.deepcopy(problem),
+        pickle.loads(pickle.dumps(problem)),
+    ):
+        assert (again, again.code, again.error) == (
+            problem,
+            "taxon_contradiction",
+            TaxonPolicyError,
+        )
+
+
+def test_creation_problem_reads_and_never_writes_or_locks(registry, settings):
+    release = _introducing(settings)
+    with CaptureQueriesContext(connection) as queries:
+        problem = creation_problem(
+            "protein", 9606, "uniprotkb", "P04637", label="TP53", release=release
+        )
+    assert problem is None
+    sql = [query["sql"].lstrip().upper() for query in queries.captured_queries]
+    assert all(text.startswith("SELECT") for text in sql), sql
+    assert not any("FOR UPDATE" in text or "FOR SHARE" in text for text in sql)
+    assert not Entity.objects.exists()
+
+
+def test_a_batch_reads_its_release_once(registry, settings):
+    release = _introducing(settings)
+    identifiers = [
+        ("protein", 9606, "uniprotkb", f"P{n:05d}", "A protein") for n in range(30)
+    ]
+    with CaptureQueriesContext(connection) as one:
+        assert creation_problems(identifiers[:1], release=release) == [None]
+    with CaptureQueriesContext(connection) as many:
+        assert creation_problems(identifiers, release=release) == [None] * 30
+    assert len(many) == len(one)

@@ -26,18 +26,20 @@ runs.
 
 ## Backups
 
-A portal's state lives in two volumes: the database and the uploaded media.
-Back up both.
+A portal's state lives in three volumes: the database, the uploaded media,
+and the release files of the typed relationship graph. Back up all three,
+and back up and restore the release files together with the database.
 
 Docker Compose names volumes after the project, which is the checkout's folder
 name. List them with:
 
 ```bash
-docker volume ls | grep -E '_(postgres_data|media)$'
+docker volume ls | grep -E '_(postgres_data|media|graph_files)$'
 ```
 
 The examples below use the names Compose gives a checkout in a folder named
-`openpip-2.0`: `openpip-20_media` and `openpip-20_postgres_data`.
+`openpip-2.0`: `openpip-20_media`, `openpip-20_postgres_data` and
+`openpip-20_graph_files`.
 
 ### Database
 
@@ -60,6 +62,23 @@ The media volume holds the logo, user avatars, files published on the
 Downloads page, and the cached all-datasets archive (`cache/`), which is
 rebuilt on demand and need not be kept.
 
+### Typed graph release files
+
+```bash
+docker run --rm -v openpip-20_graph_files:/graph_files:ro -v "$PWD":/backup alpine \
+  tar czf /backup/graph-files-$(date +%F).tar.gz -C /graph_files .
+```
+
+The `graph_files` volume holds the files of each release registered for the
+typed relationship graph ([Typed data format](typed-data-format.md#where-release-files-live)).
+It is empty on a portal that does not use the typed graph. The database
+records each file's path, size and SHA-256, so take this backup together
+with the database's, while no release is being registered. A database
+restored without its release files leaves releases whose dry runs are
+refused; registering each file again with the same options puts it back.
+Files left under `incoming/` by an interrupted registration need not be
+kept.
+
 ### Restoring
 
 Stop the services that write to the database, restore, then start again:
@@ -69,9 +88,12 @@ dc stop backend celery
 dc exec -T db pg_restore -U openpip -d openpip --clean --if-exists < openpip-2026-10-01.dump
 docker run --rm -v openpip-20_media:/media -v "$PWD":/backup alpine \
   tar xzf /backup/media-2026-10-01.tar.gz -C /media
+docker run --rm -v openpip-20_graph_files:/graph_files -v "$PWD":/backup alpine \
+  tar xzf /backup/graph-files-2026-10-01.tar.gz -C /graph_files
 dc up -d
 ```
 
+Restore the release files from the same day's backup as the database.
 Restoring a database also restores its user accounts and passwords as they
 were at the time of the backup.
 

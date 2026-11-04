@@ -34,6 +34,8 @@ services:
     # bind-mount, leaving prod running from the working tree.
     volumes: !override
       - media:/app/mediafiles
+      # Typed release files (GRAPH_FILES_ROOT), never served.
+      - graph_files:/app/graph_files
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
@@ -47,6 +49,8 @@ services:
     # bind-mount, leaving prod running from the working tree.
     volumes: !override
       - media:/app/mediafiles
+      - graph_files:/app/graph_files
 
 volumes:
   media:
+  graph_files:

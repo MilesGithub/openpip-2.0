@@ -53,11 +53,29 @@ def raw_value_problem(raw) -> str | None:
     return None
 
 
-def parse_score(raw: str) -> ParsedScore:
-    """The value a raw value states, read by NUMBER after stripping; NULL with
-    a note where it states none (the module docstring lists them)."""
+def score_form(raw: str) -> str:
+    """What a raw value states, as parse_score reads it: "number" (in the
+    grammar, whatever its size), "censored" (a bound such as <2.2e-16),
+    "not_finite" (NaN or infinity, in any spelling) or "text". Read-only,
+    for an import that checks a value before it is recorded."""
     text = raw.strip()
     if NUMBER.fullmatch(text):
+        return "number"
+    censored = _CENSORED.fullmatch(text)
+    if censored and NUMBER.fullmatch(censored[2]):
+        return "censored"
+    if _NOT_FINITE.fullmatch(text):
+        return "not_finite"
+    return "text"
+
+
+def parse_score(raw: str) -> ParsedScore:
+    """The value a raw value states, read by NUMBER after stripping; NULL with
+    a note where it states none (the module docstring lists them). Which of
+    these a value is, score_form says."""
+    text = raw.strip()
+    form = score_form(raw)
+    if form == "number":
         value = float(text)
         if math.isinf(value):
             return ParsedScore(
@@ -68,13 +86,12 @@ def parse_score(raw: str) -> ParsedScore:
                 value, f"{raw!r} underflows a double, and is kept as {value!r}."
             )
         return ParsedScore(value)
-    censored = _CENSORED.fullmatch(text)
-    if censored and NUMBER.fullmatch(censored[2]):
+    if form == "censored":
         return ParsedScore(
             None,
             f"{raw!r} is censored (a bound, not a value), so its value is NULL.",
         )
-    if _NOT_FINITE.fullmatch(text):
+    if form == "not_finite":
         return ParsedScore(
             None, f"{raw!r} is not a finite number, so its value is NULL."
         )

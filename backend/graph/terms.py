@@ -215,7 +215,7 @@ def get_or_create_term(curie, label, *, import_run) -> TermResult:
     """
     require_switch(TermError, "no term is recorded")
     curie = normalize_curie(curie)
-    label = _label(label)
+    label = checked_label(label)
     with transaction.atomic():
         release = _recording_release(import_run)
         pinned = PHYSICAL_INTERACTION_LEVELS.get(curie)
@@ -240,7 +240,10 @@ def get_or_create_term(curie, label, *, import_run) -> TermResult:
     return TermResult(term, created, _label_conflict(term, label, created, pinned))
 
 
-def _label(value) -> str:
+def checked_label(value) -> str:
+    """A label as a term keeps it: stripped text, never blank, without NUL,
+    at most Term.label's length; TermError otherwise. Read-only, for an
+    import that checks a label before a commit records it."""
     if not isinstance(value, str):
         raise TermError(f"A term's label is text, not {value!r}.")
     if "\x00" in value:

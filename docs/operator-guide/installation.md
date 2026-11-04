@@ -18,7 +18,10 @@ openPIP runs as five containers, defined in `docker-compose.yml` and
 | `redis` | `redis:7-alpine` | Job queue for `celery`, and the store for rate-limit counters. |
 
 Uploaded files (logos, avatars, published files, the cached dataset archive)
-live in the `media` volume, shared by `backend` and `celery`.
+live in the `media` volume, shared by `backend` and `celery`. The release
+files of the typed relationship graph, which is off by default, live in the
+`graph_files` volume, also shared by `backend` and `celery`, and are never
+served ([Typed data format](typed-data-format.md#where-release-files-live)).
 
 ```text
 browser ──HTTPS──▶ host web server ──prefix stripped──▶ frontend :8080 ──▶ backend :8000
@@ -95,7 +98,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile prod u
 
 | Part | Why it is needed |
 |---|---|
-| `-f docker-compose.prod.yml` | Switches the backend to production settings (your `PUBLIC_URL`, HTTPS, real secret key), runs the code built into the image, and mounts the `media` volume. Without it the backend runs development settings with debug pages. |
+| `-f docker-compose.prod.yml` | Switches the backend to production settings (your `PUBLIC_URL`, HTTPS, real secret key), runs the code built into the image, and mounts the `media` and `graph_files` volumes. Without it the backend runs development settings with debug pages. |
 | `--profile prod` | The `frontend` service only starts with this profile. |
 | `--build` | Builds the images from your checkout. |
 

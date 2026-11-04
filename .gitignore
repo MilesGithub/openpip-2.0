@@ -41,6 +41,8 @@ graphify-out/
 # Generated / runtime artifacts — never commit
 backend/staticfiles/
 backend/mediafiles/
+# Typed release files (GRAPH_FILES_ROOT): private, never committed
+backend/graph_files/
 
 # Scratch / test artifacts
 test_upload.csv
