@@ -3,18 +3,22 @@
 The typed relationship graph holds relationships between typed entities
 (genes, proteins and protein isoforms), with the evidence each release of a
 dataset states for them. It is still being built, and visitors see nothing
-of it yet. This page describes what exists today:
+of it yet. This page describes:
 
 - registering a release of typed data, with its files;
+- `canonical_tsv_v1`, the format of its data file;
 - checking it with a **dry run**, which reads every row, maps it to the
-  graph's entities and reports what an import would do.
+  graph's entities and reports what a commit would do.
 
-Importing a release's evidence (a commit) is not available yet. Nothing on
-this page changes what visitors see.
+[Typed releases](typed-releases.md) describes what follows: approving a
+release, committing it, which imports its evidence into the graph, and
+publishing, withdrawing and discarding it. Nothing on either page changes
+what visitors see.
 
 Everything here needs `TYPED_GRAPH_ENABLED` on
 ([Configuration reference](configuration.md#backend-variables)). While it is
-off, both commands refuse before they read a file or write anything.
+off, every command on both pages refuses before it reads a file or writes
+anything.
 
 The examples use `dc` for the production compose command, as on the
 [Maintenance](maintenance.md) page:
@@ -37,18 +41,27 @@ alias dc='docker compose -f docker-compose.yml -f docker-compose.prod.yml --prof
 - A dry run stores each row of the data file that it can read as a **source
   record**, with a status and its issues. A later dry run of the same
   release updates them.
-- A release of real data is dry-run only once it has an `internal` approval.
-  A **synthetic** release, made-up demonstration data, needs no approval and
-  is checked instead.
+- A **commit** imports what the release's latest dry run reported: the
+  entities, relationships, publications and terms its mapped records need,
+  and their evidence. It **stages** the release, which is then
+  **published** to make it current, or **discarded** back to a draft to
+  import it again ([Typed releases](typed-releases.md)).
+- A release of real data is dry-run and committed only once it has an
+  `internal` approval. A **synthetic** release, made-up demonstration data,
+  needs no approval for either and is checked instead.
 
 The steps, for a release of real data:
 
 1. Create the data source and the dataset in the Django admin.
 2. Register the release with its files: `graph_register_release`.
 3. Record its licence snapshot and its dataset's due diligence in the Django
-   admin, and its `internal` approval from a Django shell.
+   admin, and its `internal` approval with `graph_approve`.
 4. Dry-run it, `graph_import --dry-run`, and read the report. To change the
    data, register the corrected file as a new version.
+5. Commit it with the options of its dry run, `graph_import --commit`: the
+   release is staged.
+6. Publish it, `graph_publish_release`
+   ([Typed releases](typed-releases.md#publishing-a-release)).
 
 ## Creating the data source and dataset
 
@@ -85,7 +98,7 @@ python manage.py graph_register_release --dataset SLUG --version V \
 | `--supersedes VERSION` | The release of the same dataset that this one corrects. Both are synthetic, or neither is. |
 | `--taxon N ...` | The taxa the release declares: NCBI taxids that openPIP registers. Give several, or repeat the option. |
 | `--embargo-until ISO8601` | An embargo, as a date and time with its UTC offset, such as `2027-01-01T00:00:00+00:00`. Until then only an `internal` approval is effective. |
-| `--synthetic` | Synthetic demonstration data, checked by every dry run. See [Synthetic releases](#synthetic-releases). |
+| `--synthetic` | Synthetic demonstration data, checked by every dry run and commit. See [Synthetic releases](#synthetic-releases). |
 | `--no-raw-rows` | Keep only each record's file, line number and checksum, not its column values. |
 | `--as USERNAME` | The active staff account registering the release. Required. |
 
@@ -145,18 +158,24 @@ Running the same registration again is safe:
   mapping version since the release was registered, a draft whose records
   hold no evidence, with no import under way, takes the new version, and
   its source records are deleted, to be read again by the next dry run. It
-  prints the old and new versions. Any other release is refused: register
-  it again as a new version.
+  prints the old and new versions. A staged release, or a draft that holds
+  evidence or has an open commit run, is refused: discard it first with
+  `graph_discard_release`
+  ([Discarding a release](typed-releases.md#discarding-a-release)), then
+  register it again, or register its files as a new version. A published,
+  superseded or withdrawn release is refused: register its files as a new
+  version.
 - **Anything else that differs**, such as another data file, manifest,
   adapter or option: refused, naming the difference. Register changed data
   as a new version.
 
 ## Licence, due diligence and approval
 
-A release that is not synthetic is dry-run only once it has an effective
-`internal` approval. An approval needs the release's licence snapshot, and
-its dataset's due diligence, complete and confirmed after that snapshot was
-recorded. In the Django admin, under **Typed relationship graph**:
+A release that is not synthetic is dry-run and committed only once it has an
+effective `internal` approval. An approval needs the release's licence
+snapshot, and its dataset's due diligence, complete and confirmed after that
+snapshot was recorded. In the Django admin, under **Typed relationship
+graph**:
 
 1. **Release licences**, then **Add**: choose the release and record its
    terms as you read them. A snapshot is never edited; record a new one when
@@ -166,28 +185,16 @@ recorded. In the Django admin, under **Typed relationship graph**:
    save. Then select it in the list and run the action **Confirm due
    diligence covers the current terms**.
 
-Then record the `internal` approval. In this version it is recorded from a
-Django shell:
+Then record the `internal` approval with `graph_approve`
+([Approving a release](typed-releases.md#approving-a-release)):
 
 ```bash
-dc exec backend python manage.py shell
+dc exec backend python manage.py graph_approve --release 12 --scope internal \
+    --decision approved \
+    --rationale "Terms allow internal use; due diligence is complete." --as alice
 ```
 
-```python
-from django.contrib.auth import get_user_model
-from graph.approvals import record_decision
-from graph.models import DatasetRelease
-
-record_decision(
-    DatasetRelease.objects.get(pk=12),
-    "internal",
-    "approved",
-    rationale="Terms allow internal use; due diligence is complete.",
-    decided_by=get_user_model().objects.get(username="alice"),
-)
-```
-
-`record_decision` refuses an approval that the approval rules do not allow,
+`graph_approve` refuses an approval that the approval rules do not allow,
 such as one before due diligence is confirmed, and says why; it then records
 nothing. The admin lists every decision under **Usage approvals**. An
 `internal` approval lets staff work with the release; it shows visitors
@@ -221,7 +228,7 @@ header line that names the columns.
 | `subject_id` | yes | The subject's identifier, as the source writes it. |
 | `subject_type` | yes | The subject's entity type: `gene`, `protein` or `protein_isoform`. |
 | `subject_taxon` | yes | The subject's NCBI taxid: digits, from 1 to 2147483647, without a sign or leading zeros. Every entity type needs one. |
-| `subject_label` | no | A label for the subject, at most 255 characters, used only for an entity the release would create. An existing entity keeps its label, and a different one is noted. |
+| `subject_label` | no | A label for the subject, at most 255 characters, used only for an entity the release would create. An existing entity keeps its label, and a different one is noted; one that another release creates between the dry run and the commit keeps that release's label, without a note. |
 | `object_namespace` | yes | The object's, as for the subject. |
 | `object_id` | yes | The object's, as for the subject. |
 | `object_type` | yes | The object's, as for the subject. |
@@ -354,10 +361,13 @@ so a release of real data states no scores yet.
 Every CURIE a row uses, in `interaction_type`, `method`, `eco` or a
 `context:` column, must be declared in the manifest's `terms`, with the
 label the source gives it, whether or not openPIP already holds the term. A
-row that uses an undeclared CURIE is rejected. A dry run stores no term.
-Importing, once it is available, will store a new term with the label the
-manifest declares; a term openPIP already holds keeps its label, and the
-dry run's report lists any difference.
+row that uses an undeclared CURIE is rejected. A dry run stores no term. A
+commit stores each new term with the label the manifest declares, or, for
+a term that openPIP's PSI-MI crosswalk pins, such as an interaction type,
+the crosswalk's; a term openPIP already holds keeps its label. The dry
+run's report lists any difference, and the commit's report lists every
+one, a term that another release stored after the dry run included
+([The summary and the report](typed-releases.md#the-summary-and-the-report)).
 
 ### An example
 
@@ -412,15 +422,22 @@ The manifest of [the next section](#the-release-manifest) declares the paper
 | A data file | 2 GiB (2,147,483,648 bytes) |
 | A manifest or a resolution file | 8 MiB (8,388,608 bytes) |
 | Entries in a resolution file | 10,000 |
+| Distinct identifiers a file states | 250,000 |
 | Free space the storage volume keeps after a file is stored | 64 MiB |
 
 A longer line is read to its end in small pieces, never held in memory, and
 reported by its line number.
 
 A dry run reads its file in batches, but remembers each distinct identifier
-the file states, with how it maps, for the whole run: about 2 KB of memory
-per identifier, so about 2 GB for a file that names a million distinct
-identifiers. A refused value is remembered by its first 200 characters only.
+the file states, with how it maps, for the whole run: about 2.2 KB of memory
+per identifier, and up to 2.7 KB at its peak, so up to about 700 MB for a
+file at the limit of 250,000. A refused value is remembered by its first 200
+characters only. Its report also counts each distinct relationship that its
+mapped rows state, at about 600 bytes each, which only the line limit
+bounds: 5,000,000 lines that each state another pair take about 3 GB. A
+commit keeps the same identifier caches, but not that count. A file near
+the line limit therefore needs more memory than the 2 GB that
+[Installation](installation.md#requirements) asks for all the containers.
 
 ## The release manifest
 
@@ -467,7 +484,8 @@ Some identifiers cannot be mapped by their namespace alone: a value that
 matches an entity only as a cross-reference or an alias, one that several
 entities share, or one in a namespace that defines no entity. A person who
 has reviewed such a value can map it with a resolution file, given to the
-dry run with `--resolutions`:
+dry run with `--resolutions`, then to the commit, and to any rerun that
+resumes the commit:
 
 ```json
 {
@@ -507,7 +525,9 @@ An entry applies only where the namespace alone settles nothing ([Mapping
 identifiers](#mapping-identifiers)). The run keeps the file's SHA-256 and
 its entries, and every record mapped through it gets a note (basis
 `curated`) and is listed in the report with the entry's rationale and
-reviewer.
+reviewer. A commit is given the same file as its dry run, checked by its
+SHA-256, and so is any rerun that resumes the commit: keep the file until
+the release is committed.
 
 ## Dry runs
 
@@ -519,8 +539,8 @@ python manage.py graph_import --release ID --dry-run [--create-entities] \
 | Option | Meaning |
 |---|---|
 | `--release ID` | The release, by the id registration printed. Required. |
-| `--dry-run` | The mode, and the only one: `--commit` is refused, since importing is not available yet. |
-| `--create-entities` | Count the records whose identifiers need new entities as mapped, as a commit with this option would create them. Without it they are `unresolved`. The report lists those entities either way. |
+| `--dry-run` | The mode: map and report, writing only the run and the source records. `--commit` imports the release instead ([Committing a release](typed-releases.md#committing-a-release)). |
+| `--create-entities` | Count the records whose identifiers need new entities as mapped, as a commit with this option would create them. Without it they are `unresolved`. The report lists those entities either way. The commit takes the option exactly when its dry run had it. |
 | `--resolutions FILE` | A reviewed [resolution file](#resolution-files). |
 | `--report-file PATH` | Also write every entry of the report's lists to `PATH`, as JSON Lines ([The report](#the-report)). |
 | `--as USERNAME` | The active staff account running the dry run. Required. |
@@ -560,16 +580,30 @@ The dry run checks, in this order, and refuses with nothing written when:
 3. the database's registry is at another version than this code's: run
    `python manage.py graph_sync_registry` after an upgrade;
 4. the release does not exist, is not a draft, does not have exactly one
-   data file and at most one manifest, or has an import that was started
-   and not finished;
-5. the release is not synthetic and has no effective `internal` approval;
-6. the release was registered with another version of its adapter than this
-   code carries: [register it again](#registering-again);
+   data file and at most one manifest, or has an open commit run: resume
+   that commit with `graph_import --commit`, or discard it with
+   `graph_discard_release`
+   ([A commit that stopped](typed-releases.md#a-commit-that-stopped));
+5. the release is not synthetic and has no effective `internal` approval:
+   record one with `graph_approve`;
+6. the release was registered with another version, mapping version or kind
+   of its adapter than this code carries:
+   [register it again](#registering-again);
 7. the resolution file is unreadable or invalid;
 8. the report file's folder does not exist, the report file lies under the
    media, the static or the release-file root, or something that is not a
    regular file is at its path already: a link, a FIFO or a device such as
-   `/dev/null` or `/dev/stdout`.
+   `/dev/null` or `/dev/stdout`;
+9. a dry run, commit or discard of the release is running: one runs at a
+   time ([One commit at a time](typed-releases.md#one-commit-at-a-time)).
+
+Once it holds the release's run lock (9), it checks 4 again, since a commit
+may have started or finished meanwhile. A dry run marks no other run: one
+that a process which ended left running stays so until the release's next
+commit or discard marks it failed, on PostgreSQL. Without the run lock
+nothing tells that its process ended, so nothing marks it:
+[One commit at a time](typed-releases.md#one-commit-at-a-time) says how to
+mark it failed.
 
 ### What it does
 
@@ -671,12 +705,13 @@ The report's verdict is `ok`, or `refused` when:
 
 - a stored file is missing or changed, or the manifest is invalid;
 - the file is refused as a whole: its encoding, a missing or invalid header,
-  or more than 5,000,000 lines;
+  more than 5,000,000 lines, or more than 250,000 distinct identifiers;
 - the release is synthetic and any row breaks the synthetic rules.
 
 A file refused at its header gets no record. One refused later keeps the
-records read before the problem. A release whose latest dry run was refused
-is not ready to import.
+records read before the problem, except those of the batch that passed the
+identifier limit. A release whose latest dry run was refused is not ready
+to import: `graph_import --commit` refuses it.
 
 ### The report
 
@@ -848,6 +883,7 @@ These refuse the file: the verdict is `refused`.
 | `unknown_score_type` | A `score:` column names a score type that is not in the registry. |
 | `unknown_facet` | A `context:` column names a facet that does not exist. |
 | `too_many_lines` | The file has more than 5,000,000 lines after its header. |
+| `too_many_identifiers` | The file states more than 250,000 distinct identifiers, which a run does not keep: split it into releases. |
 | `manifest_invalid` | The release manifest is not valid. |
 | `stored_file_mismatch` | A stored release file is missing, or its size or SHA-256 differs from its record. |
 
@@ -865,11 +901,15 @@ These refuse the file: the verdict is `refused`.
 - **A dry run** does not start without the switch, an active staff account,
   the code's registry version, a draft release with its data file, an
   approval for real data, and the adapter version the release was
-  registered with; nor with an invalid resolution file or report-file path.
-  Nothing is written.
+  registered with; nor with an invalid resolution file or report-file path,
+  nor while a dry run, commit or discard of the release runs. Nothing is
+  written.
 - **A file** is refused, with the verdict `refused`, for its encoding, its
-  header, its length, a missing or changed stored copy, an invalid manifest,
-  or, in a synthetic release, anything that is not synthetic.
+  header, its length, more than 250,000 distinct identifiers, a missing or
+  changed stored copy, an invalid manifest, or, in a synthetic release,
+  anything that is not synthetic. A commit refuses it too.
+- **A commit**, publishing, withdrawing and discarding refuse as
+  [Typed releases](typed-releases.md#what-is-refused) says.
 - **A row** that cannot be read is unstored, and one that breaks a rule is
   stored as `rejected`. Neither stops the run: every row is reported, with
   its line number.
@@ -881,9 +921,12 @@ These refuse the file: the verdict is `refused`.
 ## Synthetic releases
 
 A release registered with `--synthetic` is made-up demonstration data. Its
-flag is checked by every dry run, never trusted, so real data can never
-skip due diligence by being declared synthetic. A synthetic release needs no
-licence snapshot, due diligence or approval to be dry-run.
+flag is checked by every dry run and commit, never trusted, so real data can
+never skip due diligence by being declared synthetic. A synthetic release
+needs no licence snapshot, due diligence or approval to be dry-run or
+committed. To be published it needs a licence snapshot that records terms,
+and an `internal` approval
+([Approving a release](typed-releases.md#approving-a-release)).
 
 Every readable row is checked, rejected rows included, and so are rows
 that are not stored but whose values could be read: a value over 10,000
@@ -938,8 +981,12 @@ text, and never becomes part of a path.
   registration refuses a file that would leave less than 64 MiB free. A
   registration that was killed may leave a partial copy, `file-*.part`,
   under `incoming/`, which you may delete while no registration runs.
+  `graph_check` lists such leftovers, with anything else under the root
+  that no row names
+  ([Checking the graph](typed-releases.md#checking-the-graph)).
 - **Back them up with the database.** The database records each file's
   path, size and SHA-256, so back up and restore the `graph_files` volume
   together with the database ([Maintenance](maintenance.md#backups)). A dry
-  run refuses a release whose stored copy is missing or changed, and
-  registering the same file again with the same options puts it back.
+  run or a commit refuses a release whose stored copy is missing or changed,
+  `graph_check` lists it, and registering the same file again with the same
+  options puts it back.

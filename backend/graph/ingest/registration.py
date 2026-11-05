@@ -3,9 +3,8 @@ a dataset, with the adapter that reads it and the options its source
 states, and its data file and manifest in private storage (graph.storage).
 
 Data sources, datasets, licence snapshots and due diligence are recorded in
-the admin; approval decisions with graph.approvals.record_decision until
-G5's graph_approve. A release's files are added only before anyone decides
-on it (G2), so registering comes first.
+the admin, and approval decisions with graph_approve. A release's files are
+added only before anyone decides on it (G2), so registering comes first.
 
 register_release refuses while the switch is off, and checks, before it
 reads a file: the actor is an active staff account (a gate: G2 stores no
@@ -28,9 +27,12 @@ A known (dataset, version) is never registered twice:
 - with the same files and options but another adapter version, mapping
   version or kind in the code, a draft whose records hold no evidence (and
   with no open commit run) takes the code's, and its source records are
-  deleted, to be read again from the stored file by the next dry run: with
-  G5's discard, that is architecture §4.4's discard and re-import. The kind
-  changes only while no entity names the release. Anything else is refused;
+  deleted, to be read again from the stored file by the next dry run: after
+  graph_discard_release, that is architecture §4.4's discard and re-import.
+  The kind changes only while no entity names the release. Anything else is
+  refused: a staged release, or one with evidence or an open commit run, is
+  discarded first, and a published, superseded or withdrawn one, or a kind
+  change once entities name the release, takes a new version;
 - any other difference (a file, the adapter, an option) is refused, naming
   it: a known version with other content is a new release.
 """
@@ -335,8 +337,13 @@ def _create(dataset, version, spec, options, supersedes, taxa, data, stated, inc
             f"SHA-256 {file.sha256}."
         )
     lines.append(
-        "Record its licence snapshot and due diligence in the admin, then dry-run "
+        "Record its licence snapshot and due diligence in the admin, and its "
+        "internal approval with graph_approve unless it is synthetic, then dry-run "
         f"it: graph_import --release {release.pk} --dry-run --as <username>."
+    )
+    lines.append(
+        "Then commit it, with the options of its dry run: graph_import --release "
+        f"{release.pk} --commit --as <username>."
     )
     return Registration(release, REGISTERED, tuple(lines))
 
@@ -452,12 +459,13 @@ def _update(release, spec, stored, lines) -> Registration:
         release = DatasetRelease.objects.select_for_update().get(pk=release.pk)
         refused = _update_refusal(release, spec)
         if refused:
+            reason, advice = refused
             raise RegistrationError(
                 f"Release {release.pk} ({release.dataset.slug} {release.version}) "
                 f"was registered with {release.adapter} {stored[0]} (mapping "
                 f"{stored[1]}, kind {stored[2]}), and this code carries {spec.version} "
-                f"(mapping {spec.mapping_version}, kind {spec.kind}); {refused} "
-                "Register it under a new version instead. Nothing was written."
+                f"(mapping {spec.mapping_version}, kind {spec.kind}); {reason} "
+                f"{advice} Nothing was written."
             )
         release.adapter_version = spec.version
         release.mapping_version = spec.mapping_version
@@ -495,23 +503,40 @@ def _delete_records(release) -> int:
         last = ids[-1]
 
 
-def _update_refusal(release, spec) -> str | None:
+def _update_refusal(release, spec) -> tuple[str, str] | None:
+    """Why a known release does not take the code's adapter version, and
+    what to do: (reason, advice), or None. A staged release, and a draft
+    with evidence or an open commit run, are discarded first
+    (graph_discard_release returns them to a draft without either); a
+    published, superseded or withdrawn release, and a kind that entities
+    keep, take a new version."""
+    discard = (
+        "Discard it with graph_discard_release, then register it again; or "
+        "register its files under a new version."
+    )
+    new_version = "Register it under a new version instead."
+    if release.status == ReleaseStatus.STAGED:
+        return f"it is {release.status}, and only a draft is read anew.", discard
     if release.status != ReleaseStatus.DRAFT:
-        return f"it is {release.status}, and only a draft is read anew."
+        return f"it is {release.status}, and only a draft is read anew.", new_version
     if EvidenceAssertion.objects.filter(release=release).exists():
-        return "evidence is recorded from its records, which rests on that mapping."
+        return (
+            "evidence is recorded from its records, which rests on that mapping.",
+            discard,
+        )
     if ImportRun.objects.filter(
         release=release,
         mode=ImportMode.COMMIT,
         state__in=[ImportState.RUNNING, ImportState.FAILED],
     ).exists():
-        return "a commit run of it is open."
+        return "a commit run of it is open.", discard
     if (
         release.kind != spec.kind
         and Entity.objects.filter(created_by_release=release).exists()
     ):
         return (
             f"its kind stays {release.kind}, since entities name it as the release "
-            "that created them."
+            "that created them.",
+            new_version,
         )
     return None

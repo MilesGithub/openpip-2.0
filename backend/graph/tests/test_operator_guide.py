@@ -2,7 +2,8 @@
 typed-data-format.md) against the code it describes: its issue codes,
 columns, interaction types, registry tables and limits, and its example
 file, manifest, resolution file and summary, which a dry run reads and
-prints as the page says.
+prints as the page says. Its helpers and its example also serve
+test_operator_releases, which reads the page on releases.
 
 Like core's docs contract tests, these need the full checkout: they skip
 without docs/ locally, and fail without it in CI."""
@@ -39,10 +40,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def section(heading) -> str:
+def section(heading, *, page=PAGE) -> str:
     """The page's text under a heading, to the next heading of its level or
-    above; a fenced code block never ends it."""
-    lines = PAGE.read_text(encoding="utf-8").splitlines()
+    above; a fenced code block never ends it. The page is this one unless
+    given (test_operator_releases reads typed-releases.md)."""
+    lines = page.read_text(encoding="utf-8").splitlines()
     start = lines.index(heading)
     level = len(heading) - len(heading.lstrip("#"))
     fenced = False
@@ -58,7 +60,8 @@ def section(heading) -> str:
 
 def rows(text) -> list:
     """The cells of each table row in the text, the header row included,
-    stripped; separator rows left out. An escaped pipe stays in its cell."""
+    stripped; separator rows left out. An escaped pipe stays in its cell.
+    It reads no page: give it the text of a section of either."""
     found = []
     for line in text.splitlines():
         if not line.startswith("|") or re.fullmatch(r"[|:\- ]+", line):
@@ -71,9 +74,10 @@ def code(cell) -> str:
     return cell.strip("`")
 
 
-def json_block(key) -> str:
-    """The page's one JSON example that has this key."""
-    text = PAGE.read_text(encoding="utf-8")
+def json_block(key, *, page=PAGE) -> str:
+    """The page's one JSON example that has this key; the page is this one
+    unless given."""
+    text = page.read_text(encoding="utf-8")
     [found] = [
         block
         for block in re.findall(r"```json\n(.*?)\n```", text, re.DOTALL)
@@ -144,6 +148,7 @@ def test_the_limits_are_the_codes():
         "A data file": limits.MAX_FILE_BYTES,
         "A manifest or a resolution file": limits.MAX_JSON_BYTES,
         "Entries in a resolution file": limits.MAX_RESOLUTION_ENTRIES,
+        "Distinct identifiers a file states": limits.MAX_IDENTIFIERS,
         "Free space the storage volume keeps after a file is stored": (
             limits.FREE_SPACE_MARGIN_BYTES // 1024**2
         ),

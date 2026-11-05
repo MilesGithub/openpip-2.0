@@ -242,10 +242,27 @@ PINNED_CODES = {
     "header_duplicate_column",
     "too_many_columns",
     "too_many_lines",
+    "too_many_identifiers",
     "manifest_invalid",
     "stored_file_mismatch",
     # A record's issues past the first limits.RECORD_ISSUES.
     "more",
+}
+# The codes that refuse a whole file.
+PINNED_FILE_ERRORS = {
+    "encoding",
+    "no_header",
+    "header_unknown_column",
+    "header_missing_column",
+    "header_duplicate_column",
+    "too_many_columns",
+    "too_many_lines",
+    # The mapping's: past limits.MAX_IDENTIFIERS distinct identifiers.
+    "too_many_identifiers",
+    "unknown_score_type",
+    "unknown_facet",
+    "manifest_invalid",
+    "stored_file_mismatch",
 }
 
 
@@ -256,6 +273,11 @@ def test_the_issue_codes_are_pinned():
     assert UNSTORED_CODES | NOTE_CODES | FILE_ERROR_CODES <= set(ISSUE_CODES)
     assert not UNSTORED_CODES & NOTE_CODES
     assert not FILE_ERROR_CODES & NOTE_CODES
+    assert FILE_ERROR_CODES == PINNED_FILE_ERRORS
+    assert ISSUE_CODES["too_many_identifiers"] == (
+        "The file states more distinct identifiers than a run keeps."
+    )
+    assert limits.MAX_IDENTIFIERS == 250_000
 
 
 def test_an_issue_has_a_pinned_code_and_a_severity_its_code_allows():

@@ -8,9 +8,16 @@ anything is read or written: the switch is on; the actor is an active staff
 account; the database's registry version is the code's; the release exists,
 is a draft, has one data file and at most one manifest, and no open commit
 run; a release that is not synthetic has an effective internal approval;
-the release's adapter is registered at the version and mapping version the
-release records; the resolution file, if given, is valid; the report file,
-if given, lies outside MEDIA_ROOT, STATIC_ROOT and GRAPH_FILES_ROOT.
+the release's adapter is registered at the version, mapping version and
+kind the release records; the resolution file, if given, is valid; the
+report file, if given, lies outside MEDIA_ROOT, STATIC_ROOT and
+GRAPH_FILES_ROOT; and the release's run lock (graph.ingest.runlock) is
+taken, which the run holds until it returns, so that one dry run, commit or
+discard of a release runs at a time. Once it is, the release is read again
+and precondition 4 checked again (still a draft, with no open commit run),
+since a commit may have started or finished meanwhile. A dry run marks no
+other run: one left running by a process that ended stays so until the
+release's next commit or discard marks it failed.
 
 Then the run is created (mode dry_run, running), the stored data file and
 manifest are opened and checked (graph.storage.open_stored), the manifest is
@@ -21,14 +28,17 @@ later batch changes how an earlier batch's rows map (a later line of a
 record id rejects its first occurrence; a value stated at another taxon
 refuses a planned entity), the file is read a second time, with what was
 resolved, so the records and the report follow from the whole file
-(MappingRun.read_again). A stored file that does not match its record, an
-invalid manifest, a file error of the adapter (at the header: no record is
-written; later: the records written so far stay) or a synthetic violation
-make the verdict refused; G5 refuses to commit a release whose latest dry
-run was refused. The run is marked completed with its report, once the
-release is checked to read with the run's adapter version still, or failed
-with the error (its repr()), whatever stopped it; a failed run leaves no
-report file.
+(MappingRun.read_again), unless a file error ended the reading. A stored
+file that does not match its record, an invalid manifest, a file error of
+the adapter (at the header: no record is written; later: the records
+written so far stay) or of the mapping (more distinct identifiers than
+limits.MAX_IDENTIFIERS: the batch that passed the limit is not written, and
+the records written before it stay), or a synthetic violation make the
+verdict refused; graph_import --commit (graph.ingest.commit) refuses a
+release whose latest dry run was refused. The run is marked completed with
+its report, once the release is checked to read with the run's adapter
+version still, or failed with the error (its repr()), whatever stopped it;
+a failed run leaves no report file.
 
 The report (ImportRun.report) lists what the acceptance asks for; each list
 keeps limits.REPORT_LIST_ENTRIES entries with its total, an entry its first
@@ -42,6 +52,7 @@ import os
 import stat
 import tempfile
 from collections import Counter, defaultdict
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,6 +104,7 @@ from .mapping import (
 from .protocol import FileError, Issue
 from .registry import AdapterSpecError, UnknownAdapter, get_adapter
 from .resolutions import NO_RESOLUTIONS, ResolutionError, load_resolutions
+from .runlock import KEY, MAX_RUN_LOCK_KEY, NESTED, RunLocked, release_run_lock
 
 OK = "ok"
 REFUSED = "refused"
@@ -136,7 +148,7 @@ _STATUS_ORDER = {"ambiguous": 0, "candidate": 1, "unmatched": 2, "resolved": 4}
 
 
 class DryRunError(Exception):
-    """The dry run did not start: precondition `precondition` (1 to 8, in
+    """The dry run did not start: precondition `precondition` (1 to 9, in
     the order they are checked) failed. Nothing was written."""
 
     def __init__(self, precondition, message):
@@ -168,53 +180,56 @@ def dry_run(
     """Dry-run the release (a row or its id) and return its import run,
     completed with its report. `resolutions` and `report_file` are paths.
     Raises DryRunError, writing nothing, when a precondition fails; any
-    error once the run exists marks it failed and is raised again."""
+    error once the run exists marks it failed and is raised again. The
+    release's run lock is held from precondition 9 until it returns."""
     checked = _preconditions(
         release, triggered_by, create_entities, resolutions, report_file
     )
     release, data, manifest_file, adapter, loaded = checked
-    run = ImportRun(
-        release=release,
-        file=data,
-        adapter=release.adapter,
-        adapter_version=release.adapter_version,
-        mapping_version=release.mapping_version,
-        mode=ImportMode.DRY_RUN,
-        state=ImportState.RUNNING,
-        parameters={
-            "create_entities": bool(create_entities),
-            "resolutions": loaded.as_json(),
-            "registry_version": registry_state().database,
-        },
-        triggered_by=triggered_by,
-    )
-    run.save()
-    report = None
-    try:
-        report = Report(release, adapter, bool(create_entities), report_file)
-        _read_and_write(run, release, data, manifest_file, adapter, loaded, report)
-        run.report = report.finish()
-        report.write_file(run.report)
-        run.state = ImportState.COMPLETED
-        run.finished_at = timezone.now()
-        with transaction.atomic():
-            # Registered again since the last batch was written: the report
-            # no longer says what the release's records are.
-            check_adapter_unchanged(locked_release(release.pk, RunStopped), run)
-            run.save(update_fields=["state", "report", "finished_at"])
-    except BaseException as error:
-        run.state = ImportState.FAILED
-        run.error = repr(error)
-        run.report = {}
-        if report is not None:
-            report.discard()
-            try:
-                run.report = report.finish()
-            except Exception:  # noqa: BLE001 - the error raised below says why.
-                pass
-        run.finished_at = timezone.now()
-        run.save(update_fields=["state", "error", "report", "finished_at"])
-        raise
+    with ExitStack() as held:
+        release, data, manifest_file = _run_locked(release, held)
+        run = ImportRun(
+            release=release,
+            file=data,
+            adapter=release.adapter,
+            adapter_version=release.adapter_version,
+            mapping_version=release.mapping_version,
+            mode=ImportMode.DRY_RUN,
+            state=ImportState.RUNNING,
+            parameters={
+                "create_entities": bool(create_entities),
+                "resolutions": loaded.as_json(),
+                "registry_version": registry_state().database,
+            },
+            triggered_by=triggered_by,
+        )
+        run.save()
+        report = None
+        try:
+            report = Report(release, adapter, bool(create_entities), report_file)
+            _read_and_write(run, release, data, manifest_file, adapter, loaded, report)
+            run.report = report.finish()
+            report.write_file(run.report)
+            run.state = ImportState.COMPLETED
+            run.finished_at = timezone.now()
+            with transaction.atomic():
+                # Registered again since the last batch was written: the
+                # report no longer says what the release's records are.
+                check_adapter_unchanged(locked_release(release.pk, RunStopped), run)
+                run.save(update_fields=["state", "report", "finished_at"])
+        except BaseException as error:
+            run.state = ImportState.FAILED
+            run.error = repr(error)
+            run.report = {}
+            if report is not None:
+                report.discard()
+                try:
+                    run.report = report.finish()
+                except Exception:  # noqa: BLE001 - the error raised below says why.
+                    pass
+            run.finished_at = timezone.now()
+            run.save(update_fields=["state", "error", "report", "finished_at"])
+            raise
     return run
 
 
@@ -246,8 +261,7 @@ def _preconditions(release, user, create_entities, resolutions, report_file):
         raise DryRunError(
             5,
             f"Release {release.pk} is not synthetic and has no effective internal "
-            "approval (graph.approvals.record_decision records one). Nothing was "
-            "written.",
+            "approval (graph_approve records one). Nothing was written.",
         )
     adapter = _adapter(release)
     loaded = NO_RESOLUTIONS
@@ -289,7 +303,10 @@ def _release_row(release) -> DatasetRelease:
     return row
 
 
-def _release_files(release):
+def _release_files(release, *, open_commit_check=True):
+    """The release's one data file and its manifest, if any; with
+    open_commit_check (the dry run's precondition 4), the release has no
+    open commit run too. A commit reads them without that check."""
     files = list(
         release.files.filter(role__in=[FileRole.DATA, FileRole.MANIFEST]).order_by("pk")
     )
@@ -307,17 +324,31 @@ def _release_files(release):
             f"Release {release.pk} has {len(manifests)} manifests, and a release "
             "has at most one. Nothing was written.",
         )
-    if ImportRun.objects.filter(
-        release=release,
-        mode=ImportMode.COMMIT,
-        state__in=[ImportState.RUNNING, ImportState.FAILED],
-    ).exists():
+    if open_commit_check:
+        _no_open_commit(release)
+    return data[0], (manifests[0] if manifests else None)
+
+
+def _no_open_commit(release):
+    """Precondition 4's last check: no commit run of the release is open
+    (running, or failed and resumable)."""
+    found = (
+        ImportRun.objects.filter(
+            release=release,
+            mode=ImportMode.COMMIT,
+            state__in=[ImportState.RUNNING, ImportState.FAILED],
+        )
+        .order_by("pk")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    if found is not None:
         raise DryRunError(
             4,
-            f"Release {release.pk} has an open commit run: a dry run never runs "
-            "beside one. Nothing was written.",
+            f"Release {release.pk} has an open commit run {found}: a dry run never "
+            "runs beside one. Resume it with graph_import --commit, or discard it "
+            "with graph_discard_release. Nothing was written.",
         )
-    return data[0], (manifests[0] if manifests else None)
 
 
 def _adapter(release):
@@ -328,19 +359,58 @@ def _adapter(release):
             6, f"Release {release.pk}'s adapter: {error} Nothing was written."
         ) from None
     spec = adapter.spec
-    if (spec.version, spec.mapping_version) != (
+    # The kind too: a dry run's report states the kind the release has.
+    if (spec.version, spec.mapping_version, spec.kind) != (
         release.adapter_version,
         release.mapping_version,
+        release.kind,
     ):
         raise DryRunError(
             6,
             f"Release {release.pk} was registered with {spec.name} {release.adapter_version}"
-            f", mapping {release.mapping_version}, and this code carries "
-            f"{spec.version}, mapping {spec.mapping_version}. Register it again with "
-            "this adapter (graph_register_release), which updates a draft without "
-            "evidence. Nothing was written.",
+            f", mapping {release.mapping_version}, kind {release.kind}, and this code "
+            f"carries {spec.version}, mapping {spec.mapping_version}, kind "
+            f"{spec.kind}. Register it again with this adapter "
+            "(graph_register_release), which updates a draft without evidence. "
+            "Nothing was written.",
         )
     return adapter
+
+
+def _run_locked(release, stack):
+    """Precondition 9: the release's run lock, entered into `stack`, which
+    holds it until the run returns. Then precondition 4 again, on the
+    release as stored (a draft with one data file, at most one manifest and
+    no open commit run), since a commit may have started or finished
+    meanwhile: the release, its data file and its manifest."""
+    try:
+        stack.enter_context(release_run_lock(release.pk))
+    except RunLocked as error:
+        raise DryRunError(9, _run_lock_refusal(error)) from None
+    release = _release_row(release.pk)
+    data, manifest = _release_files(release)
+    return release, data, manifest
+
+
+def _run_lock_refusal(error) -> str:
+    """Why the run lock refused a dry run (RunLocked.reason), in words."""
+    release = error.release_id
+    if error.reason == NESTED:
+        why = (
+            f"This connection already holds the run lock of release {release}: a "
+            "dry run never runs inside another run of it."
+        )
+    elif error.reason == KEY:
+        why = (
+            f"Release {release}'s id is beyond {MAX_RUN_LOCK_KEY:,}, the largest a "
+            "run lock keys."
+        )
+    else:
+        why = (
+            f"A dry run, commit or discard of release {release} is running: one "
+            "runs at a time."
+        )
+    return f"{why} Nothing was written."
 
 
 def _resolutions(path):
@@ -452,22 +522,31 @@ def _read_and_write(run, release, data, manifest_file, adapter, loaded, report):
             create_entities=report.create_entities,
         )
         report.mapping_run = mapping_run
-        _read_batches(stream, run, adapter, ctx, mapping_run, report)
-        if mapping_run.read_again:
+        ended = _read_batches(stream, run, adapter, ctx, mapping_run, report)
+        if mapping_run.read_again and not ended:
             # A later batch changed how an earlier batch's rows map: the
             # same checked file is read again, with what was resolved, so
             # write_records updates what changed and the report is gathered
-            # from the whole file. The second reading finds nothing new.
+            # from the whole file. The second reading finds nothing new. A
+            # reading a file error ended is not read again: the run is
+            # refused, and the records written stand.
             stream.seek(0)
             mapping_run.restart()
             report.restart()
             _read_batches(stream, run, adapter, ctx, mapping_run, report)
 
 
-def _read_batches(stream, run, adapter, ctx, mapping_run, report):
+def _read_batches(stream, run, adapter, ctx, mapping_run, report) -> bool:
+    """Read the file once, in batches, each planned and written (_batch).
+    A file error ends the reading, its issues in the report: the adapter's
+    (at the header nothing was read; later, the records read before it are
+    written), or the mapping's (plan_batch: too many distinct identifiers),
+    whose batch is dropped, and no batch is planned after it. Returns
+    whether a file error ended the reading."""
     records = adapter.iter_records(stream, ctx)
     reading = iter(records)
     batch, size = [], 0
+    ended = False
     while True:
         try:
             record = next(reading)
@@ -476,22 +555,42 @@ def _read_batches(stream, run, adapter, ctx, mapping_run, report):
         except FileError as error:
             # At the header nothing was read; later, the records read so
             # far are written, and the run is refused.
-            for issue in error.issues:
-                report.file_error(issue)
+            _file_error(report, error)
+            ended = True
             break
         # A line too long to keep holds no memory.
         weight = record.size if record.fields is not None else 0
         if batch and (
             len(batch) >= limits.BATCH_ROWS or size + weight > limits.BATCH_BYTES
         ):
-            _batch(batch, run, mapping_run, report)
+            if not _planned(batch, run, mapping_run, report):
+                batch, ended = [], True
+                break
             batch, size = [], 0
         batch.append(record)
         size += weight
-    if batch:
-        _batch(batch, run, mapping_run, report)
+    if batch and not _planned(batch, run, mapping_run, report):
+        ended = True
     report.lines = getattr(records, "lines", None)
     report.blank_lines = getattr(records, "blank_lines", None)
+    return ended
+
+
+def _planned(batch, run, mapping_run, report) -> bool:
+    """The batch planned and written (_batch); False, writing nothing, when
+    the mapping refuses the file (a FileError from plan_batch), whose issues
+    go to the report."""
+    try:
+        _batch(batch, run, mapping_run, report)
+    except FileError as error:
+        _file_error(report, error)
+        return False
+    return True
+
+
+def _file_error(report, error):
+    for issue in error.issues:
+        report.file_error(issue)
 
 
 def _manifest(manifest_file, release, report):
