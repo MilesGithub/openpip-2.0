@@ -24,7 +24,7 @@ open:
    in incoming/ (discard).
 
 A killed process may leave files under incoming/, or under a release id no
-row names; nothing reads them, since only rows lead to files, and G5's
+row names; nothing reads them, since only rows lead to files, and
 graph_check lists them.
 
 open_stored opens a stored file for reading only after checking it: the

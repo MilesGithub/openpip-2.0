@@ -27,7 +27,12 @@ cross-reference that is only a candidate, an identifier a commit would
 create an entity for, a new isoform pair, a rejected row and two unstored
 ones, citing the legacy dataset's PubMed id. The dry run writes only its
 import run and the release's source records, and the legacy responses, the
-legacy row counts and PSICQUIC stay as they were.
+legacy row counts and PSICQUIC stay as they were. The release is then
+committed with graph_import --commit, which writes the entity, relationships,
+paper and evidence its dry run reported and no source record, published with
+graph_publish_release and withdrawn with graph_withdraw_release, which change
+only its own row; the legacy responses, row counts and PSICQUIC still stay
+as they were.
 
 The typed records point at the legacy user table only through SET_NULL keys
 with a username kept beside each, so deleting an account in the Django admin
@@ -107,6 +112,7 @@ from graph.models import (
 )
 from graph.publications import get_or_create_publication
 from graph.releases import publish_release
+from graph.stats import release_stats
 from graph.summary import summarize
 from graph.terms import get_or_create_term
 from graph.tests.factories import (
@@ -453,6 +459,18 @@ def row_counts(left_out=()) -> dict[str, int]:
 
 def legacy_row_counts() -> dict[str, int]:
     return row_counts(left_out=TYPED_APPS)
+
+
+def legacy_table_contents() -> dict:
+    """table_contents of every table but the typed apps': a legacy row
+    updated shows, which a row count misses."""
+    return table_contents(
+        left_out={
+            model._meta.db_table
+            for app in TYPED_APPS
+            for model in apps.get_app_config(app).get_models(include_auto_created=True)
+        }
+    )
 
 
 def table_contents(left_out=("graph_importrun", "graph_sourcerecord")) -> dict:
@@ -958,6 +976,102 @@ def register_and_dry_run(directory, approver) -> ImportRun:
     return run
 
 
+def commit_publish_and_withdraw(release, approver) -> ImportRun:
+    """After register_and_dry_run: the lab's release v4 committed with
+    graph_import --commit --create-entities, the options of its dry run,
+    then published with graph_publish_release and withdrawn with
+    graph_withdraw_release, by the approver, as an operator would. The
+    commit writes the entity, relationships and paper its dry run reported
+    new, and the four mapped records' evidence, and no source record or
+    term; publishing and withdrawing change the release's row alone. This
+    checks it over every table, typed and legacy. Returns the commit run."""
+    records = list(SourceRecord.objects.filter(release=release).order_by("pk").values())
+    before = row_counts()
+    legacy = legacy_table_contents()
+    out = io.StringIO()
+    call_command(
+        "graph_import",
+        "--release",
+        str(release.pk),
+        "--commit",
+        "--create-entities",
+        "--as",
+        approver.username,
+        stdout=out,
+    )
+    after = row_counts()
+    changed = {
+        table: after[table] - before[table]
+        for table in after
+        if after[table] != before[table]
+    }
+    assert changed == {
+        "graph_importrun": 1,
+        "graph_entity": 1,
+        "graph_entityidentifier": 1,
+        "graph_relationship": 2,
+        "graph_publication": 1,
+        "graph_evidenceassertion": 4,
+        "graph_assertionparticipant": 8,
+        "graph_evidencemethod": 2,
+        "graph_evidencepublication": 2,
+    }
+    # Nor is any legacy row updated, which the counts would miss.
+    assert legacy_table_contents() == legacy
+    # The records keep the status and issues the dry run stored.
+    assert (
+        list(SourceRecord.objects.filter(release=release).order_by("pk").values())
+        == records
+    )
+    run = ImportRun.objects.get(release=release, mode=ImportMode.COMMIT)
+    assert (
+        f"Commit run {run.pk} of release {release.pk}: completed, and the release is "
+        "staged." in out.getvalue()
+    )
+    release.refresh_from_db()
+    assert release.status == ReleaseStatus.STAGED
+    assert release.stats == release_stats(release)
+
+    counts = row_counts()
+    contents = table_contents(left_out=("graph_datasetrelease",))
+    call_command(
+        "graph_publish_release",
+        "--release",
+        str(release.pk),
+        "--as",
+        approver.username,
+        stdout=io.StringIO(),
+    )
+    release.refresh_from_db()
+    assert release.status == ReleaseStatus.PUBLISHED
+    # Published with an internal approval: current for staff, and for no
+    # visitor.
+    staff = RequestFactory().get("/")
+    staff.user = approver
+    assert release.pk in visible_release_ids(staff, Purpose.VIEW).ids
+    assert (
+        release.pk
+        not in visible_release_ids(RequestFactory().get("/"), Purpose.VIEW).ids
+    )
+    call_command(
+        "graph_withdraw_release",
+        "--release",
+        str(release.pk),
+        "--reason",
+        "Compat: the lab retracted v4.",
+        "--as",
+        approver.username,
+        stdout=io.StringIO(),
+    )
+    release.refresh_from_db()
+    assert release.status == ReleaseStatus.WITHDRAWN
+    # Out of every view at once, its rows kept (A10).
+    assert release.pk not in visible_release_ids(staff, Purpose.VIEW).ids
+    assert row_counts() == counts
+    assert table_contents(left_out=("graph_datasetrelease",)) == contents
+    return run
+
+
 def test_legacy_responses_are_byte_identical_with_typed_rows_present(
     legacy, regular_user, admin_user, settings
 ):
@@ -1096,6 +1210,70 @@ def test_legacy_responses_are_byte_identical_after_a_registration_and_a_dry_run(
         (entry["kind"], entry["value"]): entry["status"]
         for entry in report["publications"]["entries"]
     } == {("pmid", "12345678"): "found", ("local", "compat-lab-paper"): "new"}
+
+    assert legacy_row_counts() == counts
+    after = legacy_responses(regular_user, legacy)
+    for name in before:
+        assert after[name] == before[name], f"{name} changed"
+    assert home_network_keys() == home_keys
+    assert legacy_row_counts() == counts
+    # PSICQUIC serves the two legacy interactions, and nothing the release
+    # states.
+    tab28 = after["psicquic tab28"][1].decode()
+    header, *rows = tab28.split("\n")
+    assert header.startswith("#") and len(rows) == 2
+    assert after["psicquic count"][1] == b"2"
+    for typed in (*TYPED_ONLY, *LAB_ONLY):
+        assert typed not in tab28, typed
+
+
+def test_legacy_responses_are_byte_identical_after_a_commit_and_its_lifecycle(
+    legacy, regular_user, admin_user, settings, tmp_path
+):
+    before = legacy_responses(regular_user, legacy)
+    home_keys = home_network_keys()
+    counts = legacy_row_counts()
+    assert all(status == 200 for status, _ in before.values()), {
+        name: status for name, (status, _) in before.items()
+    }
+
+    add_typed_rows(settings, approver=admin_user)
+    dry = register_and_dry_run(tmp_path, admin_user)
+    release = dry.release
+    run = commit_publish_and_withdraw(release, admin_user)
+    # The commit imported what the dry run reported, through the typed rows
+    # that hold the legacy strings.
+    report = run.report
+    assert (run.state, report["dry_run"]) == (ImportState.COMPLETED, dry.pk)
+    assert report["counts"]["records"] == {
+        RecordStatus.MAPPED: 4,
+        RecordStatus.UNRESOLVED: 1,
+        RecordStatus.AMBIGUOUS: 0,
+        RecordStatus.REJECTED: 1,
+        RecordStatus.SKIPPED: 0,
+    }
+    assert report["counts"]["created"] == {
+        "entities": 1,
+        "relationships": 2,
+        "publications": 1,
+        "terms": 0,
+    }
+    assert (report["counts"]["recorded"], report["counts"]["assertions"]) == (4, 4)
+    created = Entity.objects.get(created_by_release=release)
+    assert (created.identity_key, created.label, created.status) == (
+        "hgnc|t:9606|HGNC:999999",
+        "Compat lab gene",
+        "provisional",
+    )
+    # Each mapped record holds its own evidence; v2's stays as it was.
+    assert set(
+        EvidenceAssertion.objects.filter(release=release).values_list(
+            "source_record__record_key", flat=True
+        )
+    ) == {"compat-lab-1", "compat-lab-2", "compat-lab-4", "compat-lab-5"}
+    v2 = DatasetRelease.objects.get(version="v2")
+    assert EvidenceAssertion.objects.filter(release=v2).count() == 15
+    assert v2.status == ReleaseStatus.PUBLISHED
 
     assert legacy_row_counts() == counts
     after = legacy_responses(regular_user, legacy)

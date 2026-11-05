@@ -21,6 +21,10 @@ MAX_JSON_BYTES = 8 * 1024**2
 MAX_RESOLUTION_ENTRIES = 10_000
 # Lines of one file after its header, blank lines included.
 MAX_DATA_LINES = 5_000_000
+# Distinct identifiers one file states, as written (refused ones included):
+# a run keeps each from batch to batch (graph.ingest.mapping), so past this
+# many the file is refused (too_many_identifiers).
+MAX_IDENTIFIERS = 250_000
 # A dry run's batches: at most this many rows, and this many bytes of them.
 BATCH_ROWS = 500
 BATCH_BYTES = 32 * 1024**2

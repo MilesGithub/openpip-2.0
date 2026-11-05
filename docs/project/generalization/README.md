@@ -8,9 +8,11 @@ Development happens only in the fork `MilesGithub/openpip-2.0`.
 **Status:** Phase 0 is complete, and the owner's decisions of 2026-10-29 are
 applied, followed by a consistency review of the updated documents
 (architecture §14). Research-only due diligence on the five priority datasets
-is recorded, and the questions it raised are decided. T1 (CI) is merged
-into the fork's `main` (PR #1). The legacy reset warning is open as PR #2.
-G1, the first implementation PR, comes next; nothing else described here as
+is recorded, and the questions it raised are decided. T1 (CI) and the
+legacy reset warning are merged into the fork's `main` (PRs #1 and #2), and
+so are G1 to G4, the typed foundation up to the import dry run (PRs #4 to
+#7). G5 adds the commit, checkpoints and the release lifecycle, and G6, the
+synthetic demonstration release, comes next; nothing else described here as
 proposed has been implemented yet.
 
 | File | Contents |

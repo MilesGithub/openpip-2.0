@@ -1,14 +1,16 @@
 """The dry run (graph.ingest.dry_run and graph_import --dry-run): its
-preconditions in order, that it writes only its run and the source records,
-statuses, re-runs, records that hold evidence, every report section, caps
-and the report file, stored files that changed, a release that changes
-mid-run, batches and their queries."""
+preconditions in order, the run lock it holds, that it writes only its run
+and the source records, statuses, re-runs, records that hold evidence, every
+report section, caps and the report file, stored files that changed, file
+errors and the identifiers a run keeps, a release that changes mid-run,
+batches and their queries."""
 
 import io
 import json
 import os
 import re
 import stat
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +33,7 @@ from graph.ingest.canonical_tsv import ADAPTER, SPEC
 from graph.ingest.dry_run import DryRunError, dry_run
 from graph.ingest.mapping import RunStopped
 from graph.ingest.registration import register_release
+from graph.ingest.runlock import release_run_lock, run_lock_holder
 from graph.models import (
     ApprovalScope,
     DatasetRelease,
@@ -44,15 +47,18 @@ from graph.models import (
     ImportState,
     RecordStatus,
     RegistryState,
+    ReleaseKind,
     ReleaseStatus,
     SourceRecord,
     UsageApproval,
 )
 from graph.registry import REGISTRY_VERSION
 from graph.tests.factories import (
+    DatasetReleaseFactory,
     ImportRunFactory,
     PublicationFactory,
     ReleaseLicenceFactory,
+    SourceFileFactory,
     StaffUserFactory,
     TermFactory,
     UsageApprovalFactory,
@@ -73,6 +79,7 @@ from graph.tests.ingest_helpers import (
     tsv,
     write,
 )
+from graph.tests.lock_helpers import held_run_lock
 
 MAPPED, UNRESOLVED, AMBIGUOUS, REJECTED = (
     RecordStatus.MAPPED,
@@ -133,8 +140,13 @@ def with_evidence(release, record_key, claim):
 # ── Preconditions ───────────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize(
+    "locked",
+    [False, pytest.param(True, marks=pytest.mark.postgres)],
+    ids=["without the lock held", "with the lock held"],
+)
 def test_the_preconditions_are_checked_in_order(
-    registry, settings, tmp_path, monkeypatch
+    registry, settings, tmp_path, monkeypatch, locked
 ):
     release = registered(tmp_path, approved=False)
     commit = ImportRunFactory(
@@ -163,23 +175,27 @@ def test_the_preconditions_are_checked_in_order(
         assert SourceRecord.objects.count() == 0
         return raised.value.precondition
 
-    assert refused(inactive) == 1
-    settings.TYPED_GRAPH_ENABLED = True
-    assert refused(inactive) == 2
-    assert refused(clerk) == 2
-    assert refused() == 3
-    RegistryState.objects.filter(pk=1).update(version=REGISTRY_VERSION)
-    assert refused() == 4
-    commit.state = ImportState.ABANDONED
-    commit.save(update_fields=["state"])
-    assert refused() == 5
-    approved_for_internal_use(release)
-    assert refused() == 6
-    monkeypatch.setitem(adapters.ADAPTERS, SPEC.name, ADAPTER)
-    assert refused() == 7
-    arguments["resolutions"] = None
-    assert refused() == 8
-    arguments["report_file"] = tmp_path / "report.jsonl"
+    # With the run lock held by another session, the lock refuses last.
+    with held_run_lock(release.pk) if locked else nullcontext():
+        assert refused(inactive) == 1
+        settings.TYPED_GRAPH_ENABLED = True
+        assert refused(inactive) == 2
+        assert refused(clerk) == 2
+        assert refused() == 3
+        RegistryState.objects.filter(pk=1).update(version=REGISTRY_VERSION)
+        assert refused() == 4
+        commit.state = ImportState.ABANDONED
+        commit.save(update_fields=["state"])
+        assert refused() == 5
+        approved_for_internal_use(release)
+        assert refused() == 6
+        monkeypatch.setitem(adapters.ADAPTERS, SPEC.name, ADAPTER)
+        assert refused() == 7
+        arguments["resolutions"] = None
+        assert refused() == 8
+        arguments["report_file"] = tmp_path / "report.jsonl"
+        if locked:
+            assert refused() == 9
     run = dry_run(release, triggered_by=staff, **arguments)
     assert run.state == ImportState.COMPLETED
 
@@ -219,6 +235,217 @@ def test_the_release_is_a_draft_with_one_data_file_and_no_open_commit(
     with pytest.raises(DryRunError, match=message) as raised:
         run_of(target)
     assert raised.value.precondition == 4
+
+
+@pytest.mark.parametrize("state", [ImportState.RUNNING, ImportState.FAILED])
+def test_an_open_commit_run_is_named_with_what_to_do(registry, tmp_path, state):
+    release = registered(tmp_path, approved=False)
+    commit = ImportRunFactory(
+        release=release, file=data_file(release), mode=ImportMode.COMMIT, state=state
+    )
+    with pytest.raises(DryRunError) as raised:
+        run_of(release)
+    assert raised.value.precondition == 4
+    assert str(raised.value) == (
+        f"Release {release.pk} has an open commit run {commit.pk}: a dry run never "
+        "runs beside one. Resume it with graph_import --commit, or discard it with "
+        "graph_discard_release. Nothing was written."
+    )
+    assert not ImportRun.objects.filter(mode=ImportMode.DRY_RUN).exists()
+
+
+def test_a_release_registered_with_another_kind_is_refused(
+    registry, tmp_path, genes, monkeypatch
+):
+    release = registered(tmp_path)
+    assert release.kind == ReleaseKind.EVIDENCE
+    other = SimpleNamespace(spec=replace(SPEC, kind=ReleaseKind.REFERENCE))
+    monkeypatch.setitem(adapters.ADAPTERS, SPEC.name, other)
+    with pytest.raises(DryRunError) as raised:
+        run_of(release)
+    assert raised.value.precondition == 6
+    assert str(raised.value) == (
+        f"Release {release.pk} was registered with {SPEC.name} {SPEC.version}, "
+        f"mapping {SPEC.mapping_version}, kind evidence, and this code carries "
+        f"{SPEC.version}, mapping {SPEC.mapping_version}, kind reference. Register "
+        "it again with this adapter (graph_register_release), which updates a draft "
+        "without evidence. Nothing was written."
+    )
+    assert not ImportRun.objects.filter(release=release).exists()
+    assert not SourceRecord.objects.filter(release=release).exists()
+
+
+def test_another_adapter_version_names_both_kinds(
+    registry, tmp_path, genes, monkeypatch
+):
+    release = registered(tmp_path)
+    upgraded = SimpleNamespace(spec=replace(SPEC, version="1.1.0", mapping_version="2"))
+    monkeypatch.setitem(adapters.ADAPTERS, SPEC.name, upgraded)
+    with pytest.raises(DryRunError) as raised:
+        run_of(release)
+    assert raised.value.precondition == 6
+    assert (
+        f"{SPEC.version}, mapping {SPEC.mapping_version}, kind evidence, and this "
+        "code carries 1.1.0, mapping 2, kind evidence."
+    ) in str(raised.value)
+
+
+# ── The run lock (precondition 9) ───────────────────────────────────────────
+
+
+def backend_pid() -> int:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_backend_pid()")
+        return cursor.fetchone()[0]
+
+
+def nothing_written(release):
+    assert not ImportRun.objects.filter(release=release).exists()
+    assert not SourceRecord.objects.filter(release=release).exists()
+
+
+@pytest.mark.postgres
+def test_a_dry_run_is_refused_while_another_run_of_the_release_runs(
+    registry, tmp_path, genes
+):
+    release = registered(tmp_path)
+    with held_run_lock(release.pk):
+        with pytest.raises(DryRunError) as raised:
+            run_of(release)
+        assert raised.value.precondition == 9
+        assert str(raised.value) == (
+            f"A dry run, commit or discard of release {release.pk} is running: one "
+            "runs at a time. Nothing was written."
+        )
+        nothing_written(release)
+        # Another release's runs go on.
+        other = registered(tmp_path / "other", [row(GENE, record_id="o1")])
+        assert run_of(other).state == ImportState.COMPLETED
+    assert run_of(release).state == ImportState.COMPLETED
+
+
+@pytest.mark.postgres
+def test_a_dry_run_never_runs_inside_another_run_of_its_release(
+    registry, tmp_path, genes
+):
+    release = registered(tmp_path)
+    with release_run_lock(release.pk):
+        with pytest.raises(DryRunError) as raised:
+            run_of(release)
+        assert raised.value.precondition == 9
+        assert str(raised.value) == (
+            f"This connection already holds the run lock of release {release.pk}: a "
+            "dry run never runs inside another run of it. Nothing was written."
+        )
+        nothing_written(release)
+    assert run_lock_holder(release.pk) is None
+    assert run_of(release).state == ImportState.COMPLETED
+
+
+@pytest.mark.postgres
+def test_a_release_id_the_run_lock_cannot_key_is_refused(registry):
+    # A synthetic draft with a data file, at the first id past what a run
+    # lock keys: precondition 9 is the first that refuses it.
+    release = DatasetReleaseFactory(
+        pk=2**31,
+        is_synthetic=True,
+        adapter=SPEC.name,
+        adapter_version=SPEC.version,
+        mapping_version=SPEC.mapping_version,
+        kind=SPEC.kind,
+    )
+    SourceFileFactory(release=release)
+    with pytest.raises(DryRunError) as raised:
+        run_of(release)
+    assert raised.value.precondition == 9
+    assert str(raised.value) == (
+        "Release 2147483648's id is beyond 2,147,483,647, the largest a run lock "
+        "keys. Nothing was written."
+    )
+    nothing_written(release)
+
+
+@pytest.mark.postgres
+def test_a_dry_run_holds_the_run_lock_until_it_returns(
+    registry, tmp_path, genes, monkeypatch
+):
+    release = registered(tmp_path, [GENE, row(GENE, record_id="r2")])
+    monkeypatch.setattr(limits, "BATCH_ROWS", 1)
+    holders = []
+    plan = dry_run_module.plan_batch
+
+    def watching(records, *, run_ctx):
+        holders.append(run_lock_holder(release.pk))
+        return plan(records, run_ctx=run_ctx)
+
+    monkeypatch.setattr(dry_run_module, "plan_batch", watching)
+    assert run_of(release).state == ImportState.COMPLETED
+    assert holders == [backend_pid()] * 2
+    assert run_lock_holder(release.pk) is None
+
+    def broken(plans, *, run):
+        raise RuntimeError("the disk is gone")
+
+    # A run that fails releases it too.
+    monkeypatch.setattr(dry_run_module, "write_records", broken)
+    with pytest.raises(RuntimeError):
+        run_of(release)
+    assert run_lock_holder(release.pk) is None
+
+
+def _staged(release):
+    release.refresh_from_db()
+    release.status = ReleaseStatus.STAGED
+    release.save(update_fields=["status", "updated_at"])
+
+
+def _commit_opened(release):
+    return ImportRunFactory(
+        release=release, file=data_file(release), mode=ImportMode.COMMIT
+    )
+
+
+@pytest.mark.parametrize(
+    "change,message",
+    [
+        (_staged, "is staged: a dry run runs on a draft only"),
+        (_commit_opened, "has an open commit run [0-9]+: a dry run never runs"),
+    ],
+    ids=["staged", "commit run opened"],
+)
+def test_the_release_is_read_again_once_the_run_lock_is_taken(
+    registry, tmp_path, genes, monkeypatch, change, message
+):
+    # A commit started, or finished, between precondition 4 and the lock.
+    release = registered(tmp_path)
+    taking = dry_run_module.release_run_lock
+
+    def changed_meanwhile(release_id, **kwargs):
+        change(release)
+        return taking(release_id, **kwargs)
+
+    monkeypatch.setattr(dry_run_module, "release_run_lock", changed_meanwhile)
+    with pytest.raises(DryRunError, match=message) as raised:
+        run_of(release)
+    assert raised.value.precondition == 4
+    assert not ImportRun.objects.filter(mode=ImportMode.DRY_RUN).exists()
+    assert not SourceRecord.objects.filter(release=release).exists()
+    assert run_lock_holder(release.pk) is None
+
+
+def test_a_dry_run_marks_no_other_run(registry, tmp_path, genes):
+    # A dry run whose process ended: running for good, until the release's
+    # next commit or discard marks it.
+    release = registered(tmp_path)
+    left = ImportRunFactory(release=release, file=data_file(release))
+    run = run_of(release)
+    assert run.state == ImportState.COMPLETED
+    stored = ImportRun.objects.get(pk=left.pk)
+    assert (stored.state, stored.error, stored.finished_at) == (
+        ImportState.RUNNING,
+        "",
+        None,
+    )
 
 
 def test_a_synthetic_release_needs_no_approval(registry, tmp_path):
@@ -262,7 +489,11 @@ def test_a_recorded_approval_that_is_not_effective_is_no_approval(
     ) as raised:
         run_of(release)
     assert raised.value.precondition == 5
-    assert "Nothing was written" in str(raised.value)
+    # The command that records one, not a Python function.
+    assert str(raised.value) == (
+        f"Release {release.pk} is not synthetic and has no effective internal "
+        "approval (graph_approve records one). Nothing was written."
+    )
     assert not ImportRun.objects.filter(mode=ImportMode.DRY_RUN).exists()
     assert not SourceRecord.objects.filter(release=release).exists()
 
@@ -1205,6 +1436,137 @@ def test_a_later_file_error_keeps_the_records_read_before_it(
     assert sorted(statuses(release)) == ["r0", "r1", "r2"]
 
 
+def planned_batches(monkeypatch) -> list:
+    """The first line of each batch the dry run plans."""
+    firsts = []
+    plan = dry_run_module.plan_batch
+
+    def recording(records, *, run_ctx):
+        firsts.append(records[0].line_number)
+        return plan(records, run_ctx=run_ctx)
+
+    monkeypatch.setattr(dry_run_module, "plan_batch", recording)
+    return firsts
+
+
+def mapping_runs(monkeypatch) -> list:
+    """Each MappingRun the dry run makes."""
+    made = []
+
+    class Kept(mapping.MappingRun):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            made.append(self)
+
+    monkeypatch.setattr(dry_run_module, "MappingRun", Kept)
+    return made
+
+
+TOO_MANY = (
+    "The file states more than 3 distinct identifiers, which a run does not keep: "
+    "split it into releases."
+)
+
+
+@pytest.mark.parametrize(
+    "trailing", [False, True], ids=["in the loop", "in the trailing batch"]
+)
+def test_a_file_past_the_identifiers_a_run_keeps_is_refused_once(
+    registry, tmp_path, genes, monkeypatch, trailing
+):
+    first = row(GENE, record_id="k")
+    rows = [
+        # Batch 1: two identifiers.
+        first,
+        row(GENE, record_id="r1"),
+        # Batch 2 states k again otherwise, which rejects line 2's record:
+        # the file is to be read again.
+        {**first, "evidence_group": "other"},
+        row(GENE, record_id="r2"),
+        # Batch 3 states two more: past the limit.
+        row(GENE, record_id="r3", subject_id="HGNC:7", object_id="HGNC:8"),
+        row(GENE, record_id="r4"),
+    ]
+    if not trailing:
+        # Batch 4, read before batch 3 is planned, and never planned.
+        rows.append(row(GENE, record_id="r5"))
+    release = registered(tmp_path, rows)
+    monkeypatch.setattr(limits, "BATCH_ROWS", 2)
+    monkeypatch.setattr(limits, "MAX_IDENTIFIERS", 3)
+    readings = counted_readings(monkeypatch)
+    planned = planned_batches(monkeypatch)
+    written = counted_batches(monkeypatch)
+    runs = mapping_runs(monkeypatch)
+    run = run_of(release)
+    assert run.state == ImportState.COMPLETED
+    report = run.report
+    assert report["verdict"] == "refused"
+    [error] = report["file_errors"]["entries"]
+    # The first line of the batch that passed it, not a second reading's.
+    assert (error["code"], error["line"], error["message"]) == (
+        "too_many_identifiers",
+        6,
+        TOO_MANY,
+    )
+    # Read once, though batch 2 asked for a second reading; batch 3 planned
+    # once, and dropped.
+    [mapping_run] = runs
+    assert mapping_run.read_again is True
+    assert readings == [1]
+    assert planned == [2, 4, 6]
+    assert written == [2, 2]
+    assert statuses(release) == {"k": REJECTED, "r1": MAPPED, "r2": MAPPED}
+    counts = report["counts"]
+    # What batches 1 and 2 gave: lines 2 to 5.
+    assert sum(counts["records"].values()) + counts["unstored"] == 4
+    assert (counts["created"], counts["updated"]) == (3, 1)
+    summary = dry_run_module.summary_lines(run)
+    assert f"File error too_many_identifiers: {TOO_MANY}" in summary
+
+
+def test_a_batch_that_asks_for_a_second_reading_and_passes_the_limit(
+    registry, tmp_path, monkeypatch
+):
+    rows = [
+        # Batch 1 plans P12345 at taxon 9606, and Q00987.
+        row(PROTEIN, subject_id="P12345", object_id="Q00987"),
+        # Batch 2 states P12345 at taxon 7227, which takes back what batch 1
+        # planned (a second reading is asked), and a fourth identifier.
+        row(
+            PROTEIN,
+            record_id="r2",
+            subject_id="P12345",
+            subject_taxon="7227",
+            object_id="Q99999",
+        ),
+        row(PROTEIN, record_id="r3"),
+    ]
+    release = registered(tmp_path, rows)
+    monkeypatch.setattr(limits, "BATCH_ROWS", 1)
+    monkeypatch.setattr(limits, "MAX_IDENTIFIERS", 3)
+    readings = counted_readings(monkeypatch)
+    planned = planned_batches(monkeypatch)
+    runs = mapping_runs(monkeypatch)
+    report = run_of(release, create_entities=True).report
+    assert report["verdict"] == "refused"
+    [error] = report["file_errors"]["entries"]
+    assert (error["code"], error["line"], error["message"]) == (
+        "too_many_identifiers",
+        3,
+        TOO_MANY,
+    )
+    [mapping_run] = runs
+    assert mapping_run.read_again is True
+    assert readings == [1]
+    assert planned == [2, 3]
+    # The counts and records are batch 1's.
+    assert report["counts"]["records"] == {
+        **{status: 0 for status in RecordStatus.values},
+        "mapped": 1,
+    }
+    assert statuses(release) == {"r1": MAPPED}
+
+
 # ── Batches ─────────────────────────────────────────────────────────────────
 
 
@@ -1723,29 +2085,54 @@ def test_the_command_passes_its_options_to_the_run(registry, tmp_path, genes):
     assert statuses(release) == {"r1": MAPPED, "r2": MAPPED}
 
 
-def test_the_command_refuses_to_commit_and_without_the_switch(
+def test_the_command_commits_after_a_dry_run_and_refuses_without_the_switch(
     registry, settings, tmp_path, genes
 ):
     release = registered(tmp_path)
     staff = StaffUserFactory()
-    with pytest.raises(CommandError, match="Committing arrives with G5"):
+    # A commit trusts the release's latest dry run, and there is none yet.
+    with pytest.raises(CommandError) as raised:
         command("--release", release.pk, "--commit", "--as", staff.username)
+    assert str(raised.value) == (
+        f"Release {release.pk} has no dry run: run graph_import --dry-run first, with "
+        "the options you will commit with. Nothing was written."
+    )
+    # A commit keeps its report with its run.
+    with pytest.raises(CommandError, match="--report-file goes with --dry-run"):
+        command(
+            "--release",
+            release.pk,
+            "--commit",
+            "--report-file",
+            tmp_path / "report.jsonl",
+            "--as",
+            staff.username,
+        )
     with pytest.raises(CommandError, match="names no account"):
         command("--release", release.pk, "--dry-run", "--as", "nobody")
     with pytest.raises(CommandError, match="precondition|Unknown release"):
         command("--release", release.pk + 99, "--dry-run", "--as", staff.username)
     settings.TYPED_GRAPH_ENABLED = False
-    with pytest.raises(CommandError, match="TYPED_GRAPH_ENABLED"):
-        command(
-            "--release",
-            release.pk,
-            "--dry-run",
-            "--resolutions",
-            tmp_path / "missing.json",
-            "--as",
-            "nobody",
-        )
+    for mode in ("--dry-run", "--commit"):
+        with pytest.raises(CommandError, match="TYPED_GRAPH_ENABLED"):
+            command(
+                "--release",
+                release.pk,
+                mode,
+                "--resolutions",
+                tmp_path / "missing.json",
+                "--as",
+                "nobody",
+            )
     assert ImportRun.objects.count() == 0
+    settings.TYPED_GRAPH_ENABLED = True
+    command("--release", release.pk, "--dry-run", "--as", staff.username)
+    out = command("--release", release.pk, "--commit", "--as", staff.username)
+    run = ImportRun.objects.get(release=release, mode=ImportMode.COMMIT)
+    assert out.startswith(
+        f"Commit run {run.pk} of release {release.pk}: completed, and the release is "
+        "staged."
+    )
 
 
 def test_the_command_refuses_an_active_account_that_is_not_staff(registry, tmp_path):

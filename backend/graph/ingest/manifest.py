@@ -7,11 +7,11 @@ and the vocabulary terms its rows use, with the labels the source gives them.
 
 It is one of the release's files (a SourceFile with role manifest), strict
 JSON (jsonfile.py). Rows cite a manifest paper as ref:<local key>; the commit
-(G5) creates it as a publication local to the release's dataset, so every
-release of the dataset names the same row. Every CURIE a row uses is
-declared under terms, so a commit records each term with the source's own
-label (graph.terms never invents one), and a release's outcome never
-depends on what another release committed first.
+(graph.ingest.commit) creates it as a publication local to the release's
+dataset, so every release of the dataset names the same row. Every CURIE a
+row uses is declared under terms, so a commit records each term with the
+source's own label (graph.terms never invents one), and a release's outcome
+never depends on what another release committed first.
 
 - A local key is a letter or digit, then up to 99 letters, digits or . _ : -
   (never | or a space, so it can be cited in a list cell).

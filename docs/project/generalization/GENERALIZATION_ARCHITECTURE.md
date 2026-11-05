@@ -354,10 +354,12 @@ entered.
   states would leak through an entity that is visible for another reason. A
   primary identifier follows its entity.
 - `graph_discard_release` deletes the discarded release's identifier sources,
-  then each non-primary identifier from a release that is left with none.
-  It never deletes a primary identifier or an entity. A provisional entity
-  left without assertions stays, so a re-import finds it again by its
-  `identity_key`, and `graph_check` reports it.
+  then each non-primary identifier from a release that is left with none
+  (RF1a adds this to G5's discard, which deletes only the release's
+  assertions and records). It never deletes a primary identifier or an
+  entity. A provisional entity left without assertions stays, so a
+  re-import finds it again by its `identity_key`, and `graph_check` reports
+  it.
 
 Constraints:
 
@@ -388,8 +390,8 @@ scan. Django limits index names to 30 characters.
 | `SourceDatasetPublication`, `ReleasePublication` | dataset or release, publication, role (`primary`, `describes`, `update`, `erratum`, `related`) | unique (parent, publication, role) |
 | `DatasetRelease` | dataset, version (the source's label, URL-safe), release date, retrieved at, source URL, `kind` (`evidence` or `reference`, declared by the adapter's spec), status (`draft`, `staged`, `published`, `superseded`, `withdrawn`), `supersedes` (a foreign key to the release it corrects, which has the same dataset and `is_synthetic`), `is_synthetic`, `embargo_until`, declared taxa (M2M through `ReleaseTaxon`), adapter, adapter version and mapping version, `store_raw_rows` (default true), `stats` (JSON, computed at commit), withdrawn at and reason | unique (dataset, version). `supersedes` is unique among releases that were published, so a release is corrected by at most one, and a correction withdrawn before it was published frees the release it named (G2) |
 | `SourceFile` | release, role (`data`, `entities`, `manifest`, `readme`, `licence_text`, `supplementary`), original name (text only, which never builds a path; G4), storage path (exactly `releases/<release id>/<sha256>/content`; G4), media type, size, sha256, retrieved from | unique (release, sha256); several files per release |
-| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters (a dry run's: `create_entities`, the resolution file's SHA-256 and entries, the registry version; G4), checkpoint, report, error, triggered by (SET_NULL, plus a username snapshot), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it `abandoned`. A dry run runs only on a draft, never beside an open commit run (G4) |
-| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues (at most 20 `{code, field, message, line, severity}`, then `{"code": "more", "count": n}`, its `conflicting_duplicate` issues always among those kept; G4) | unique (release, record_key). Status and issues are the only fields a later dry run (of a draft; G4) or commit of an unpublished release may update; each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable. A record that evidence was recorded from stays `mapped`, since its assertions rest on that mapping (G3). A line without a trustworthy record id or values (unreadable, the wrong number of fields, an oversized field, a malformed id, or a later line of a record id already read) gets no record; the report lists it by its line (G4) |
+| `ImportRun` | release, file, adapter, adapter and mapping versions, mode (`dry_run`, `commit`), state (`running`, `failed`, `completed`, `abandoned`), parameters (a dry run's: `create_entities`, the resolution file's SHA-256 and entries, the registry version; G4; a commit run's also the dry run it trusts; G5), checkpoint (a commit run's `{version, line, batches}`, the last line of its last committed batch; G5), report (a commit run's: what it imported and created over every attempt, the term labels, publication identifiers and local papers' titles and years it did not write, and its resumes; G5), error, triggered by (SET_NULL, plus a username snapshot; a resume keeps the first, and the run's report names who resumed; G5), started and finished | at most one open commit run (`running` or `failed`) per release (partial unique): G5 resumes it, and a discard marks it, or a staged release's completed one, `abandoned`. A dry run runs only on a draft, never beside an open commit run (G4). One dry run, commit or discard of a release runs at a time: each holds the release's run lock, a PostgreSQL session advisory lock on (`GRC1`, the release id), from the check that takes it (a commit's ninth, a dry run's last) until it returns, and a commit or a discard first marks `failed` the release's runs left `running` by a process that ended; without PostgreSQL there is no lock, and a `running` commit run is never resumed (G5) |
+| `SourceRecord` | release, file, import run, `record_key` and its basis (`source_id`, `line_number`, `content_hash`), line number, `raw` (the verbatim column map; NULL when the release does not store raw rows, with file, line and hash kept), `raw_sha256`, status (`mapped`, `unresolved`, `ambiguous`, `rejected`, `skipped`; section 4.1), issues (at most 20 `{code, field, message, line, severity}`, then `{"code": "more", "count": n}`, its `conflicting_duplicate` issues always among those kept; G4) | unique (release, record_key). Status and issues are the only fields a later dry run (of a draft; G4) or commit of an unpublished release may update; G5's commit updates none, so each record keeps what the dry run it trusts stored, and a resumed and an uninterrupted commit leave the same records. Each `ImportRun` report keeps its own copy, so earlier outcomes stay auditable. A record that evidence was recorded from stays `mapped`, since its assertions rest on that mapping (G3). A line without a trustworthy record id or values (unreadable, the wrong number of fields, an oversized field, a malformed id, or a later line of a record id already read) gets no record; the report lists it by its line (G4) |
 
 **Superseded releases.** A release becomes `superseded` in the same
 transaction that publishes the release naming it in `supersedes`, and it is
@@ -562,7 +564,17 @@ rebuildable by command, never authoritative, and pinned by a test to a
 recomputation from assertions. Distinct counts (publications, datasets,
 independent evidence) are **not** stored, because they do not add up across
 releases (section 4.5). `DatasetRelease.stats`, written once at commit, serves
-each release's catalogue figures from the start. Hub totals sum only
+each release's catalogue figures from the start. G5 recounts it from rows in
+the transaction that stages the release, in a fixed shape (version 1): the
+release's records by status, its assertions and its assertions by outcome,
+the distinct relationships, entities and publications they name, the
+entities it created, and per relationship type its assertions and distinct
+relationships. Records, assertions, assertions by outcome, entities created
+and each type's assertions add up across releases; the distinct counts never
+do. It is fixed once the release is published, so a figure a later issue
+needs beyond it is recounted from rows, and a discard resets it. If P1 adds
+this table, the staging transaction writes a release's rows and the discard
+deletes them. Hub totals sum only
 releases and assertions, which add up across releases; datasets are counted
 distinct over the visible releases, because incremental releases of one
 dataset stay published together. Entity and relationship counts are shown
@@ -588,7 +600,7 @@ Rules enforced in the service layer, with tests:
 
 - A decision is **active** while `revoked_at IS NULL`. `graph_approve` on a
   scope that already has an active decision is refused until that decision
-  is revoked.
+  is revoked (`graph_revoke`) or replaced (`graph_approve --replace`; G5).
 - **Recording an approval** asks more than effectiveness does (G2). The
   latest licence snapshot must record terms: a licence name or quoted terms,
   with where and when they were read. `public_view` needs its redistribution
@@ -656,16 +668,24 @@ Rules enforced in the service layer, with tests:
   the aggregate catalogue and hub counts use the default set, and each of
   those endpoints accepts `releases=` and `browser=` to pin others (section
   7.2). A release's own catalogue page shows that release.
-- `graph_check` reports, for review, every approval whose licence snapshot is
-  no longer the latest. `replace_decision` (G2) refreshes one: it revokes the
-  decision and records it again against the latest snapshot, in one
-  transaction, so the release is never hidden in between.
-- Synthetic releases need the same explicit decision. The fixture loader
-  records it for the operator named on its command line.
-- Discarding a staged release deletes its records and assertions and returns
-  it to `draft`. It keeps the release row, its files, its licence snapshots,
-  its import runs and its approval history, and it never deletes entities,
-  relationships or primary identifiers (section 3.4).
+- `graph_check` reports, among its problems (G5), every approval of a
+  release that is not withdrawn whose licence snapshot is no longer the
+  latest; a withdrawn release's approval is never effective, and is not
+  listed. `replace_decision` (G2), which `graph_approve --replace` calls,
+  refreshes one: it revokes the decision and records it again against the
+  latest snapshot, in one transaction, so the release is never hidden in
+  between.
+- Synthetic releases need the same explicit decision to be published, with
+  a licence snapshot that records terms, but none to be dry-run or
+  committed (G5). The fixture loader records it for the operator named on
+  its command line.
+- Discarding applies to a staged release, and to a draft with an open commit
+  run or evidence (G5). It deletes the release's assertions and records,
+  returns it to `draft` with its statistics reset, and marks its open commit
+  run, or a staged release's completed one, `abandoned`, with who, when and
+  why in the run's report. It keeps the release row, its files, its licence
+  snapshots, its import runs and its approval history, and it never deletes
+  entities, relationships or primary identifiers (section 3.4).
 
 ### 3.8 Browser instances
 
@@ -825,7 +845,9 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   without the flag (G4): each is planned once per identity key, on every
   side of every row that names it, and labelled by the first non-blank
   label a mapped row gives it, else its identifier as written; a later,
-  different label is reported and never used. Without the flag, a record whose
+  different label is reported and never used. G5's commit creates it with
+  that label and identifier, the ones the dry run's report showed: its
+  writing reading chooses no label again. Without the flag, a record whose
   identifier names no entity stays `unresolved`. If the bridge is ever built,
   it too creates entities, from legacy UniProtKB accessions (D11).
 
@@ -872,7 +894,8 @@ multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
   contradicts a `resolved` identifier rejects the record. It is kept in the
   import run's parameters and report, and recorded as basis `curated`. Every
   import run records, in its parameters, the reference releases its
-  resolution used.
+  resolution used. G4's and G5's runs record none, since no reference
+  release exists before RF1a, which adds them.
 
   A record that names a gene where its type needs a protein, such as a PPI
   row that gives only a gene identifier, is never mapped to a protein through
@@ -968,18 +991,26 @@ every other. `not_applicable` is a summary value and is never stored.
 | Release | `(dataset, version)` | A known version with a different checksum is refused; it must be a new release. In G4, `graph_register_release` with the same files and options writes nothing, and puts back a stored copy that was lost or changed; a draft whose records hold no evidence takes the code's new adapter or mapping version, and its source records are deleted, to be read again by the next dry run; any other difference is refused, naming it |
 | Source file | `(release, sha256)` | A committed release's files never change |
 | Source record | `(release, record_key)`. The key is the source's own record id where it has one, else the line number in the checksummed file, else a content hash plus occurrence | Same key and same `raw_sha256`: no-op. Same key with different content in a committed release: hard error. Within one file (G4), a later line with a key already read is stored nowhere: with the same content it is a duplicate, and with other content it also rejects the first line's record, naming both lines, so neither version is imported |
-| Assertion | `(source_record, assertion_key)`, content-derived | No-op, decided per record (G3): recording a record's claims again writes nothing when they give exactly the assertions the record holds, read back and compared (relationship, outcome, basis, method, effect, sign, terms, level, the source's wording, evidence group, qualifiers as canonical JSON text, and each kind of part as a set), and any difference is refused (`ClaimConflict`) with nothing written, because a stored assertion never changes. Keys come from each claim's key part and the identifiers the record states for its papers, never from stored rows (section 3.6). A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft`, then running a fresh dry run and commit. Before that dry run, re-registering the draft with G4's `graph_register_release` gives it the code's versions and deletes any source records left. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
+| Assertion | `(source_record, assertion_key)`, content-derived | No-op, decided per record (G3): recording a record's claims again writes nothing when they give exactly the assertions the record holds, read back and compared (relationship, outcome, basis, method, effect, sign, terms, level, the source's wording, evidence group, qualifiers as canonical JSON text, and each kind of part as a set), and any difference is refused (`ClaimConflict`) with nothing written, because a stored assertion never changes. Keys come from each claim's key part and the identifiers the record states for its papers, never from stored rows (section 3.6). A staged release is re-imported under a new adapter or mapping version by discarding it back to `draft` (G5's `graph_discard_release`, which deletes its assertions and records and abandons its commit run), then running a fresh dry run and commit: a commit trusts only a dry run made after the release's last commit or discard. Before that dry run, re-registering the draft with G4's `graph_register_release` gives it the code's versions and deletes any source records left. A published release is never re-mapped in place. The new mapping is imported as a new release from the same files, with a version label that records the mapping version (for example `v1+m2`, because (dataset, version) is unique), and that release supersedes it |
 | Entity | `identity_key` | `ON CONFLICT DO NOTHING`, then re-select |
 | Relationship | `(relationship_type, subject, object, qualifier_key)` | `ON CONFLICT DO NOTHING`, then re-select. A batch's missing relationships are created in canonical order (type, subject id, object id; G3's `create_relationships`), so two commits that share pairs never deadlock |
 | Non-primary identifier (from RF1a) | `(entity, namespace, lookup, scope_key, role)` | `ON CONFLICT DO NOTHING`, then re-select |
-| Publication | PMID, else lower-cased DOI, else PMCID or IMEx id, else (source dataset, local key) from the release manifest, after co-referent identifiers have been merged | Reused across releases, and written with `ON CONFLICT DO NOTHING` on each partial-unique identifier, then re-selected. When a record's co-referent identifiers match two existing publications (a PMID-only row and a DOI-only row, for example), the assertion attaches by the precedence above, the conflicting identifier is not written, and the import report and `graph_check` list the conflict for an audited merge. The batch does not fail |
+| Publication | PMID, else lower-cased DOI, else PMCID or IMEx id, else (source dataset, local key) from the release manifest, after co-referent identifiers have been merged | Reused across releases, and written with `ON CONFLICT DO NOTHING` on each partial-unique identifier, then re-selected. When a record's co-referent identifiers match two existing publications (a PMID-only row and a DOI-only row, for example), the assertion attaches by the precedence above, the conflicting identifier is not written, and the import report and `graph_check` list the conflict for an audited merge. The batch does not fail. G5's commit report keeps 1,000 conflicts per run, which `graph_check` lists for review; M1, whose files state co-referent identifiers, makes the list complete |
 
 Rows that releases share (entities, relationships and publications) are all
 written race-safely. Two releases that commit at the same time and share an
 entity, a pair or a paper therefore neither fail a batch nor create
-duplicates; a test commits two such releases concurrently (G5). Non-primary
-identifiers are written the same way from RF1a, the first issue that stores
-them, and RF1a extends that test to a shared identifier.
+duplicates; a test commits two such releases concurrently (G5). In G5 each
+batch is one transaction that takes these rows in one order: entities by
+identity key, every publication it cites by paper identity, terms by CURIE,
+then its relationships, after every shared registry lock. So no two commits
+deadlock while every publication row they both cite holds one identifier,
+which is true of every row a `canonical_tsv_v1` commit writes; a row given
+several identifiers can make two commits deadlock, and PostgreSQL then fails
+one batch, which resumes. M1 keeps a total order of publication rows when it
+lets a row hold several. Non-primary identifiers are written the same way
+from RF1a, the first issue that stores them, and RF1a extends that test to
+a shared identifier.
 
 ### 4.5 How an edge's summary is computed
 
@@ -2275,10 +2306,11 @@ All of them refuse to write while the switch is off.
   every option, so a dry run writes only its run and the records, and
   stores the data file and the manifest privately (section 3.5). Data
   sources, datasets, licence snapshots and due diligence are recorded in
-  the admin, and in G4 approvals with `graph.approvals.record_decision`
-  until `graph_approve`. Registering the same files and options again
-  writes nothing; a draft without evidence takes a new adapter version and
-  loses its records (section 4.4); any other difference is refused.
+  the admin, and approvals with `graph_approve` (G5; in G4 with
+  `graph.approvals.record_decision`). Registering the same files and
+  options again writes nothing; a draft without evidence takes a new adapter
+  version and loses its records (section 4.4); any other difference is
+  refused.
   `--synthetic` is checked, not trusted: the dry run rejects a synthetic
   release if any identifier uses a namespace or taxon other than the
   synthetic ones, or if it cites a PMID or DOI. Real data can therefore never
@@ -2293,37 +2325,61 @@ All of them refuse to write while the switch is off.
   FILE] [--report-file PATH] --as USERNAME` (G4) and `graph_import --release
   ID --commit [--create-entities] [--resolutions FILE] --as USERNAME` (G5).
   The release names its adapter, so there is no `--adapter`; `--as` names
-  an active staff account, the run's `triggered_by`. A dry run runs on a
-  draft only, never while a commit run is open, and `--commit` is refused
-  until G5.
-  - The commit is resumable: re-running it continues the release's open
-    commit run, completed batches are no-ops through the idempotency keys,
-    and the checkpoint only records progress.
+  an active staff account, the run's `triggered_by` (a resume keeps the
+  first; who resumed is in the run's report). A dry run runs on a draft
+  only, never while a commit run is open. `--report-file` goes with
+  `--dry-run` only (G5).
+  - The commit is resumable. Re-running it continues the release's open
+    commit run: batches up to the checkpoint are skipped, and any other
+    write already made is a no-op through the idempotency keys. It needs
+    the options and the trusted dry run of that run (G5).
   - Neither runs without an effective `internal` approval unless the release
     is synthetic, and neither runs on a registry version mismatch.
+  - One dry run, commit or discard of a release runs at a time, under the
+    release's run lock (section 3.5; G5).
   - `--create-entities` lets the run create entities (section 4.1).
-  - `--resolutions` names a reviewed resolution file (section 4.1).
-- `graph_approve --release --scope --decision --rationale` and
-  `graph_revoke --approval --reason`, which wrap the approval service in
-  `graph/approvals.py` (G2). `graph_approve` refuses every approval for a
+  - `--resolutions` names a reviewed resolution file (section 4.1); a commit
+    needs the one its dry run had, by its SHA-256.
+- `graph_approve --release ID --scope SCOPE --decision DECISION --rationale
+  TEXT [--evidence TEXT] --as USERNAME`, `graph_approve --replace APPROVAL
+  --rationale TEXT [--evidence TEXT] --as USERNAME` and `graph_revoke
+  --approval ID --reason TEXT --as USERNAME` (G5), which wrap the approval
+  service in `graph/approvals.py` (G2): `record_decision`,
+  `replace_decision` and `revoke`. `graph_approve` refuses every approval for a
   non-synthetic release unless its dataset's due-diligence record is
   complete, confirmed after the release's latest licence snapshot, and its
   terms are not time-limited; a denial is always recorded (section 3.7).
-- `graph_publish_release`, which needs an effective `internal` approval and
-  also marks the release it supersedes, and
-  `graph_withdraw_release --reason`, which wrap `graph/releases.py` (G2),
-  and `graph_discard_release`. Discard applies to staged releases only,
-  returns them to `draft`, marks their open commit run `abandoned`, and keeps
-  the audit trail.
+- `graph_publish_release --release ID --as USERNAME`, which needs an
+  effective `internal` approval and also marks the release it supersedes,
+  and `graph_withdraw_release --release ID --reason TEXT --as USERNAME`,
+  which wrap `graph/releases.py` (G2), and `graph_discard_release --release
+  ID --reason TEXT --as USERNAME` (G5). Discard applies to a staged release,
+  and to a draft with an open commit run or evidence; it returns the release
+  to `draft`, marks its open commit run (or a staged release's completed
+  one) `abandoned` with who, when and why in its report, and keeps the
+  audit trail.
 - `graph_load_demo --approve-as <username>`, which commits the fixture with
   `--create-entities`
-- `graph_check` reports:
-  - unknown or deprecated slugs, and dangling provenance;
-  - approvals whose licence snapshot is no longer the latest;
-  - publication-identifier conflicts;
+- `graph_check` (G5) writes nothing and takes no `--as`. It reports, in ten
+  sections, problems, which make it exit 1:
+  - unknown or deprecated slugs: the registry against the code's JSON, both
+    ways (nothing marks a registry row deprecated yet: `Term.obsolete`
+    exists, and nothing sets it);
+  - dangling provenance: release files whose stored copy is missing or
+    changed, and runs whose process ended (with the failed commit runs);
+  - entries under the storage root that no row names;
+  - approvals of releases that are not withdrawn whose licence snapshot is
+    no longer the latest;
+
+  and entries for review, which never change its exit status:
+  - publication-identifier conflicts, and the term labels and local papers'
+    titles and years commits did not write;
   - values that are primary on one entity and held in another role by
     another entity of the same type and taxon (merge candidates for P5);
-  - provisional entities left without assertions.
+  - provisional entities left without assertions;
+  - the run locks held, each with the backend holding it and the release's
+    run under way, or, before any run of it is running, the commit reading
+    its file or the discard that holds it.
 - Later, if built: `graph_rebuild_stats [--release]` (P1), and
   `graph_bridge_sync [--commit] [--assume-taxon N] [--unlink]` (on demand;
   a dry run unless `--commit` is given, D11).
@@ -2362,7 +2418,7 @@ All of them refuse to write while the switch is off.
    that reads it, its versions and kind, and stores its data file and
    manifest (sections 3.5, 7.4); the licence snapshot and due diligence are
    then recorded in the admin, and the `internal` approval with
-   `graph.approvals.record_decision` until G5's `graph_approve`.
+   `graph_approve` (G5; in G4 with `graph.approvals.record_decision`).
 2. **Dry run.** `graph_import --dry-run` parses, validates and resolves. It
    writes only the `ImportRun` report and the source records with their
    statuses. In G4 it runs on a draft release only, never while a commit run
@@ -2402,12 +2458,33 @@ All of them refuse to write while the switch is off.
    and every curated mapping and candidate list is also noted on its source
    record, so nothing the review needs is lost to a cap. The report's
    verdict is `refused` when the file is refused (its stored copy, its
-   manifest, its encoding or header, or too many lines) or a synthetic
-   release breaks the synthetic rules; G5 refuses to commit a release whose
-   latest dry run was refused.
+   manifest, its encoding or header, too many lines, or, from G5, more than
+   250,000 distinct identifiers: open question E15) or a synthetic release
+   breaks the synthetic rules; G5 refuses to commit a release whose latest
+   dry run was refused, and trusts that dry run only when it completed under
+   the release's adapter, versions and kind and the current registry
+   version, after every commit run that is not open, with the commit's
+   `--create-entities` and resolution file.
 3. **Review.** A person reads the report.
-4. **Commit.** `graph_import --commit` works in batches in `record_key` order,
-   one transaction per batch.
+4. **Commit.** `graph_import --commit` imports what the release's latest dry
+   run reported, with the same options (G5).
+   - It plans before it writes: one or two read-only readings of the file
+     through G4's mapping (two when a later batch changes how earlier rows
+     map), as the dry run read it. It writes nothing unless every record
+     the file gives is stored as that dry run stored it and maps to the
+     same status, the file is not refused and no synthetic rule is broken.
+   - It then reads the file a last time and writes it in batches in file
+     order (line order, not `record_key` order: the mapping, its first
+     labels and its duplicates are defined in file order, a release without
+     raw rows keeps no values to sort by, and a 2 GiB file is not sorted),
+     one transaction per batch. A batch takes its locks in one order: the
+     release, the run, every shared registry row its writes are checked
+     against (then the registry version is read again), entities by
+     identity key, every publication it cites by paper identity, terms by
+     CURIE, one `create_relationships` call, `record_claims` per record,
+     and the checkpoint (section 4.4). The writing reading chooses no label:
+     a created entity takes the label and identifier the dry run's report
+     showed.
    - With `--create-entities`, entities are created with
      `ON CONFLICT DO NOTHING` on `identity_key` and re-selected. Without it,
      a record whose identifier names no entity stays `unresolved`.
@@ -2426,10 +2503,16 @@ All of them refuse to write while the switch is off.
      assertions, and is refused otherwise (section 4.4). The terms the
      claims name are recorded by the same commit (`graph.terms`), never by a
      dry run.
-   - A checkpoint is saved after each batch, so a killed commit resumes and
-     earlier batches become no-ops.
-   - The release becomes `staged`, and `DatasetRelease.stats` is written. No
-     legacy recount runs.
+   - A checkpoint, `{version, line, batches}`, is saved with the running
+     report in each batch's transaction. A failed batch rolls back whole
+     and fails the run, which a rerun resumes: it plans the whole file
+     again, skips the batches up to the checkpoint, and any other write
+     already made is a no-op. A killed process leaves its run `running`,
+     until the release's next commit or discard marks it `failed`.
+   - Finishing is one transaction: every mapped record holds evidence,
+     `DatasetRelease.stats` is recounted from rows, the release becomes
+     `staged` and the run `completed`. The commit writes no source record.
+     No legacy recount runs.
 5. **Publish.** `graph_publish_release` requires an effective `internal`
    approval; whether visitors see the release is decided only by
    `public_view` (section 3.7). In the same transaction it marks the release
@@ -2575,6 +2658,14 @@ task `graph.tasks.run_import(import_run_id)`:
 - resumes from the checkpoint;
 - runs in small chained batches, so that legacy import tasks on the single
   `celery` queue (`docker-compose.yml:63`) interleave.
+
+G5's commit holds its release's run lock on one connection for the whole
+run, and plans the whole file before it writes. So I1 runs `commit_release`
+as one task per commit until it keeps the planning (labels, contradictions)
+between chained tasks, with a liveness mechanism that survives the chain,
+such as a lease in the run's checkpoint that `end_dead_runs` honours; and it
+stores the resolution file, since the payload is a run id
+(IMPLEMENTATION_PLAN.md, I1).
 
 **Enrichment per entity type (RF1b).** Pluggable, versioned providers keyed by
 entity type and namespace run as an explicit step after commit, never during
@@ -2980,6 +3071,89 @@ framework, `canonical_tsv_v1` and the dry run before they were built
   `graph.scores.score_form` and `graph.terms.checked_label`, which
   `parse_score` and `get_or_create_term` call and the import reads, so no
   rule is written twice (8).
+
+**Four independent reviews of G5's specification** then refined the commit,
+its checkpoints and the release lifecycle before they were built
+(IMPLEMENTATION_PLAN.md, G5):
+
+- one run lock per release, a PostgreSQL session advisory lock that every
+  dry run, commit and discard holds for its whole life: a second one is
+  refused, it is not re-entrant, a hold that cannot be released closes its
+  connection, and `pg_locks` is read in the current database only. A
+  commit or a discard, once it holds it, marks the release's runs left
+  `running` by a process that ended `failed`; a dry run marks none, so it
+  still writes only its run and the records. Without PostgreSQL there is no
+  lock, `graph_run_one_open_commit` still allows one open commit run, and a
+  `running` one is never resumed, only discarded (3.5, 7.4);
+- a commit trusts the release's latest dry run only when it completed with
+  the verdict `ok`, under the release's adapter, versions and kind and the
+  current registry version, after every commit run that is not open, and
+  with the same `--create-entities` and resolution file; a dry run compares
+  the adapter's kind as well as its versions, so its report states the
+  release's kind (8);
+- the commit plans before it writes: one or two read-only readings through
+  G4's mapping, then the writing reading. It writes nothing unless every
+  record the file gives is stored as the trusted dry run stored it and maps
+  to the same status, the file is not refused and no synthetic rule is
+  broken. The writing reading chooses no label, so a created entity takes
+  the label and identifier the dry run's report showed, and is
+  `provisional` (4.1, 8);
+- the commit writes no source record, so a resumed and an uninterrupted
+  commit leave the same records (3.5);
+- its batches go in file order, not `record_key` order (8);
+- each batch is one transaction in one lock order, so no two commits
+  deadlock while every publication row they both cite holds one identifier,
+  and a `COMMIT`'s foreign-key checks close no cycle; "batched upserts" are
+  G1–G3's race-safe services called per row in that transaction, with no
+  new bulk forms (4.4, 8);
+- the checkpoint is `{version, line, batches}`, saved with the running
+  report. A resume plans the whole file again, skips the batches up to the
+  checkpoint, and needs the open run's options and trusted dry run: the
+  open commit run decides first, and any other change refuses it, naming
+  the discard. In an identity namespace where case or version tells two
+  entities apart (none in registry v1), a variant of an entity the run
+  created makes the resume refused (7.4, 8; IMPLEMENTATION_PLAN.md, RF1b);
+- a failed batch rolls back whole and fails the run, resumably, whether a
+  race refused it or the database did; the marking is best effort, and a
+  run whose connection is gone stays `running` for the next commit or
+  discard to mark (8);
+- finishing is one transaction (evidence for every mapped record, the
+  statistics, the release staged, the run completed), and committing a
+  committed release again with the same options writes nothing (8);
+- a discard applies to a staged release and to a draft with an open commit
+  run or evidence. It deletes the release's assertions and records, resets
+  its statistics, marks the run it gives up `abandoned` with who, when and
+  why in its report, and keeps everything else; it is refused for
+  published, superseded and withdrawn releases and while a run of the
+  release holds the lock, and registration's refusals name it (3.7, 4.4,
+  7.4);
+- every new command that writes takes `--as`; `graph_approve` takes
+  `--replace` and `--evidence`, and `--report-file` is for dry runs only
+  (7.4);
+- `DatasetRelease.stats` has a fixed shape, recounted from rows, with each
+  key's additivity stated, and is fixed once the release is published
+  (3.6);
+- the commit report keeps the publication-identifier conflicts, and the term
+  labels and local papers' titles and years it did not write, whenever the
+  term or paper was stored, one entry each and capped, and `graph_check`
+  lists them for review; since `canonical_tsv_v1` states one identifier per
+  paper, A6 is tested by wrapping the commit's `get_or_create_publication`
+  (4.4);
+- `graph_check` has ten sections, five problems that set its exit status
+  and five entries for review. "Unknown or deprecated slugs" is its
+  registry section, and "dangling provenance" is release files whose copy
+  is gone or changed and runs whose process ended (7.4);
+- a file states at most 250,000 distinct identifiers, for dry runs and
+  commits (open question E15) (8);
+- orphan rows are the rows a commit wrote that no assertion of its release
+  names, and duplicates of shared rows: one transaction per batch leaves
+  none, and the entities and relationships a discard keeps are kept by
+  design (3.4);
+- a synthetic release needs no approval to be committed, but a licence
+  snapshot that records terms and an `internal` approval to be published
+  (3.7);
+- what G6, I1, M1, RF1a, RF1b, C1, H1, P1 and AD1 take over from G5 is in
+  their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 
