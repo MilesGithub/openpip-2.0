@@ -1,0 +1,18 @@
+{
+  "publications": {
+    "syn-paper-1": {
+      "title": "SYN demonstration paper 1 (synthetic: not a real publication)",
+      "year": 2026,
+      "is_synthetic": true
+    },
+    "syn-paper-2": {
+      "title": "SYN demonstration paper 2 (synthetic: not a real publication)",
+      "year": 2026,
+      "is_synthetic": true
+    }
+  },
+  "terms": {
+    "MI:0407": "direct interaction",
+    "MI:0915": "physical association"
+  }
+}

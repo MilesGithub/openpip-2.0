@@ -54,6 +54,9 @@ HEADINGS = [
     "### Importing it again",
     "## Checking the graph",
     "## Release statistics",
+    "## Loading the synthetic demonstration",
+    "### Running it again",
+    "### Hiding or removing it",
     "## What is refused",
 ]
 # The commands this page gives synopses of; graph_import's commit is here,
@@ -65,6 +68,7 @@ COMMANDS = (
     "graph_withdraw_release",
     "graph_discard_release",
     "graph_check",
+    "graph_load_demo",
 )
 # Which statistics add up across releases (spec §5; architecture §3.6, D4):
 # the counts of a release's own rows do, and the distinct counts, of rows

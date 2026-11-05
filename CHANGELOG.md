@@ -140,6 +140,17 @@ No version has been tagged yet. Everything below is in development towards
   exiting 1 for a problem. One dry run, commit or discard of a release runs
   at a time, and a file that states more than 250,000 distinct identifiers
   is refused. Still behind `TYPED_GRAPH_ENABLED`, and shown to no visitor.
+- A synthetic demonstration of the typed graph, described in the operator
+  guide's Typed releases page: one dataset in two synthetic releases, v2
+  correcting one effect of v1, whose rows cover the cases the typed graph
+  must handle, with made-up `SYN-` genes and proteins and two made-up
+  papers, and rows that a dry run must report and never import. `manage.py
+  graph_load_demo` registers, dry-runs, commits and publishes both, with an
+  MIT licence snapshot and an internal approval for each, so that only
+  staff see them. Run again, it completes a load that stopped and writes
+  nothing once the demonstration is loaded, and it never overrides an
+  operator's decision. Still behind `TYPED_GRAPH_ENABLED`, and shown to no
+  visitor.
 
 ### Fixed
 

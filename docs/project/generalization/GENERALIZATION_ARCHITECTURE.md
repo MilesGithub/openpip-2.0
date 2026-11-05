@@ -89,8 +89,8 @@ instance. In this design:
 |---|---|---|---|
 | **Source dataset** (`SourceDataset`) | The identity of a study or resource as its publisher defines it. It is named in code to avoid a clash with the legacy `datasets.Dataset` | Its descriptive metadata can be edited | "Synthetic regulation example" |
 | **Release** (`DatasetRelease`) | One immutable, versioned snapshot of a dataset: its files and checksums, the adapter version, its licence snapshots and the approvals. It is the unit of import, licensing, visibility and withdrawal | Never after publication. While still `staged` it can be discarded back to draft and imported again. A correction is a new release that supersedes it; the old one stays available for auditing | "v1, retrieved 2026-11-02, sha256 …" |
-| **Source record** (`SourceRecord`) | One verbatim row of a release file, with a stable key, kept exactly as read | Its content never. Its mapping status and issues follow the latest run while the release is unpublished; each import run's report keeps its own copy | line 7 of `release_v1.tsv` |
-| **Evidence assertion** (`EvidenceAssertion`) | One statement a source record makes about one relationship: its outcome, effect, method, scores, context, publications, and the source's own wording | Never once its release is published; it belongs to its release | "record 7 says SYN-TF1 activates SYN-G1" |
+| **Source record** (`SourceRecord`) | One verbatim row of a release file, with a stable key, kept exactly as read | Its content never. Its mapping status and issues follow the latest run while the release is unpublished; each import run's report keeps its own copy | line 2 of `release_v1.tsv` |
+| **Evidence assertion** (`EvidenceAssertion`) | One statement a source record makes about one relationship: its outcome, effect, method, scores, context, publications, and the source's own wording | Never once its release is published; it belongs to its release | "record syn-01 says SYN-TF1 activates SYN-G1" |
 | **Canonical relationship** (`Relationship`) | The claim itself (type and endpoints, plus any site or role the type needs), with no counts or effect stored on it. Many assertions from many releases attach to one relationship | Never; it holds identity only | "transcriptional regulation, SYN-TF1 → SYN-G1" |
 | **Browser instance** (`BrowserInstance`) | A configured view: which releases, layers and filters to show, with its own citation, text and presentation, or a link to an independent portal. It holds no data | Edited by admins | `/browsers/synthetic-regulation` |
 
@@ -98,7 +98,7 @@ How one row travels through them:
 
 ```mermaid
 flowchart LR
-    F[SourceFile<br/>release_v1.tsv, sha256] --> R[SourceRecord<br/>line 7, verbatim]
+    F[SourceFile<br/>release_v1.tsv, sha256] --> R[SourceRecord<br/>line 2, verbatim]
     R --> A1[EvidenceAssertion<br/>outcome supported<br/>effect activating]
     A1 --> X[Relationship<br/>transcriptional_regulation<br/>SYN-TF1 → SYN-G1]
     A2[EvidenceAssertion<br/>from release v2<br/>effect inhibiting] --> X
@@ -250,7 +250,7 @@ empty registry tables. The Django admin shows registries read-only.
 | `IdentifierNamespace` | slug, label, CURIE prefix, allowed entity types (M2M), scope (`global` / `taxon` / `assembly`), fixed taxon for organism-owned nomenclatures, case policy (`exact` / `upper` / `insensitive`), version policy, `defines_identity` (an import run with `--create-entities` may create entities of its types; section 4.1), pattern, URL template, the authority document its rules were copied from |
 | `RelationshipType` | slug, label, a definition saying what the edge claims and what it does not, family (G3's check lists every family of section 4.2, so a later family needs no constraint change), orientation (`symmetric` / `directed` / `role_ordered`), polarity (`none` / `effect` / `genetic_sign`), allowed subject and object types (M2M) with role labels, identity qualifiers (none in G3: every type declares `[]` until P2), whether self-pairs are allowed, PSI-MI crosswalk anchors, display tokens, `is_reference` (a link between entity layers rather than an evidence-backed claim) |
 | `ScoreType` | slug (`<source>:<name>` or `stats:<name>`), label, definition, value kind (`probability`, `p_value`, `q_value`, `rank`, `count`, `continuous`), direction (`higher_is_stronger`, `lower_is_stronger`, `signed`, `unordered`), range, unit, null model, defining document, `comparable_across_datasets` (default false) |
-| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (the primary key, in canonical form such as `MI:0915` or `ECO:0000353`; `graph.terms` accepts the MI and ECO prefixes, and others arrive with the first adapter that maps them), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …; derived from the prefix by code, with no database check, so an ontology is added without a constraint change), label, the release whose commit supplied the label (`label_release`, written only when the term is created, and on every insert path only naming a draft release; a term never changes, so it keeps naming that release after the release moves past draft, and is emptied only if that draft release is deleted), definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one; in G4 a release's manifest declares every CURIE its rows use, with the source's label, which is the label its commit passes (section 8). G3 creates one only inside a commit that may record evidence (a draft release, a running commit run, an effective `internal` approval unless the release is synthetic), race-safely; a term keeps its first label, and a later label that differs, or one that differs from the PSI-MI crosswalk's, is reported and never written. A crosswalk term keeps the crosswalk's label, and `label_release` names the release whose commit created the term only when that commit stated the crosswalk's label; otherwise it stays empty, even after a later release states that label. A label is shown beside real evidence only while the release that supplied it is visible to the caller and not synthetic (D12), so the synthetic demo never labels a term that real evidence names. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1), a subset of G3's PSI-MI physical crosswalk (D20); V1 is what later lets crosswalks and filters work by subtree |
+| `Term` (G3) and `TermParent` (V1, deferred) | CURIE (the primary key, in canonical form such as `MI:0915` or `ECO:0000353`; `graph.terms` accepts the MI and ECO prefixes, and others arrive with the first adapter that maps them), ontology (`psi-mi`, `eco`, `uberon`, `cl`, `efo`, …; derived from the prefix by code, with no database check, so an ontology is added without a constraint change), label, the release whose commit supplied the label (`label_release`, written only when the term is created, and on every insert path only naming a draft release; a term never changes, so it keeps naming that release after the release moves past draft, and is emptied only if that draft release is deleted), definition, obsolete flag, the ontology release it came from, and `is_a` parents. Adapters may create a term from a source-supplied CURIE and label, and never invent one; in G4 a release's manifest declares every CURIE its rows use, with the source's label, which is the label its commit passes (section 8). G3 creates one only inside a commit that may record evidence (a draft release, a running commit run, an effective `internal` approval unless the release is synthetic), race-safely; a term keeps its first label, and a later label that differs, or one that differs from the PSI-MI crosswalk's, is reported and never written. A crosswalk term keeps the crosswalk's label, and `label_release` names the release whose commit created the term only when that commit stated the crosswalk's label; otherwise it stays empty, even after a later release states that label. A label is shown beside real evidence only while the release that supplied it is visible to the caller and not synthetic (D12), so the synthetic demo never labels a term that real evidence names. A crosswalk term that the synthetic demonstration creates first names its v1 in `label_release`. Every reader of `label_release` treats a crosswalk term as `graph.summary.term_label` does: the crosswalk's label, whatever the release. Until V1 loads versioned, licence-recorded ontology releases, each adapter maps the terms it accepts through an explicit, test-pinned list (M1), a subset of G3's PSI-MI physical crosswalk (D20); V1 is what later lets crosswalks and filters work by subtree |
 
 **At most one identity namespace per entity type and taxon.** For each
 entity type and taxon, at most one namespace defines identity:
@@ -1712,13 +1712,16 @@ that loses the main reason a single install would enable the graph.
 
 - labels prefixed `SYN-`, so no real gene name appears;
 - the `synthetic_gene` and `synthetic_protein` namespaces and taxon 32630
-  ("synthetic construct", *(verify)*);
+  ("synthetic construct");
 - the repository's MIT licence, with `is_synthetic` on everything;
 - no PMID or DOI that could resolve to a real record, because PubMed ids are
   plain integers and any made-up one is someone's paper. Where the test
   matrix needs two publications, they are title-only rows marked synthetic,
   declared in the release manifest and cited from rows as `ref:<key>`
-  (section 8).
+  (section 8);
+- only PSI-MI interaction types from G3's crosswalk (`MI:0915`,
+  `MI:0407`), and no detection method or ECO term, so loading it labels no
+  term that real evidence may name (owner's decision, 2026-11-05).
 
 It has two releases, v1 and v2, where v2 supersedes v1, and about 25 rows
 that form a test matrix:
@@ -1739,14 +1742,16 @@ that form a test matrix:
 | Label and identifier | SYN-TF1, whose label equals its identifier, searched with no namespace | `resolved`: one entity matched twice counts once |
 | Shared label | One label used by a gene and a protein | `ambiguous`: two candidates, never one entity |
 | One label | A term that is only the label of one SYN gene, different from its identifier | `candidate`, never `resolved` |
-| Release separation | v2 changes one effect | The default view, the relationship page and its evidence list show only the v2 effect, never `mixed`. A browser pinned to v1 shows the v1 effect and stays live after v2 is published. v1's records remain readable when it is selected explicitly |
-| Must be reported, never imported | An identifier in an undeclared namespace or failing its pattern; an unknown type; an effect on a symmetric type; an effect on a tested-absent row; a direction that contradicts the type; "negative" given as an effect; a duplicate record key with different content | Reported with reasons and line numbers, never imported |
+| Release separation | v2 changes one effect: SYN-TF1 → SYN-G1, activating in v1 and inhibiting in v2 | The default view, the relationship page and its evidence list show only the v2 effect, never `mixed`. A browser pinned to v1 shows the v1 effect and stays live after v2 is published. v1's records remain readable when it is selected explicitly |
+| Must be reported, never imported | An identifier in an undeclared namespace or failing its pattern; an unknown type; an effect on a symmetric type; an effect on a tested-absent row; a direction that contradicts the type; "negative" given as an effect; a duplicate record key with different content | Reported with reasons and line numbers, never imported. The undeclared namespace is asserted on a test-only file, since a synthetic release refuses such a row whole, as a synthetic violation (owner's decision, 2026-11-05) |
 
 The same network is mirrored as an MSW fixture for frontend tests. It is
-loaded by `manage.py graph_load_demo --approve-as <username>`, never by a
-migration, and never on a public hub without an explicit recorded decision.
-The loader commits with `--create-entities`, so the SYN entities are created
-as `provisional` (section 4.1).
+loaded by `manage.py graph_load_demo --as <username>`, never by a
+migration. It records `internal` approvals only, so on a public hub its
+data are visible to staff alone until an operator records `public_view`
+with `graph_approve`, the explicit recorded decision. The loader commits
+with `--create-entities`, so the SYN entities are created as `provisional`
+(section 4.1).
 
 **Alternatives.**
 
@@ -2306,7 +2311,8 @@ All of them refuse to write while the switch is off.
   every option, so a dry run writes only its run and the records, and
   stores the data file and the manifest privately (section 3.5). Data
   sources, datasets, licence snapshots and due diligence are recorded in
-  the admin, and approvals with `graph_approve` (G5; in G4 with
+  the admin, except the synthetic demonstration's, which `graph_load_demo`
+  records (G6), and approvals with `graph_approve` (G5; in G4 with
   `graph.approvals.record_decision`). Registering the same files and
   options again writes nothing; a draft without evidence takes a new adapter
   version and loses its records (section 4.4); any other difference is
@@ -2358,8 +2364,11 @@ All of them refuse to write while the switch is off.
   to `draft`, marks its open commit run (or a staged release's completed
   one) `abandoned` with who, when and why in its report, and keeps the
   audit trail.
-- `graph_load_demo --approve-as <username>`, which commits the fixture with
-  `--create-entities`
+- `graph_load_demo --as USERNAME` (G6), which registers the fixture's two
+  releases as synthetic, v2 superseding v1, dry-runs and commits each with
+  `--create-entities`, records an MIT licence snapshot and an `internal`
+  approval for each, and publishes v1 then v2. Run again, it completes a
+  load that stopped and writes nothing once the demonstration is loaded.
 - `graph_check` (G5) writes nothing and takes no `--as`. It reports, in ten
   sections, problems, which make it exit 1:
   - unknown or deprecated slugs: the registry against the code's JSON, both
@@ -3154,6 +3163,51 @@ its checkpoints and the release lifecycle before they were built
   (3.7);
 - what G6, I1, M1, RF1a, RF1b, C1, H1, P1 and AD1 take over from G5 is in
   their rows of IMPLEMENTATION_PLAN.md.
+
+**The owner decided three questions of G6's specification** on
+2026-11-05, and four independent reviews of the specification then
+refined the synthetic demonstration and its loader before they were
+built (IMPLEMENTATION_PLAN.md, G6; OPEN_QUESTIONS.md, A13, C16 and E16):
+
+- D12's identifier in an undeclared namespace, a synthetic violation that
+  refuses a synthetic release whole, is asserted on a test-only file; the
+  shipped files carry the identifier failing its pattern (owner's
+  decision; D12);
+- the demonstration uses only PSI-MI interaction types from G3's
+  crosswalk, with the crosswalk's labels, and no detection method or ECO
+  term (owner's decision; D12). A crosswalk term it creates first names
+  its v1 in `label_release`, which every reader treats as `term_label`
+  does (3.3);
+- the loader takes `--as`, like every typed command that writes, and one
+  account registers, commits, approves and publishes (owner's decision;
+  7.4);
+- the rows: v1's 17 mapped rows include a row citing two papers and a
+  tested-absent direct-interaction test on a physical edge whose support
+  states no level, so the rules of 4.5 that need them are asserted on the
+  demonstration; of its 9 rows reported and never imported, the two of
+  unknown type state values no registry can hold; v2 restates v1's mapped
+  rows with one effect corrected, and the papers are title-only, with a
+  year (2, 4.5, D12);
+- v1 is loaded end to end before v2, so v2's dry run lists its three
+  conflicts with v1 (8);
+- each release's licence snapshot quotes the repository's MIT License as
+  stated, with no SPDX id and redistribution permitted with conditions,
+  recorded by the operator who runs the loader (3.7);
+- the loader never overrides an operator and never refuses what overrides
+  nothing. A published or superseded release is only reported, whatever
+  an operator did to it; a release past draft keeps the adapter version
+  it was committed with; a denial, a revocation or a snapshot without
+  terms on a release still to import or publish refuses it before
+  anything is written for it; the snapshot and the approval are checked
+  under the release's row lock; a withdrawal of v2, or of v1 before it
+  was published, is final; and a change to the demonstration ships as new
+  release versions (3.7, 4.4);
+- D12's public hub: the loader runs on any portal, as the operator's
+  explicit act, and records `internal` approvals only, so visitors see
+  nothing until an operator records `public_view` (D12);
+- the D12 clauses that are not service-level are F2's, A2's, F3's, B1's,
+  X1's, F1's, F4's and H1's, and what A1, A2, B1, F1, F3, X1, RF1a and H1
+  take over from G6 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

@@ -1,0 +1,27 @@
+record_id	subject_namespace	subject_id	subject_type	subject_taxon	subject_label	object_namespace	object_id	object_type	object_taxon	object_label	relationship_type	directed	effect	interaction_type	publications	score:synthetic:confidence	score:synthetic:rank	outcome	evidence_basis	assertion_method
+syn-01	synthetic_gene	SYN-TF1	gene	32630	SYN-TF1	synthetic_gene	SYN-G1	gene	32630	SYN-G1	transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-02	synthetic_gene	SYN-G1	gene	32630	SYN-G1	synthetic_gene	SYN-TF1	gene	32630	SYN-TF1	transcriptional_regulation		inhibiting					supported	experimental	manual_assertion
+syn-03	synthetic_gene	SYN-TF2	gene	32630	SYN-TF2	synthetic_gene	SYN-G2	gene	32630	SYN-G2	transcriptional_regulation		activating		ref:syn-paper-1			supported	experimental	manual_assertion
+syn-04	synthetic_gene	SYN-TF2	gene	32630	SYN-TF2	synthetic_gene	SYN-G2	gene	32630	SYN-G2	transcriptional_regulation		inhibiting		ref:syn-paper-2			supported	experimental	manual_assertion
+syn-05	synthetic_gene	SYN-TF1	gene	32630	SYN-TF1	synthetic_gene	SYN-G4	gene	32630	SYN-G4	transcriptional_regulation		unknown					supported	experimental	manual_assertion
+syn-06	synthetic_gene	SYN-TF3	gene	32630	SYN-TF3	synthetic_gene	SYN-G4	gene	32630	SYN-G4	transcriptional_regulation							supported	experimental	manual_assertion
+syn-07	synthetic_gene	SYN-TF1	gene	32630	SYN-TF1	synthetic_gene	SYN-G2	gene	32630	SYN-G2	transcriptional_regulation							tested_absent	experimental	manual_assertion
+syn-08	synthetic_gene	SYN-TF2	gene	32630	SYN-TF2	synthetic_gene	SYN-TF2	gene	32630	SYN-TF2	transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-09	synthetic_gene	SYN-TF3	gene	32630	SYN-TF3	synthetic_gene	SYN-G5	gene	32630	SYN-G5	transcriptional_regulation					0.8	1	supported	computational_prediction	automatic_assertion
+syn-10	synthetic_protein	SYN-P1	protein	32630	SYN-P1	synthetic_protein	SYN-P2	protein	32630	SYN-P2	physical_interaction			MI:0915				supported	experimental	manual_assertion
+syn-11	synthetic_protein	SYN-P2	protein	32630	SYN-P2	synthetic_protein	SYN-P1	protein	32630	SYN-P1	physical_interaction			MI:0407				supported	experimental	manual_assertion
+syn-12	synthetic_gene	SYN-TF1	gene	32630	SYN-TF1	synthetic_protein	SYN-P1	protein	32630	SYN-P1	encodes							supported	unknown	manual_assertion
+syn-13	synthetic_protein	SYN-P1-1	protein_isoform	32630	SYN-P1-1	synthetic_protein	SYN-P1	protein	32630	SYN-P1	isoform_of							supported	unknown	manual_assertion
+syn-14	synthetic_gene	SYN-TF3	gene	32630	SYN-TF3	synthetic_gene	SYN-G3	gene	32630	SYN-ALPHA	transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-15	synthetic_gene	SYN-TF3	gene	32630	SYN-TF3	synthetic_gene	SYN-G6	gene	32630	SYN-SHARED	transcriptional_regulation		activating		ref:syn-paper-1|ref:syn-paper-2			supported	experimental	manual_assertion
+syn-16	synthetic_protein	SYN-P3	protein	32630	SYN-SHARED	synthetic_protein	SYN-P2	protein	32630	SYN-P2	physical_interaction							supported	experimental	manual_assertion
+syn-17	synthetic_protein	SYN-P3	protein	32630	SYN-SHARED	synthetic_protein	SYN-P2	protein	32630	SYN-P2	physical_interaction			MI:0407				tested_absent	experimental	manual_assertion
+syn-x1	synthetic_gene	SYN-TF1	gene	32630		synthetic_gene	SYN-g7	gene	32630		transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-x2	synthetic_gene	SYN-TF1	gene	32630		synthetic_gene	SYN-G1	gene	32630		not_a_relationship_type		activating					supported	experimental	manual_assertion
+syn-x3	synthetic_gene	SYN-TF3	not_an_entity_type	32630		synthetic_gene	SYN-G1	gene	32630		transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-x4	synthetic_protein	SYN-P1	protein	32630		synthetic_protein	SYN-P2	protein	32630		physical_interaction		activating					supported	experimental	manual_assertion
+syn-x5	synthetic_gene	SYN-TF2	gene	32630		synthetic_gene	SYN-G1	gene	32630		transcriptional_regulation		inhibiting					tested_absent	experimental	manual_assertion
+syn-x6	synthetic_gene	SYN-TF3	gene	32630		synthetic_gene	SYN-G2	gene	32630		transcriptional_regulation	false	activating					supported	experimental	manual_assertion
+syn-x7	synthetic_gene	SYN-TF3	gene	32630		synthetic_gene	SYN-G1	gene	32630		transcriptional_regulation		negative					supported	experimental	manual_assertion
+syn-x8	synthetic_gene	SYN-TF3	gene	32630		synthetic_gene	SYN-G1	gene	32630		transcriptional_regulation		activating					supported	experimental	manual_assertion
+syn-x8	synthetic_gene	SYN-TF3	gene	32630		synthetic_gene	SYN-G1	gene	32630		transcriptional_regulation		inhibiting					supported	experimental	manual_assertion
