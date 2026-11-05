@@ -131,7 +131,7 @@ guard is written once and then runs in every later PR's default suite.
 | `POST /api/search/interactors`, `/api/proteins`, `/api/proteins/autocomplete`, `/api/proteins/{identifier}`, `/api/datasets`, `/api/counts` | Each app's `test_views.py` | The same file (G1): byte-identical with typed rows present |
 | `GET /api/home/network` | `interactions/tests` | Key set only, because the endpoint samples with `ORDER BY RANDOM()` (G1) |
 | PSICQUIC: MIQL subset, MITAB 2.5–2.8, column 36 from `negative`, round trips | `backend/psicquic/tests/` (`test_mitab.py`, `test_miql.py`, `test_negative_flag.py`, `test_upload_roundtrip.py`, `test_real_intact_file.py` and others) | Byte-identical `query?q=*&format=tab28` and `query/count` output with typed rows present (G1). Typed relationships never appear (G3), nor anything a registered and dry-run release states (G4) |
-| Legacy importer rules: dataset found by name, pair reuse in either orientation, first writer's score | `backend/datasets/tests/test_upload_parser.py` (dataset by name, lines 141-168; first writer's score, lines 399-420), `test_upload.py` and `test_task.py`. Reuse in the reverse orientation is covered only by `backend/psicquic/tests/test_real_intact_file.py:49-55` | Unchanged. Legacy table row counts are asserted unchanged after every typed import (G4, G5) |
+| Legacy importer rules: dataset found by name, pair reuse in either orientation, first writer's score | `backend/datasets/tests/test_upload_parser.py` (dataset by name, lines 141-168; first writer's score, lines 399-420), `test_upload.py` and `test_task.py`. Reuse in the reverse orientation is covered only by `backend/psicquic/tests/test_real_intact_file.py:49-55` | Unchanged. Legacy table row counts are asserted unchanged after every typed import (G4, G5, G6) |
 | Dataset downloads and `datasets.zip` | `backend/datasets/tests/test_download_public.py`, `test_views.py` | No typed code touches them, and the import fence keeps it that way (G1) |
 | Saved networks; saved, shared and public views | `backend/interactions/tests/test_networks.py` (saved networks) and `backend/sharing/tests/test_views.py` (saved, shared and public views); the frontend sharing tests | Byte-identical `/api/networks` responses with typed rows present (G1). Every existing `ViewState` fixture restores exactly as before. A state without `kind` takes the legacy path, and the three view pages check `kind` before calling the search page (S1) |
 | `/api/settings` keys | `backend/admin_panel/tests/test_views.py` | Unchanged. The organism settings live in the fork-owned `portal_profile` app with its own endpoint, unless upstream takes them (O1) |
@@ -359,7 +359,23 @@ emitted, and score filters never pool score types.
 **Context.** An absent facet means "not stated"; no filter treats it as a
 match for every context.
 
-### 5.4 Provenance, idempotency and the release lifecycle (G2, G4, G5)
+**On the synthetic release (G6).** `backend/graph/tests/test_demo_matrix.py`
+asserts every case of architecture D12 at service level on the
+demonstration that `graph.demo.load_demo` loads, through G3's summary
+module and G1's resolver: the header rules, the stored reference chain and
+the label cases; every summary of the default view (v2), each count dict
+with its zero keys; v1 out of the default view and readable when
+selected; the summary rules above that its rows can express, on every
+edge and filter; and the rows reported and never imported. D12's
+identifier in an undeclared namespace is a file the test builds, whose dry
+run is refused with nothing imported. The module's docstring names the G3
+tests that cover the rules its rows cannot express (inconclusive and
+not-significant outcomes, activating with unknown, detection methods,
+evidence groups, `level_assigned`, genetic signs, two datasets citing one
+paper), each checked to exist, and the owner of each D12 clause that is
+not service-level.
+
+### 5.4 Provenance, idempotency and the release lifecycle (G2, G4, G5, G6)
 
 - **Uniqueness.** (dataset, version) is unique, and a known version with a
   different checksum is refused. (release, record key) is unique: re-importing
@@ -518,6 +534,18 @@ match for every context.
   too long, not UTF-8 or with another number of fields is not. Any violation rejects the row and makes the run's
   verdict `refused`, so a mixed file is refused as a whole. A synthetic
   release needs no approval to be dry-run.
+- **The demonstration (G6).** `backend/graph/tests/test_demo_data.py` reads
+  the shipped files without loading them: the header and 21 fields of every
+  line, LF endings, v2 as v1's mapped lines with one effect corrected, the
+  synthetic rules every cell keeps, the manifest's terms against G3's
+  crosswalk, and the licence snapshot's quoted terms against `LICENSE`.
+  `backend/graph/tests/test_load_demo.py` runs the loader and its command:
+  each refusal before anything is written; a full load, with every figure
+  it writes, `graph_check` clean and legacy row counts unchanged; a rerun
+  that writes nothing; each stop it completes (after v1's publication,
+  before v2's, a discard, and a commit stopped mid-file and resumed with no
+  second dry run); and each operator state of its policy, which never
+  overrides an operator and never refuses what overrides nothing.
 
 ### 5.5 Licensing and visibility (G2, A1, A2, B1, C1, E1)
 
@@ -926,7 +954,9 @@ repository.
   could resolve to a real record. v2 supersedes v1, and it includes the
   reference chain from a SYN gene to its protein's physical partner. It
   stores no aliases; alias cases use factory rows (G1) and RF1a's reference
-  fixtures.
+  fixtures. It states no detection method or ECO term: method cases use
+  X1's, F3's and B1's own rows. D12's undeclared-namespace row, which a
+  synthetic release refuses whole, is asserted on a test-only file.
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.

@@ -3,8 +3,8 @@
 A release of typed data is registered and dry-run as
 [Typed data format](typed-data-format.md) describes. This page describes
 what follows: approving the release, committing it (importing its evidence
-into the graph), publishing, withdrawing and discarding it, and checking the
-graph for what needs an operator.
+into the graph), publishing, withdrawing and discarding it, checking the
+graph for what needs an operator, and loading the synthetic demonstration.
 
 The typed graph is still being built: no page or API of the portal shows it
 yet, so nothing on this page changes what visitors see. Approvals and
@@ -628,6 +628,158 @@ A total over several releases adds up only the keys marked yes. What one
 commit created (relationships, publications and terms, which several
 releases share) is in its run's report, not here.
 
+## Loading the synthetic demonstration
+
+openPIP ships a synthetic demonstration of the typed graph: one dataset,
+`synthetic-regulation`, in two synthetic releases whose rows cover the cases
+the typed graph must handle, such as direction, mixed and unknown effects,
+tested absence, predictions, symmetric physical interactions, the
+`encodes` and `isoform_of` links between a gene, its protein entry and an
+isoform, and shared labels. Every gene, protein, label and paper in it is
+made up and describes no real biology, and every label starts with `SYN-`.
+Its files are in `backend/graph/demo_data/synthetic_regulation/`, whose
+README lists the case each row covers:
+
+- `release_v1.tsv`, v1: 26 rows in
+  [`canonical_tsv_v1`](typed-data-format.md#the-canonical_tsv_v1-format). 17
+  are imported; the other 9 are rows that a dry run must report and never
+  import, such as an identifier that fails its pattern or "negative" given
+  as an effect.
+- `release_v2.tsv`, v2: v1's 17 imported rows, with one effect corrected
+  (SYN-TF1 → SYN-G1, activating in v1 and inhibiting in v2). v2 supersedes
+  v1.
+- `manifest.json`: the two synthetic papers the rows cite, with a title and
+  a year and no PMID or DOI, and the two PSI-MI interaction types the rows
+  use, with the labels of openPIP's crosswalk.
+
+```text
+python manage.py graph_load_demo --as USERNAME
+```
+
+| Option | Meaning |
+|---|---|
+| `--as USERNAME` | The active staff account that registers, commits, approves and publishes the demonstration. Required. |
+
+On a production server, the backend image already holds the files, so no
+folder needs mounting:
+
+```bash
+dc exec backend python manage.py graph_load_demo --as alice
+```
+
+`graph_load_demo` creates its data source, `openpip-synthetic` (of kind
+`this_portal`), and its dataset, `synthetic-regulation`, so neither is
+created in the Django admin. Then, for v1 and then v2, it does what an
+operator does for a synthetic release, through the same services as the
+commands: it registers the
+release with `--synthetic` (v2 with `--supersedes v1`), dry-runs it and
+commits it with `--create-entities` and no resolution file, records its
+licence snapshot and its `internal` approval, and publishes it. v1's commit
+creates the demonstration's 13 entities, which are `provisional`, its 14
+relationships, its two papers and, unless openPIP holds them already, the
+two interaction types; v2's creates none, and publishing v2 supersedes v1.
+It prints one line for the data source and dataset, one line per release
+with what each step did, and a last line naming the current release and
+who may see it.
+
+Each release's licence snapshot records the repository's MIT License, with
+its grant and condition quoted from `LICENSE`, as read on the day of the
+load by the account `--as` names. Only `internal` approvals are recorded,
+so the demonstration is for staff. On a public hub, every staff member's
+default view shows it once the loader has run, and visitors see it only
+after a `public_view` approval is recorded with `graph_approve`
+([Approving a release](#approving-a-release)).
+
+### Running it again
+
+`graph_load_demo` is safe to run again. Once the demonstration is loaded,
+it writes nothing and says so. A load that stopped is completed from where
+it stopped: a commit that stopped is resumed, with no second dry run; a
+staged release is published once its commit is found to have had
+`--create-entities` and no resolution file; a release discarded back to
+draft is dry-run and committed again, and keeps its licence snapshot and
+approval; and a licence snapshot or an `internal` approval that was never
+recorded is recorded.
+
+It never overrides an operator. A release that is published or superseded
+is left as it is, and its line reports what an operator did to it: an
+`internal` approval revoked, or a denial; a latest licence snapshot that
+records no terms; or an approval that relies on an older snapshot than the
+latest (refresh it with `graph_approve --replace` once the latest snapshot
+records terms, or revoke it with `graph_revoke`). A v1 withdrawn after it
+was published, or whose `internal` approval was revoked, stays so, and v2
+is still loaded and published, unless an operator's decision on v2 stops
+it (below). It refuses only what it cannot do without overriding an
+operator, or what a step's own command refuses. It prints what it did
+before, then the refusal, which says what to do before running it again:
+
+- a release still to import or publish has an active `internal` denial,
+  only revoked `internal` decisions, or a latest licence snapshot that
+  records no terms: nothing is written for that release. While the release
+  has no snapshot that records terms, which the loader records only after
+  the commit, `graph_approve` refuses an approval, so the refusal says to
+  record the terms in the Django admin first (**Release licences**, then
+  **Add**); the loader keeps that snapshot instead of recording its own;
+- a release was committed, or its commit started and stopped, with other
+  options than the loader's: discard it with `graph_discard_release`;
+- v1 has an effective `public_view` approval and v2 has none, so publishing
+  v2 would hide public data: approve `public_view` for v2 with
+  `graph_approve`, once an active `public_view` denial of v2 is revoked
+  with `graph_revoke`;
+- v2 is withdrawn, or v1 was withdrawn before it was published: this is
+  final;
+- its data source or dataset slug names other data than the
+  demonstration's;
+- its files differ from those a release past draft was registered with,
+  or a draft whose commit stopped was registered under an older version
+  of `canonical_tsv_v1` (see below);
+- a step is refused as its command would refuse it: for example, the
+  database's registry is at another version than this code's (run
+  `python manage.py graph_sync_registry`); a commit of the demonstration
+  was left `running` on a database without the run lock
+  ([One commit at a time](#one-commit-at-a-time)); or a commit that stopped
+  cannot be resumed while what it reads has changed, such as a record that
+  now maps differently: run `graph_load_demo` again once that no longer
+  holds, which resumes it, or first discard the release with
+  `graph_discard_release`, after which the loader dry-runs and commits it
+  as it maps now.
+
+The demonstration's files are never edited in place. Registration compares
+them with the SHA-256 of the copies it stored, so a change ships as new
+release versions, such as a v3 that supersedes v2, which a later version of
+openPIP adds to the loader. A newer version of `canonical_tsv_v1` does not
+stop it: a release past draft keeps the version it was committed with, and
+a draft is registered again and takes the new one. A draft whose commit
+stopped (it holds evidence or an open commit run) is refused at
+registration instead: discard it with `graph_discard_release`, then run
+`graph_load_demo` again, which registers, dry-runs and commits it under the
+new version.
+
+### Hiding or removing it
+
+To hide the demonstration and keep it reloadable, revoke both releases'
+internal approvals (`graph_revoke --approval N`); `graph_approve` records
+them again. To remove it for good, withdraw v2, then v1, with
+`graph_withdraw_release` (either order works; withdrawing v2 first takes the
+current data out of the default view at once). This is final:
+`graph_load_demo` then refuses on this portal, since the demonstration ships
+as v1 and v2 only. Either way the evidence leaves every view and the 13
+entities stay `provisional`. `graph_check` does not list them, because the
+withdrawn or unapproved releases' assertions still name them, and openPIP's
+identifier resolver still finds them by identifier or label, since it does
+not yet limit itself to the entities a caller may see.
+
+Both ways assume that the load finished, with v2 published. After a load
+that stopped earlier, v2 may be missing, or a draft or staged release with
+no `internal` approval to revoke, and a draft is never withdrawn. Acting on
+v1 alone does not stop the next `graph_load_demo` from completing v2 and
+publishing it into every staff member's default view. Run `graph_load_demo`
+again first, to complete the load, then hide or remove the demonstration as
+above. Or, to keep a registered v2 from being loaded without completing it,
+record an `internal` denial of it:
+`graph_approve --release ID --scope internal --decision denied --rationale TEXT --as USERNAME`.
+The loader then refuses, with nothing written for v2.
+
 ## What is refused
 
 - **An approval** that the approval rules do not allow, with the rule it
@@ -643,5 +795,9 @@ releases share) is in its run's report, not here.
   with no open commit run and no evidence.
 - **Running two at once.** A dry run, commit or discard of a release while
   another runs ([One commit at a time](#one-commit-at-a-time)).
+- **Loading the synthetic demonstration** over an operator's decision, over
+  data that are not the demonstration's, from files that changed under a
+  release past draft, or once a withdrawal has made it final
+  ([Running it again](#running-it-again)).
 - **Every command** while `TYPED_GRAPH_ENABLED` is off, and every command
   that writes without `--as` naming an active staff account.

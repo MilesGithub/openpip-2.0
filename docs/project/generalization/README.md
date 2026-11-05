@@ -10,10 +10,9 @@ applied, followed by a consistency review of the updated documents
 (architecture §14). Research-only due diligence on the five priority datasets
 is recorded, and the questions it raised are decided. T1 (CI) and the
 legacy reset warning are merged into the fork's `main` (PRs #1 and #2), and
-so are G1 to G4, the typed foundation up to the import dry run (PRs #4 to
-#7). G5 adds the commit, checkpoints and the release lifecycle, and G6, the
-synthetic demonstration release, comes next; nothing else described here as
-proposed has been implemented yet.
+so are G1 to G5 (PRs #4 to #7, and #9, which brought G5's PR #8 to main);
+G6 adds the synthetic demonstration release and its loader; nothing else
+described here as proposed has been implemented yet.
 
 | File | Contents |
 |---|---|

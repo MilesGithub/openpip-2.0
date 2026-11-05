@@ -12,8 +12,10 @@ of it yet. This page describes:
 
 [Typed releases](typed-releases.md) describes what follows: approving a
 release, committing it, which imports its evidence into the graph, and
-publishing, withdrawing and discarding it. Nothing on either page changes
-what visitors see.
+publishing, withdrawing and discarding it. It also describes
+`graph_load_demo`, which loads openPIP's synthetic demonstration: two
+synthetic releases that it registers, dry-runs, commits and publishes.
+Nothing on either page changes what visitors see.
 
 Everything here needs `TYPED_GRAPH_ENABLED` on
 ([Configuration reference](configuration.md#backend-variables)). While it is
@@ -955,6 +957,13 @@ Any violation rejects its row (`synthetic_violation`) and makes the verdict
 `synthetic:` score types, which no other release may use. Reference links,
 `encodes` and `isoform_of`, are accepted only in a synthetic release, and
 the report lists them.
+
+openPIP's synthetic demonstration is a complete worked example: the files
+in `backend/graph/demo_data/synthetic_regulation/`, two releases of one
+dataset in `canonical_tsv_v1` with their manifest, whose README lists the
+case each row covers, rows that a dry run rejects included.
+`graph_load_demo` registers, dry-runs, commits and publishes them
+([Loading the synthetic demonstration](typed-releases.md#loading-the-synthetic-demonstration)).
 
 ## Where release files live
 
