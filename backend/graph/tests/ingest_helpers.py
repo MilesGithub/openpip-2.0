@@ -1,6 +1,7 @@
 """Helpers for the import tests (test_ingest_mapping, test_dry_run,
-test_register_release): canonical_tsv_v1 rows and files, a release
-registered from them, and a run's mapping."""
+test_register_release, test_commit): canonical_tsv_v1 rows and files, a
+release registered from them, a run's mapping, a release dry-run and
+committed, and the graph's rows by natural key."""
 
 import io
 import json
@@ -8,13 +9,32 @@ import signal
 from contextlib import contextmanager
 from pathlib import Path
 
+from django.apps import apps
+from django.conf import settings
+from django.db import models
+
 from graph.ingest.canonical_tsv import ADAPTER, SPEC
+from graph.ingest.commit import commit_release
 from graph.ingest.context import RunContext, load_registry_snapshot
+from graph.ingest.dry_run import dry_run
 from graph.ingest.manifest import load_manifest
 from graph.ingest.mapping import MappingRun, plan_batch
 from graph.ingest.registration import Options, register_release
 from graph.ingest.resolutions import NO_RESOLUTIONS
-from graph.models import ApprovalScope
+from graph.models import (
+    ApprovalScope,
+    DatasetRelease,
+    DataSource,
+    Entity,
+    EvidenceAssertion,
+    ImportRun,
+    ImportState,
+    Publication,
+    Relationship,
+    SourceDataset,
+    SourceFile,
+    SourceRecord,
+)
 from graph.tests.factories import (
     ReleaseLicenceFactory,
     SourceDatasetFactory,
@@ -179,6 +199,158 @@ def mapping_run(
         resolutions=resolutions,
         create_entities=create_entities,
     )
+
+
+def committed(release, *, triggered_by=None, **options):
+    """The release dry-run, then committed, with the same options
+    (create_entities, resolutions): the commit's CommitResult. The dry run
+    must complete with the verdict ok."""
+    user = triggered_by or StaffUserFactory()
+    run = dry_run(release, triggered_by=user, **options)
+    assert (run.state, run.report["verdict"]) == (
+        ImportState.COMPLETED,
+        "ok",
+    ), run.error or run.report.get("file_errors")
+    return commit_release(release, triggered_by=user, **options)
+
+
+def natural_rows() -> dict:
+    """{table: its rows, as sorted tuples} for every graph table but
+    graph_importrun: each row without its surrogate primary key, its
+    timestamps or the runs it names, and each foreign key as the natural
+    key of the row it names: an entity by its identity key; a relationship
+    by its type, its endpoints' keys and its qualifier key; a publication
+    by its identifiers, or its dataset's slug and its local key; a source
+    record by its release's key and its record key; an assertion by its
+    record's key and its assertion key; a release by its dataset's slug and
+    its version; a dataset or a data source by its slug; a file by its
+    release's key, its role and its SHA-256; an account by its username. A
+    term, a taxon and a registry row are their own keys (a CURIE, a taxid,
+    a slug). So rows that a rolled-back commit numbered otherwise compare
+    equal; JSON values compare as JSON."""
+    keys = _NaturalKeys()
+    rows = {}
+    for model in apps.get_app_config("graph").get_models(include_auto_created=True):
+        if model is ImportRun:
+            continue
+        fields = [field for field in model._meta.concrete_fields if _compared(field)]
+        found = model._base_manager.values_list(*(field.attname for field in fields))
+        rows[model._meta.db_table] = sorted(
+            (
+                tuple(keys.of(field, value) for field, value in zip(fields, row))
+                for row in found
+            ),
+            key=repr,
+        )
+    return rows
+
+
+def _surrogate(field) -> bool:
+    return field.primary_key and isinstance(
+        field, (models.AutoField, models.BigAutoField)
+    )
+
+
+def _compared(field) -> bool:
+    """A column natural_rows compares: not a surrogate key, a timestamp or
+    a run."""
+    if _surrogate(field) or isinstance(field, models.DateTimeField):
+        return False
+    return not (field.is_relation and field.related_model is ImportRun)
+
+
+class _NaturalKeys:
+    """{pk: natural key} for each model a compared foreign key names, read
+    once per natural_rows call."""
+
+    def __init__(self):
+        self.found = {}
+
+    def of(self, field, value):
+        if value is None:
+            return None
+        if isinstance(field, models.JSONField):
+            return json.dumps(value, sort_keys=True, default=str)
+        if not field.is_relation:
+            return value
+        model = field.related_model
+        if not _surrogate(model._meta.pk):
+            return value
+        return self.keyed(model).get(value, value)
+
+    def keyed(self, model) -> dict:
+        found = self.found.get(model)
+        if found is None:
+            found = self.found[model] = self._read(model)
+        return found
+
+    def _read(self, model) -> dict:
+        rows = model._base_manager
+        if model is Entity:
+            return dict(rows.values_list("pk", "identity_key"))
+        if model in (DataSource, SourceDataset):
+            return dict(rows.values_list("pk", "slug"))
+        if model is DatasetRelease:
+            return {
+                pk: (slug, version)
+                for pk, slug, version in rows.values_list(
+                    "pk", "dataset__slug", "version"
+                )
+            }
+        if model is SourceFile:
+            releases = self.keyed(DatasetRelease)
+            return {
+                pk: (releases[release], role, sha256)
+                for pk, release, role, sha256 in rows.values_list(
+                    "pk", "release_id", "role", "sha256"
+                )
+            }
+        if model is SourceRecord:
+            releases = self.keyed(DatasetRelease)
+            return {
+                pk: (releases[release], key)
+                for pk, release, key in rows.values_list(
+                    "pk", "release_id", "record_key"
+                )
+            }
+        if model is EvidenceAssertion:
+            records = self.keyed(SourceRecord)
+            return {
+                pk: (records[record], key)
+                for pk, record, key in rows.values_list(
+                    "pk", "source_record_id", "assertion_key"
+                )
+            }
+        if model is Relationship:
+            entities = self.keyed(Entity)
+            return {
+                pk: (slug, entities[subject], entities[obj], qualifier)
+                for pk, slug, subject, obj, qualifier in rows.values_list(
+                    "pk",
+                    "relationship_type_id",
+                    "subject_id",
+                    "object_id",
+                    "qualifier_key",
+                )
+            }
+        if model is Publication:
+            datasets = self.keyed(SourceDataset)
+            return {
+                pk: (pmid, doi, pmcid, imex, datasets.get(dataset, ""), local)
+                for pk, pmid, doi, pmcid, imex, dataset, local in rows.values_list(
+                    "pk",
+                    "pmid",
+                    "doi_lookup",
+                    "pmcid",
+                    "imex_id",
+                    "local_dataset_id",
+                    "local_key",
+                )
+            }
+        if model is apps.get_model(settings.AUTH_USER_MODEL):
+            return dict(rows.values_list("pk", model.USERNAME_FIELD))
+        # A row no commit writes keeps its pk.
+        return {}
 
 
 def records_of(run, *rows, header=None) -> list:

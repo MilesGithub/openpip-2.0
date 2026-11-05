@@ -382,14 +382,56 @@ match for every context.
   batch *n*, resumes from the checkpoint and ends with rows identical to an
   uninterrupted run. A release has at most one open commit run (`running` or
   `failed`), the one a rerun resumes (G2). A failed batch rolls back completely.
+  In G5 rows compare by natural key (`natural_rows()`: every graph table
+  except the runs, each foreign key as the natural key of the row it
+  names), against an uninterrupted commit run first inside a rolled-back
+  transaction. Before the rerun, the release's assertions are exactly those
+  of the committed batches' records, and every row the attempt wrote is
+  named by one of them; the rerun records its resume and skips the
+  committed batches. A real kill, too: a commit paused in batch 2 of 3 whose backend
+  is terminated leaves its run `running` with no lock held, `graph_check`
+  lists it, and the rerun marks it failed, resumes it and ends with the
+  uninterrupted rows. A database error and a service's refusal fail the
+  batch, never the record, and reach the command as a stopped commit, not a
+  traceback; a run that cannot be marked stays `running`, and the command
+  says so. A resume with other options is refused, naming the open run's,
+  and so is a resume that a case or version variant of an entity it created
+  would plan differently (the test namespaces `exact_a` and `versioned`).
 - **Race-safe shared rows.** Two releases that commit at once and share an
   entity, a pair and a publication create no duplicate or orphan rows, and
   neither fails a batch (G5). RF1a extends the test to a shared non-primary
   identifier. A record whose co-referent identifiers match
   two existing publications is attached by precedence, and the conflict is
-  reported, not fatal.
+  reported, not fatal. In G5 the first commit pauses after its batch's
+  shared rows and the second is seen waiting on a lock; both complete, with
+  one entity per key, one relationship, one publication and one term per
+  CURIE, each release its own assertion, and no entity, relationship,
+  publication or term a commit wrote that no assertion names. Each kind of
+  shared row (entities, publications, terms), first stated in opposite
+  orders by two commits, makes one wait and neither fail; with the commit's
+  `lock_order` patched to keep the given order, one batch fails with a
+  deadlock and its rerun completes, so the test bites. Since
+  `canonical_tsv_v1` states one identifier per paper, the conflict is
+  produced by wrapping the commit's `get_or_create_publication`; it is
+  reported once, also after a resume, and `graph_check` lists it.
 - **Release statistics.** `DatasetRelease.stats` is written at commit and
-  matches a recount.
+  matches a recount: in G5 `release_stats` and an independent recount in
+  the test, assertions by outcome included.
+- **The commit (G5).** Its preconditions are checked in order, each leaving
+  every table unchanged (except the runs a commit marks failed, which its
+  message names); the open commit run decides first; the dry run it trusts
+  is the release's latest, completed, `ok`, under the release's adapter,
+  versions, kind and registry version, after every commit or discard, with
+  the same options. Its planning refuses a changed file, a synthetic
+  violation (H3), records that are not those the dry run stored, and
+  records that map otherwise. It creates `provisional` entities with the
+  label its dry run's report showed (even when the only label is on a row
+  G3 refuses), papers (a DOI as the first mapped row states it, a `ref:`
+  paper local to the dataset), terms with the manifest's labels, the
+  relationships, and each mapped record's assertions, and changes no
+  source record. Committing again with the same options writes nothing;
+  discard, dry run and commit again give the same rows (A1). Each batch
+  checks the approval and the registry again.
 - **Publishing.** `graph_publish_release` needs an effective `internal`
   approval and refuses without one. It also refuses to publish a release
   that supersedes one with an effective `public_view` unless the new release
@@ -410,7 +452,34 @@ match for every context.
   assertions and returns it to draft. It keeps the release row, its files,
   its licence snapshots, its import runs and its approval history, and it
   deletes no entity, relationship or primary identifier; `graph_check`
-  reports provisional entities left without assertions.
+  reports provisional entities left without assertions. In G5 the discard
+  also applies to a draft with an open commit run or evidence, resets the
+  statistics, marks the run it gives up `abandoned` with its discard entry,
+  deletes in batches without loading rows, and is refused for a plain
+  draft, a published, superseded or withdrawn release, an unknown id, and
+  while a run holds the release's run lock; `graph_check` runs after it.
+- **Lifecycle commands (G5).** Every command refuses with the switch off
+  and with an `--as` that names no account or an inactive or non-staff one,
+  writing nothing; `graph_approve`'s option combinations are refused by
+  name. Approve, deny, `--evidence`, `--replace` (the old decision revoked
+  with "Replaced by decision N", the scope effective before and after) and
+  revoke; G2's licence and due-diligence refusals pass through. Publishing
+  needs `internal`, not `public_view`, and an internal-only v2 supersedes an
+  internal-only v1 (A4); it is refused while v1 has an effective
+  `public_view` and v2 does not (A5); withdrawing v2 does not restore v1
+  (A9) and leaves `visible_release_ids` at once (A10); discarding returns a
+  staged release to draft with its audit trail (A11). A release discarded,
+  registered again under a new adapter version, dry-run and committed is
+  architecture §4.4's re-import (H7).
+- **`graph_check` (G5).** Each section with and without a finding; problems
+  set the exit status and entries for review never do; the storage walk
+  lists an `incoming/` file, a directory of an unknown release, an unnamed
+  SHA-256 directory and a symbolic link, which it never follows, and finds
+  nothing under a missing root; a withdrawn release's stale approval is not
+  listed; conflicts and term labels come from commit reports, distinct,
+  with a line for a truncated list; a live run shows its backend's pid and
+  a dead one is listed as left running; each section shows its first lines
+  and "and n more".
 - **Private files (G4).** The release file root is outside `MEDIA_ROOT` and
   `STATIC_ROOT`, and contains neither. No URL pattern serves it: traversal
   URLs under `/media/` and `/static/` answer 400 or 404, with DEBUG on and
@@ -593,8 +662,12 @@ identifiers.
   id) is unstored and listed by its line, and the run goes on; a file that
   cannot be read as a whole (UTF-16 or UTF-32, a header that does not
   decode or is missing, unknown, missing or duplicate columns, too many
-  columns or lines) is reported as a file error with the verdict `refused`,
-  writing no record when its header is at fault. Lines of exactly
+  columns or lines, or, from G5, more than 250,000 distinct identifiers) is
+  reported as a file error with the verdict `refused`, writing no record
+  when its header is at fault. With the identifier limit patched low, a dry
+  run keeps the batches before the one that passed it, blames that batch's
+  first line, and reads the file no second time; a commit refuses the file
+  at its planning. Lines of exactly
   `MAX_LINE_BYTES` are read, with LF and with CRLF, and one byte more is
   refused; a 64 MiB line without LF is read in bounded chunks, with a
   `tracemalloc` peak under 8 MiB; a CR inside a field is refused, and
@@ -614,7 +687,19 @@ identifiers.
   (`score_not_a_number`); a censored value such as `<2.2e-16` is kept with
   a NULL value and a note, as G3 stores it.
 - **One committer.** Only one committing run is allowed per release; a
-  concurrent second commit is refused by the partial unique constraint.
+  concurrent second commit, dry run or discard is refused by the run lock
+  (PostgreSQL), and the partial unique constraint keeps one open commit run.
+  In G5, while a commit is paused in its planning, a dry run is refused by
+  the lock; while it is paused in a batch, a second commit and a discard
+  are; after it, a dry run is refused only while a commit run is open. The
+  lock is tested with a second session holding it (a thread's own
+  connection, inside a plain test transaction): it is not re-entrant, a
+  lock held in another database of the server is not seen, a failed unlock
+  closes its connection without masking the block's exception, and without
+  PostgreSQL there is no lock. These threaded tests bound every wait (at
+  most 30 seconds, failing the test when it expires), and never act on a
+  release's row from the thread that must release a worker paused inside
+  that release's batch.
 - **Celery (I1).** The payload is an id, never file content, and a worker
   restart resumes from the checkpoint.
 

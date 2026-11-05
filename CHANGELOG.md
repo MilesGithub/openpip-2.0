@@ -123,8 +123,23 @@ No version has been tagged yet. Everything below is in development towards
   import would create, and conflicts with other releases. A dry run writes
   only its run and the release's source records; a release of real data
   needs an approval first, and a synthetic release is checked, not trusted.
-  Importing a release's evidence is not available yet. Still behind
-  `TYPED_GRAPH_ENABLED`, and shown to no visitor.
+  Still behind `TYPED_GRAPH_ENABLED`, and shown to no visitor.
+- Importing releases of typed data, and their lifecycle, described in the
+  operator guide's new Typed releases page. `manage.py graph_import
+  --commit` imports what a release's latest dry run reported, with the same
+  options: it first checks that the file still maps as that dry run
+  reported, then writes the entities, relationships, publications, terms
+  and evidence batch by batch, one transaction each, so that releases
+  committing at the same time share rows without duplicates; run again, a
+  commit that stopped resumes from its checkpoint. It stages the release
+  with its statistics. `graph_approve` and `graph_revoke` record and revoke
+  approval decisions, `graph_publish_release` publishes a staged release
+  and supersedes the release it corrects, `graph_withdraw_release` hides a
+  release for good, `graph_discard_release` returns a staged release to a
+  draft to import it again, and `graph_check` lists what needs an operator,
+  exiting 1 for a problem. One dry run, commit or discard of a release runs
+  at a time, and a file that states more than 250,000 distinct identifiers
+  is refused. Still behind `TYPED_GRAPH_ENABLED`, and shown to no visitor.
 
 ### Fixed
 

@@ -6,8 +6,9 @@ An adapter (Adapter) has a spec (AdapterSpec) and three methods:
 - iter_records(stream, ctx) streams the file's records as RawRecords, with
   their physical line numbers. It may raise FileError at any point: at the
   header, before any record; later, the records read so far stand and the
-  run is refused (G4's dry run; G5 refuses to commit such a file). A record
-  with reading issues is unstored: it has no trustworthy key or values.
+  run is refused (a dry run; a commit refuses such a file before it writes
+  anything). A record with reading issues is unstored: it has no
+  trustworthy key or values.
 - map_record(record, ctx) states what one record says as G3's claims
   (graph.claims), with the issues found. An endpoint's entity is an
   EntityRef, the identifier as stated, until the shared mapping resolves it;
@@ -222,6 +223,9 @@ ISSUE_CODES = {
     "header_duplicate_column": "A column appears twice in the header.",
     "too_many_columns": "The header has more than MAX_COLUMNS columns.",
     "too_many_lines": "The file has more than MAX_DATA_LINES lines after its header.",
+    "too_many_identifiers": (
+        "The file states more distinct identifiers than a run keeps."
+    ),
     "manifest_invalid": "The release manifest is not valid.",
     "stored_file_mismatch": (
         "A stored release file is missing, or its size or SHA-256 differs from "
@@ -265,6 +269,7 @@ FILE_ERROR_CODES = frozenset(
         "header_duplicate_column",
         "too_many_columns",
         "too_many_lines",
+        "too_many_identifiers",
         "unknown_score_type",
         "unknown_facet",
         "manifest_invalid",
@@ -398,7 +403,9 @@ def duplicate_issues(record, first_line, first_sha256):
 
 
 class FileError(Exception):
-    """The file is refused as a whole. iter_records raises it at any point."""
+    """The file is refused as a whole. iter_records raises it at any point,
+    and the shared mapping's plan_batch once the file states more distinct
+    identifiers than limits.MAX_IDENTIFIERS."""
 
     def __init__(self, issues):
         self.issues = tuple(issues)

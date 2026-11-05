@@ -34,6 +34,7 @@ from graph.models import (
     SourceFile,
     SourceRecord,
 )
+from graph.releases import publish_release, withdraw_release
 from graph.tests.factories import (
     DatasetReleaseFactory,
     ImportRunFactory,
@@ -50,6 +51,12 @@ from graph.tests.ingest_helpers import (
 )
 
 DATA = tsv(GENE)
+# How registration's refusal ends for a staged release, one whose records
+# hold evidence, and one with an open commit run.
+DISCARD_FIRST = (
+    "Discard it with graph_discard_release, then register it again; or register its "
+    "files under a new version. Nothing was written."
+)
 
 
 @pytest.fixture
@@ -138,6 +145,14 @@ def test_a_release_is_registered_as_a_draft_with_its_files(
     assert f"Registered release {release.pk}" in out
     assert f"SHA-256 {data.sha256}" in out
     assert f"graph_import --release {release.pk} --dry-run" in out
+    # The next steps: approve it, dry-run it, then commit it.
+    assert out.splitlines()[-2:] == [
+        "Record its licence snapshot and due diligence in the admin, and its "
+        "internal approval with graph_approve unless it is synthetic, then dry-run "
+        f"it: graph_import --release {release.pk} --dry-run --as <username>.",
+        "Then commit it, with the options of its dry run: graph_import --release "
+        f"{release.pk} --commit --as <username>.",
+    ]
 
 
 def test_every_option_is_stored(dataset, staff, files):
@@ -529,8 +544,12 @@ def test_a_draft_whose_records_hold_evidence_keeps_its_adapter(
     commit.state = ImportState.COMPLETED
     commit.save(update_fields=["state"])
     upgrade(monkeypatch)
-    with pytest.raises(CommandError, match="evidence is recorded from its records"):
+    with pytest.raises(
+        CommandError, match="evidence is recorded from its records"
+    ) as raised:
         register(dataset, staff, files)
+    # The discard returns it to a draft without evidence, which registers.
+    assert str(raised.value).endswith(f"rests on that mapping. {DISCARD_FIRST}")
     release.refresh_from_db()
     assert release.adapter_version == SPEC.version
     assert SourceRecord.objects.filter(release=release).count() == 1
@@ -544,10 +563,48 @@ def test_a_release_past_draft_keeps_its_adapter(dataset, staff, files, monkeypat
     upgrade(monkeypatch)
     with pytest.raises(
         CommandError, match="it is staged, and only a draft is read anew"
-    ):
+    ) as raised:
         register(dataset, staff, files)
+    assert str(raised.value).endswith(f"only a draft is read anew. {DISCARD_FIRST}")
     release.refresh_from_db()
     assert release.adapter_version == SPEC.version
+
+
+def staged(release):
+    approved_for_internal_use(release)
+    release.status = ReleaseStatus.STAGED
+    release.save(update_fields=["status", "updated_at"])
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ReleaseStatus.PUBLISHED, ReleaseStatus.SUPERSEDED, ReleaseStatus.WITHDRAWN],
+)
+def test_a_published_or_withdrawn_release_takes_a_new_version(
+    dataset, staff, files, monkeypatch, status
+):
+    register(dataset, staff, files)
+    release = release_of(dataset)
+    staged(release)
+    if status == ReleaseStatus.WITHDRAWN:
+        withdraw_release(release, reason="Test.", withdrawn_by=StaffUserFactory())
+    else:
+        publish_release(release, published_by=StaffUserFactory())
+    if status == ReleaseStatus.SUPERSEDED:
+        register(dataset, staff, files, "--supersedes", "v1", version="v2")
+        correction = release_of(dataset, "v2")
+        staged(correction)
+        publish_release(correction, published_by=StaffUserFactory())
+    release.refresh_from_db()
+    assert release.status == status
+    upgrade(monkeypatch)
+    with pytest.raises(CommandError) as raised:
+        register(dataset, staff, files)
+    # A discard would not help: such a release is never a draft again.
+    assert str(raised.value).endswith(
+        f"; it is {status}, and only a draft is read anew. Register it under a new "
+        "version instead. Nothing was written."
+    )
 
 
 def test_an_open_commit_run_keeps_the_adapter(dataset, staff, files, monkeypatch):
@@ -559,8 +616,9 @@ def test_an_open_commit_run_keeps_the_adapter(dataset, staff, files, monkeypatch
         mode=ImportMode.COMMIT,
     )
     upgrade(monkeypatch)
-    with pytest.raises(CommandError, match="a commit run of it is open"):
+    with pytest.raises(CommandError, match="a commit run of it is open") as raised:
         register(dataset, staff, files)
+    assert str(raised.value).endswith(f"; a commit run of it is open. {DISCARD_FIRST}")
 
 
 def test_the_kind_changes_only_while_no_entity_names_the_release(
@@ -571,8 +629,13 @@ def test_the_kind_changes_only_while_no_entity_names_the_release(
     approved_for_internal_use(release)
     create_entity("gene", "TP53", 9606, "hgnc", "HGNC:11998", release=release)
     upgrade(monkeypatch, kind=ReleaseKind.REFERENCE.value)
-    with pytest.raises(CommandError, match="its kind stays evidence"):
+    with pytest.raises(CommandError, match="its kind stays evidence") as raised:
         register(dataset, staff, files)
+    # A discard would not help: the entities stay.
+    assert str(raised.value).endswith(
+        "since entities name it as the release that created them. Register it under "
+        "a new version instead. Nothing was written."
+    )
     Entity.objects.filter(created_by_release=release).delete()
     out = register(dataset, staff, files)
     assert "kind reference" in out

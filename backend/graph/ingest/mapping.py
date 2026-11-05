@@ -62,6 +62,20 @@ split into the header's columns), and the mapping the taxon of each
 resolution entry a row's identifiers meet. Any violation rejects the row
 and refuses the run.
 
+A run keeps every identifier the file states, as written, from batch to
+batch: once the file has stated more than limits.MAX_IDENTIFIERS distinct
+ones (refused ones included), plan_batch refuses the file with a FileError
+(too_many_identifiers) naming the first line of the batch that passed it.
+
+The commit (graph.ingest.commit) plans each batch as the dry run did, and
+reads each plan's stored record (stored_id, stored_status). Its writing
+reading plans with check=False: G3's check is not run and no label is
+chosen, so a planned entity keeps the label and written value of the last
+planning reading, which the dry run's report showed. The entities and
+publications it writes are kept in MappingRun.entity_ids and paper_ids,
+which entity_of and checked_claims then give G3 instead of the planned
+entity or None; a dry run never fills them.
+
 write_records is the dry run's one write besides its import run: one short
 transaction per batch that writes the batch's source records, after the
 release's state is checked again.
@@ -108,7 +122,15 @@ from graph.registry import REGISTRY_VERSION, registry_state
 from graph.resolution import AMBIGUOUS, CANDIDATE, RESOLVED, UNMATCHED, resolve_many
 
 from . import limits
-from .protocol import Issue, duplicate_issues, issues_json, note, quoted, rejects
+from .protocol import (
+    FileError,
+    Issue,
+    duplicate_issues,
+    issues_json,
+    note,
+    quoted,
+    rejects,
+)
 from .resolutions import NO_RESOLUTIONS
 
 SIDES = ("subject", "object")
@@ -240,8 +262,10 @@ class RecordPlan:
     # Unstored: the line has no trustworthy record id or values (a reading
     # issue, or a later line of a record id already stored).
     unstored: bool = False
-    # The record stored for this key before the batch, if any.
+    # The record stored for this key before the batch, if any, and its
+    # status (a RecordStatus value) as stored.
     stored_id: int | None = None
+    stored_status: str | None = None
     claims: tuple = ()
     endpoints: list = field(default_factory=list)
     papers: list = field(default_factory=list)
@@ -427,6 +451,11 @@ class MappingRun:
         self.paper_differences = {}
         # {CURIE: the stored term's label, or None when not stored}.
         self.terms = {}
+        # What a commit wrote: {identity key: the entity's pk} for planned
+        # entities, and {paper identity: the publication's pk}. Empty unless
+        # a commit fills them; entity_of and checked_claims read them.
+        self.entity_ids = {}
+        self.paper_ids = {}
 
     def restart(self):
         """Forget what the rows gave, and keep what was decided: the file is
@@ -453,12 +482,16 @@ class MappingRun:
         return found
 
     def entity_of(self, endpoint):
-        """What check_claims gets for an endpoint: an entity id, the planned
-        entity, or the unmapped identifier's placeholder."""
+        """What check_claims gets for an endpoint: an entity id (a planned
+        entity's once a commit created it, entity_ids), the planned entity,
+        or the unmapped identifier's placeholder."""
         target = endpoint.target
         if isinstance(target, Existing):
             return target.entity_id
         if isinstance(target, Create):
+            created = self.entity_ids.get(target.identity_key)
+            if created is not None:
+                return created
             return self.planned[target.identity_key].entity
         return self._placeholder(endpoint.key)
 
@@ -883,11 +916,21 @@ class MappingRun:
 # ── Planning a batch ────────────────────────────────────────────────────────
 
 
-def plan_batch(records, *, run_ctx) -> list:
+def plan_batch(records, *, run_ctx, check=True) -> list:
     """A RecordPlan for each record of the batch, in order. Read-only: a
     constant number of queries for the batch, besides G3's check_claims
     (_check), whose calls grow with the records it refuses and those that
-    hold evidence (_check_together)."""
+    hold evidence (_check_together).
+
+    With check=False (a commit's writing reading) G3's check is skipped, and
+    so are the labels (record_labels, _labelled): statuses are computed
+    without G3's refusals, which the caller does not use, and each planned
+    entity keeps the label and written value of the last reading planned
+    with the check, so a row G3 refuses never chooses one.
+
+    Raises FileError (too_many_identifiers), at the batch's first line, once
+    the run has met more than limits.MAX_IDENTIFIERS distinct identifiers as
+    written, refused ones included: the file is refused."""
     run = run_ctx
     records = list(records)
     stored = _stored_records(run.release.pk, records)
@@ -909,22 +952,41 @@ def plan_batch(records, *, run_ctx) -> list:
             papers.extend(ref.stated for ref in claim.publications)
             curies.extend(_curies(claim))
     run.resolve_identifiers(refs)
+    _identifier_limit(run, records)
     run.resolve_papers(papers)
     run.resolve_terms(curies)
     for plan in planned:
         _plan_record(plan, run)
-    _check(planned, run)
+    if check:
+        _check(planned, run)
     for plan in planned:
         plan.status = _status(plan, run)
-        if plan.would_map:
+        if check and plan.would_map:
             run.record_labels(plan)
             plan.endpoints = [_labelled(endpoint, run) for endpoint in plan.endpoints]
     return plans
 
 
+def _identifier_limit(run, records):
+    """FileError once the run keeps more than limits.MAX_IDENTIFIERS distinct
+    identifiers as written (MappingRun._stated, refused ones included)."""
+    if len(run._stated) <= limits.MAX_IDENTIFIERS:
+        return
+    raise FileError(
+        [
+            Issue(
+                "too_many_identifiers",
+                f"The file states more than {limits.MAX_IDENTIFIERS:,} distinct "
+                "identifiers, which a run does not keep: split it into releases.",
+                line=records[0].line_number if records else None,
+            )
+        ]
+    )
+
+
 def _stored_records(release_id, records) -> dict:
-    """{record key: the stored record's pk, line, digest and issues}, in one
-    query."""
+    """{record key: the stored record's pk, line, digest, status and
+    issues}, in one query."""
     keys = {
         record.record_key
         for record in records
@@ -934,7 +996,7 @@ def _stored_records(release_id, records) -> dict:
         return {}
     rows = SourceRecord.objects.filter(
         release_id=release_id, record_key__in=sorted(keys)
-    ).values("pk", "record_key", "line_number", "raw_sha256", "issues")
+    ).values("pk", "record_key", "line_number", "raw_sha256", "status", "issues")
     return {row["record_key"]: row for row in rows}
 
 
@@ -973,6 +1035,7 @@ def _read(records, stored, run) -> list:
                 )
             else:
                 plan.stored_id = row["pk"]
+                plan.stored_status = row["status"]
                 plan.carried = _carried(row, record, run)
         if first is not None:
             later, earlier = duplicate_issues(record, first.line, first.sha256)
@@ -1241,7 +1304,8 @@ def _holding_evidence(record_ids) -> set:
 def checked_claims(plan, run) -> list:
     """The record's claims as check_claims takes them: each endpoint a
     stored entity, a planned entity or a placeholder, and each paper its
-    stored publication or None."""
+    stored publication or None (what a commit wrote, once it has: entity_of
+    and _paper_pk)."""
     targets = iter(plan.endpoints)
     claims = []
     for claim in plan.claims:
@@ -1265,8 +1329,15 @@ def checked_claims(plan, run) -> list:
 
 
 def _paper_pk(run, stated):
+    """The publication a stated paper names: the one a commit wrote for it
+    (paper_ids), else the stored one, else None."""
     identity = paper_identity(stated)
-    target = run.papers.get(identity) if identity is not None else None
+    if identity is None:
+        return None
+    written = run.paper_ids.get(identity)
+    if written is not None:
+        return written
+    target = run.papers.get(identity)
     return target.pk if isinstance(target, ExistingPaper) else None
 
 

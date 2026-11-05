@@ -73,11 +73,11 @@ The `graph_files` volume holds the files of each release registered for the
 typed relationship graph ([Typed data format](typed-data-format.md#where-release-files-live)).
 It is empty on a portal that does not use the typed graph. The database
 records each file's path, size and SHA-256, so take this backup together
-with the database's, while no release is being registered. A database
-restored without its release files leaves releases whose dry runs are
-refused; registering each file again with the same options puts it back.
-Files left under `incoming/` by an interrupted registration need not be
-kept.
+with the database's, while no release is being registered or committed. A
+database restored without its release files leaves releases whose dry runs
+and commits are refused; registering each file again with the same options
+puts it back. Files left under `incoming/` by an interrupted registration
+need not be kept.
 
 ### Restoring
 
@@ -96,6 +96,12 @@ dc up -d
 Restore the release files from the same day's backup as the database.
 Restoring a database also restores its user accounts and passwords as they
 were at the time of the backup.
+
+A database backed up while a release was being committed holds that
+commit's open run. Restored, the run is `running` and no process holds its
+lock, so the release's next commit marks it failed, then resumes it
+([A commit that stopped](typed-releases.md#a-commit-that-stopped)).
+`graph_check` lists it until then.
 
 ## Upgrading
 
@@ -184,6 +190,21 @@ expired ones occasionally:
 ```bash
 dc exec backend python manage.py flushexpiredtokens
 ```
+
+On a portal that uses the typed relationship graph, check it now and then,
+and after a restore or an upgrade:
+
+```bash
+dc exec backend python manage.py graph_check
+```
+
+It writes nothing. It exits with status 1 when it finds a problem: a
+registry that differs from the code's, a release file that is missing,
+changed or left behind, a run whose process ended, a failed commit, or an
+approval relying on an older licence snapshot. It exits 0 otherwise,
+whatever it lists for review, so a scheduled check can alert on its exit
+status. It reads every stored release file, which takes minutes per 10 GiB
+([Checking the graph](typed-releases.md#checking-the-graph)).
 
 ## Linking proteins to organisms
 

@@ -131,6 +131,7 @@ nav:
       - Configuration reference: operator-guide/configuration.md
       - Data file formats: operator-guide/data-formats.md
       - Typed data format: operator-guide/typed-data-format.md
+      - Typed releases: operator-guide/typed-releases.md
       - Maintenance: operator-guide/maintenance.md
       - Migrating from the original openPIP: operator-guide/migrating.md
   - Developer guide:

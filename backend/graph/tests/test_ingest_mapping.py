@@ -2,7 +2,9 @@
 candidates and ambiguous identifiers with and without resolution entries,
 planned entities shared across records and sides, labels, papers and terms,
 the synthetic check, the status precedence, G3's check, and agreement with
-create_entity."""
+create_entity; a plan's stored record and its status, a commit's planning
+without G3's check, the entities and papers a commit wrote, and the bound
+on the identifiers a run keeps."""
 
 import json
 
@@ -17,19 +19,22 @@ from graph.entities import (
     add_identifier,
     create_entity,
 )
+from graph.ingest import dry_run as dry_run_module
 from graph.ingest import limits, mapping
 from graph.ingest.canonical_tsv import ADAPTER
-from graph.ingest.dry_run import Report
+from graph.ingest.dry_run import Report, dry_run
 from graph.ingest.mapping import (
     Create,
     Existing,
     ExistingPaper,
+    MappingRun,
     NewPaper,
     Unmapped,
     Written,
     checked_claims,
     plan_batch,
 )
+from graph.ingest.protocol import FileError
 from graph.ingest.resolutions import load_resolutions
 from graph.models import (
     ApprovalScope,
@@ -37,11 +42,13 @@ from graph.models import (
     IdentifierRole,
     RecordStatus,
     ResolutionBasis,
+    SourceRecord,
 )
 from graph.tests.factories import (
     DatasetReleaseFactory,
     EntityIdentifierFactory,
     PublicationFactory,
+    StaffUserFactory,
     TermFactory,
     approvable_release,
     approve,
@@ -56,6 +63,7 @@ from graph.tests.ingest_helpers import (
     mapping_run,
     plans_of,
     records_of,
+    registered,
     row,
 )
 
@@ -944,3 +952,185 @@ def test_a_symmetric_pair_stated_in_both_orders_counts_once(release):
         ("transcriptional_regulation", "hgnc|t:9606|HGNC:5", "hgnc|t:9606|HGNC:6"): 1,
         ("transcriptional_regulation", "hgnc|t:9606|HGNC:6", "hgnc|t:9606|HGNC:5"): 1,
     }
+
+
+# ── The stored record ───────────────────────────────────────────────────────
+
+
+def test_a_plan_names_its_stored_record_and_its_status(registry, tmp_path, tp53, mdm2):
+    rows = [
+        row(GENE, record_id="r1"),
+        row(GENE, record_id="r2", effect="x"),
+        # A later line of r1, which is not stored.
+        row(GENE, record_id="r1"),
+    ]
+    release = registered(tmp_path, rows)
+    dry_run(release, triggered_by=StaffUserFactory())
+    stored = dict(
+        SourceRecord.objects.filter(release=release).values_list("record_key", "pk")
+    )
+    # What the stored status is, whatever the plan says now.
+    SourceRecord.objects.filter(pk=stored["r1"]).update(status=UNRESOLVED)
+    plans = plans_of(mapping_run(release), *rows)
+    assert [(plan.stored_id, plan.stored_status) for plan in plans] == [
+        (stored["r1"], UNRESOLVED),
+        (stored["r2"], REJECTED),
+        (None, None),
+    ]
+    assert [plan.status for plan in plans] == [MAPPED, REJECTED, None]
+    # Not stored yet: no stored record, no stored status.
+    [new] = plans_of(mapping_run(release), row(GENE, record_id="r9"))
+    assert (new.stored_id, new.stored_status, new.status) == (None, None, MAPPED)
+
+
+# ── A commit's readings ─────────────────────────────────────────────────────
+
+
+def test_without_the_check_no_label_is_chosen(release, tp53):
+    run = mapping_run(release, create_entities=True)
+    rows = (
+        row(GENE, record_id="r1", object_id="HGNC:5"),
+        # The only label for HGNC:5, on a row G3 refuses (rule 3: a directed
+        # type stated undirected).
+        row(
+            GENE,
+            record_id="r2",
+            object_id="HGNC:5",
+            object_label="Leaked",
+            directed="false",
+        ),
+    )
+    checked = plans_of(run, *rows)
+    assert [plan.status for plan in checked] == [MAPPED, REJECTED]
+    assert codes(checked[1], "error") == ["claim_rule_3"]
+    planned = run.planned["hgnc|t:9606|HGNC:5"]
+
+    def chosen():
+        return (
+            planned.chosen,
+            planned.label,
+            planned.label_line,
+            planned.written,
+            planned.records,
+            list(planned.lines),
+            dict(planned.other_labels),
+            planned.other_label_count,
+        )
+
+    planning = chosen()
+    assert planning == ("HGNC:5", None, None, "HGNC:5", 1, [2], {}, 0)
+    unchecked = plan_batch(records_of(run, *rows), run_ctx=run, check=False)
+    # Without G3's check the refused row reads as mapped, and still chooses
+    # no label, and no record counts again.
+    assert [plan.status for plan in unchecked] == [MAPPED, MAPPED]
+    assert chosen() == planning
+    assert [targets(plan)[1].label for plan in unchecked] == ["HGNC:5", "HGNC:5"]
+    assert all(plan.relationships == () for plan in unchecked)
+    assert all(plan.assertions_exist is None for plan in unchecked)
+
+
+def test_without_the_check_g3_is_not_asked(release, tp53, mdm2, monkeypatch):
+    checks = []
+    check = mapping.check_claims
+
+    def counting(*args, **kwargs):
+        checks.append(1)
+        return check(*args, **kwargs)
+
+    monkeypatch.setattr(mapping, "check_claims", counting)
+    run = mapping_run(release)
+    records = records_of(run, row(GENE), row(GENE, record_id="r2"))
+    plan_batch(records, run_ctx=run, check=False)
+    assert checks == []
+    plan_batch(records, run_ctx=run)
+    assert checks != []
+
+
+def test_what_a_commit_wrote_is_what_g3_is_given(release, tp53):
+    run = mapping_run(release, create_entities=True)
+    [plan] = plans_of(run, row(GENE, object_id="HGNC:5", publications="pmid:123"))
+    key = "hgnc|t:9606|HGNC:5"
+    assert (run.entity_ids, run.paper_ids) == ({}, {})
+    [claim] = checked_claims(plan, run)
+    assert claim.object.entity is run.planned[key].entity
+    assert [ref.publication for ref in claim.publications] == [None]
+    # What a commit's batch wrote, as it records it.
+    entity = create_entity("gene", "HGNC:5", 9606, "hgnc", "HGNC:5", release=release)
+    paper = PublicationFactory(pmid="123")
+    run.entity_ids[key] = entity.pk
+    run.paper_ids[("pmid", "123")] = paper.pk
+    [claim] = checked_claims(plan, run)
+    assert (claim.subject.entity, claim.object.entity) == (tp53.pk, entity.pk)
+    assert [ref.publication for ref in claim.publications] == [paper.pk]
+    assert run.entity_of(plan.endpoints[1]) == entity.pk
+    assert run.entity_of(plan.endpoints[0]) == tp53.pk
+
+
+def test_a_dry_run_leaves_what_a_commit_writes_empty(
+    registry, tmp_path, tp53, monkeypatch
+):
+    runs = []
+
+    class Watched(MappingRun):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            runs.append(self)
+
+    monkeypatch.setattr(dry_run_module, "MappingRun", Watched)
+    release = registered(
+        tmp_path, [row(GENE, object_id="HGNC:5", publications="pmid:123")]
+    )
+    run = dry_run(release, triggered_by=StaffUserFactory(), create_entities=True)
+    assert run.report["verdict"] == "ok"
+    assert run.report["counts"]["records"]["mapped"] == 1
+    [watched] = runs
+    assert (watched.entity_ids, watched.paper_ids) == ({}, {})
+
+
+# ── The identifiers a run keeps ─────────────────────────────────────────────
+
+
+def test_a_file_past_the_identifiers_a_run_keeps_is_refused(
+    release, tp53, mdm2, monkeypatch
+):
+    assert limits.MAX_IDENTIFIERS == 250_000
+    monkeypatch.setattr(limits, "MAX_IDENTIFIERS", 3)
+    run = mapping_run(release)
+    plans_of(run, row(GENE))
+    # A third distinct identifier: at the limit, the batch is planned.
+    [plan] = plans_of(run, row(GENE, record_id="r2", object_id="HGNC:5"))
+    assert plan.status == UNRESOLVED
+    assert len(run._stated) == 3
+    # A fourth, as written, refused by rule 1: identifiers a row states are
+    # kept refused or not, so it passes the limit.
+    records = records_of(
+        run,
+        row(GENE, record_id="r3"),
+        row(GENE, record_id="r4", object_namespace="nowhere"),
+    )
+    with pytest.raises(FileError) as raised:
+        plan_batch(records, run_ctx=run)
+    [found] = raised.value.issues
+    # Named at the batch's first line.
+    assert (found.code, found.line, found.severity, found.field) == (
+        "too_many_identifiers",
+        2,
+        "error",
+        "",
+    )
+    assert found.message == (
+        "The file states more than 3 distinct identifiers, which a run does not "
+        "keep: split it into releases."
+    )
+
+
+def test_an_identifier_written_again_is_not_counted_again(
+    release, tp53, mdm2, monkeypatch
+):
+    monkeypatch.setattr(limits, "MAX_IDENTIFIERS", 2)
+    run = mapping_run(release)
+    rows = [row(GENE, record_id=f"r{n}") for n in range(5)]
+    plans = plans_of(run, *rows)
+    assert [plan.status for plan in plans] == [MAPPED] * 5
+    plans_of(run, *rows)
+    assert len(run._stated) == 2
