@@ -14,8 +14,11 @@ its label and an alias, say) counts once:
 - unmatched: no entity.
 
 Nothing in typed code takes the first of several candidates, or treats a
-candidate as resolved. Which entities a caller may see arrives with the
-release model (G2) and the API (A1); until then every entity is considered.
+candidate as resolved. Given the sets issued for a caller's request, only the
+entities that caller may see and the labels that caller may read are
+considered, so no status counts a hidden entity and no hidden match shadows a
+visible one (the API's use); given none, every entity is (the import
+pipeline's).
 """
 
 from collections import defaultdict
@@ -23,6 +26,7 @@ from dataclasses import dataclass
 
 from django.db.models.functions import Upper
 
+from .entity_visibility import ROLE_ORDER, readable_label_q, visible_entity_q
 from .identity import (
     InvalidIdentifier,
     matches_pattern,
@@ -39,6 +43,7 @@ from .models import (
     IdentifierRole,
     Taxon,
 )
+from .visibility import issued_release_set
 
 RESOLVED = "resolved"
 CANDIDATE = "candidate"
@@ -47,14 +52,7 @@ UNMATCHED = "unmatched"
 
 LABEL = "label"
 # Match kinds, in the order a candidate lists them.
-MATCH_KINDS = (
-    IdentifierRole.PRIMARY,
-    IdentifierRole.SECONDARY,
-    IdentifierRole.XREF,
-    IdentifierRole.SYMBOL,
-    IdentifierRole.ALIAS,
-    LABEL,
-)
+MATCH_KINDS = (*ROLE_ORDER, LABEL)
 
 
 @dataclass(frozen=True)
@@ -111,16 +109,36 @@ class _Plan:
 
 
 def resolve(
-    term: str, namespace=None, taxon=None, entity_type=None, limit: int = 20
+    term: str,
+    namespace=None,
+    taxon=None,
+    entity_type=None,
+    limit: int = 20,
+    *,
+    releases=None,
+    label_releases=None,
 ) -> Resolution:
     """Resolve one term. See resolve_many."""
     return resolve_many(
-        [term], namespace=namespace, taxon=taxon, entity_type=entity_type, limit=limit
+        [term],
+        namespace=namespace,
+        taxon=taxon,
+        entity_type=entity_type,
+        limit=limit,
+        releases=releases,
+        label_releases=label_releases,
     )[0]
 
 
 def resolve_many(
-    terms, namespace=None, taxon=None, entity_type=None, limit: int = 20
+    terms,
+    namespace=None,
+    taxon=None,
+    entity_type=None,
+    limit: int = 20,
+    *,
+    releases=None,
+    label_releases=None,
 ) -> list[Resolution]:
     """A Resolution per term, in order, from a constant number of queries.
 
@@ -133,18 +151,24 @@ def resolve_many(
     taxon, entity_type: filters, as a taxid or row and a slug or row.
     limit: the most candidates returned per term. The status still counts
       every matching entity.
+    releases and label_releases: issued ReleaseSets, given together, restrict
+      what is considered to the entities the caller may see and the labels
+      the caller may read (the API's use); None considers every entity (the
+      import pipeline's). One without the other raises TypeError, as does a
+      set visible_release_ids did not issue.
     """
     if limit < 1:
         raise ValueError("limit must be at least 1.")
+    _check_release_sets(releases, label_releases)
     named, namespaces = _namespaces(namespace)
     taxon_id = _taxon_id(taxon)
     type_slug = _entity_type_slug(entity_type)
 
     plans = [_plan(term, named, namespaces) for term in terms]
     probes = [probe for plan in plans for probe in plan.probes]
-    exact = _exact_matches(probes, taxon_id, type_slug)
-    ignoring_case = _case_insensitive_matches(probes, taxon_id, type_slug)
-    labels = _label_matches(plans, taxon_id, type_slug)
+    exact = _exact_matches(probes, taxon_id, type_slug, releases)
+    ignoring_case = _case_insensitive_matches(probes, taxon_id, type_slug, releases)
+    labels = _label_matches(plans, taxon_id, type_slug, releases, label_releases)
     return [_resolution(plan, exact, ignoring_case, labels, limit) for plan in plans]
 
 
@@ -198,21 +222,21 @@ def _probes(namespaces, text, explicit) -> tuple[_Probe, ...]:
 # the planner has one obvious index: (lookup), Upper("lookup") and label_key.
 
 
-def _exact_matches(probes, taxon_id, type_slug):
+def _exact_matches(probes, taxon_id, type_slug, releases):
     keys = {(p.namespace.slug, p.lookup) for p in probes if p.lookup is not None}
     if not keys:
         return {}
     rows = EntityIdentifier.objects.filter(lookup__in={lookup for _, lookup in keys})
     found = defaultdict(list)
-    for row in _for_entities(rows, "entity__", taxon_id, type_slug).select_related(
-        "entity"
-    ):
+    for row in _for_entities(
+        rows, "entity__", taxon_id, type_slug, releases
+    ).select_related("entity"):
         if (row.namespace_id, row.lookup) in keys:
             found[row.namespace_id, row.lookup].append(row)
     return found
 
 
-def _case_insensitive_matches(probes, taxon_id, type_slug):
+def _case_insensitive_matches(probes, taxon_id, type_slug, releases):
     keys = {
         (p.namespace.slug, p.upper)
         for p in probes
@@ -222,30 +246,34 @@ def _case_insensitive_matches(probes, taxon_id, type_slug):
         return {}
     rows = lookups_ignoring_case({upper for _, upper in keys})
     found = defaultdict(list)
-    for row in _for_entities(rows, "entity__", taxon_id, type_slug).select_related(
-        "entity"
-    ):
+    for row in _for_entities(
+        rows, "entity__", taxon_id, type_slug, releases
+    ).select_related("entity"):
         if (row.namespace_id, row.lookup_upper) in keys:
             found[row.namespace_id, row.lookup_upper].append(row)
     return found
 
 
-def _label_matches(plans, taxon_id, type_slug):
+def _label_matches(plans, taxon_id, type_slug, releases, label_releases):
     keys = {plan.label_key for plan in plans if plan.label_key is not None}
     if not keys:
         return {}
     found = defaultdict(list)
     rows = Entity.objects.filter(label_key__in=keys)
-    for entity in _for_entities(rows, "", taxon_id, type_slug):
+    if label_releases is not None:
+        rows = rows.filter(readable_label_q(label_releases))
+    for entity in _for_entities(rows, "", taxon_id, type_slug, releases):
         found[entity.label_key].append(entity)
     return found
 
 
-def _for_entities(queryset, path, taxon_id, type_slug):
+def _for_entities(queryset, path, taxon_id, type_slug, releases):
     if taxon_id is not None:
         queryset = queryset.filter(**{f"{path}taxon_id": taxon_id})
     if type_slug is not None:
         queryset = queryset.filter(**{f"{path}entity_type_id": type_slug})
+    if releases is not None:
+        queryset = queryset.filter(visible_entity_q(releases, path=path))
     return queryset
 
 
@@ -365,6 +393,14 @@ def _candidate_order(candidate):
 
 
 # ── Arguments ───────────────────────────────────────────────────────────────
+
+
+def _check_release_sets(releases, label_releases):
+    if (releases is None) != (label_releases is None):
+        raise TypeError("releases and label_releases are given together or not at all.")
+    if releases is not None:
+        issued_release_set(releases)
+        issued_release_set(label_releases)
 
 
 def _namespaces(namespace):

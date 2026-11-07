@@ -139,6 +139,19 @@ REST_FRAMEWORK = {
     },
 }
 
+# The typed graph's API (graph/api/throttling.py): per caller, on top of the
+# global limits, except graph_network_site, one budget every caller shares.
+# Appended rather than written into the literal, which upstream also edits.
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(
+    {
+        "graph_read": "300/min",
+        "graph_resolve": "120/min",
+        "graph_network": "60/min",
+        "graph_network_site": "120/min",
+        "graph_export": "20/hour",
+    }
+)
+
 # DRF throttling counts through the cache, so with gunicorn's 3 workers a
 # local-memory cache would give each worker its own counter and triple every
 # limit. Redis is already a hard dependency here (Celery), and Django ships a

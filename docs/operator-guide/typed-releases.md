@@ -6,9 +6,9 @@ what follows: approving the release, committing it (importing its evidence
 into the graph), publishing, withdrawing and discarding it, checking the
 graph for what needs an operator, and loading the synthetic demonstration.
 
-The typed graph is still being built: no page or API of the portal shows it
-yet, so nothing on this page changes what visitors see. Approvals and
-publishing already decide what each release may show once one does.
+The typed graph's API shows each release to those who may see it
+([Typed graph](../developer/api/typed-graph.md)), and the portal's pages come
+later. Approvals and publishing decide what each release may show.
 
 Everything here needs `TYPED_GRAPH_ENABLED` on
 ([Configuration reference](configuration.md#backend-variables)). While it is
@@ -686,8 +686,9 @@ Each release's licence snapshot records the repository's MIT License, with
 its grant and condition quoted from `LICENSE`, as read on the day of the
 load by the account `--as` names. Only `internal` approvals are recorded,
 so the demonstration is for staff. On a public hub, every staff member's
-default view shows it once the loader has run, and visitors see it only
-after a `public_view` approval is recorded with `graph_approve`
+default view through `/api/graph/v1/` shows it once the loader has run, and
+visitors see it only after a `public_view` approval is recorded with
+`graph_approve`
 ([Approving a release](#approving-a-release)).
 
 ### Running it again
@@ -765,9 +766,9 @@ current data out of the default view at once). This is final:
 `graph_load_demo` then refuses on this portal, since the demonstration ships
 as v1 and v2 only. Either way the evidence leaves every view and the 13
 entities stay `provisional`. `graph_check` does not list them, because the
-withdrawn or unapproved releases' assertions still name them, and openPIP's
-identifier resolver still finds them by identifier or label, since it does
-not yet limit itself to the entities a caller may see.
+withdrawn or unapproved releases' assertions still name them, and the
+portal's resolver still finds them at service level, but the API's `resolve`
+answers only for the entities a caller may see.
 
 Both ways assume that the load finished, with v2 published. After a load
 that stopped earlier, v2 may be missing, or a draft or staged release with

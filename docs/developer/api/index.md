@@ -22,7 +22,8 @@ portal `GET /api/search` means:
 Example responses are real, taken from the
 **reference portal** at [openpip.usask.ca](https://openpip.usask.ca),
 which hosts the Human Reference Interactome datasets. Another portal returns
-its own data in the same shape.
+its own data in the same shape. The [Typed graph](typed-graph.md) page is the
+exception: its examples come from the synthetic demonstration.
 
 ## Trailing slashes
 
@@ -55,7 +56,8 @@ get a new pair from
 !!! note
     If you send an `Authorization` header with an expired or invalid token, the
     request fails with 401 even on public endpoints. Omit the header for
-    anonymous requests.
+    anonymous requests. `GET /api/graph/v1/status` reads no token, so it
+    answers either way.
 
 Administrative endpoints additionally require the account to be a site
 administrator. A request from any other account gets 403.
@@ -83,6 +85,9 @@ Validation errors name the offending fields instead:
 | 404 | No such object, or an object you may not see. |
 | 429 | Rate limit exceeded. The body says how many seconds to wait. |
 
+The typed graph API ([Typed graph](typed-graph.md)) adds an `errors` list
+naming each parameter and its allowed values.
+
 PSICQUIC errors are plain text, not JSON. See the
 [PSICQUIC page](../psicquic.md#errors).
 
@@ -93,6 +98,8 @@ PSICQUIC errors are plain text, not JSON. See the
 | Anonymous, per IP address | 600 requests per minute |
 | Logged in, per account | 1,200 requests per minute |
 | PSICQUIC, per IP address, or per account when logged in | 60 requests per minute |
+| Typed graph reads, per IP address, or per account when logged in | 300 requests per minute |
+| Typed graph `resolve`, per IP address, or per account when logged in | 120 requests per minute |
 | Security-question answers, per IP address, or per account when logged in | 10 per hour |
 | Security-question answers about any one email address, from everyone combined | 10 per hour |
 
@@ -104,8 +111,9 @@ Only one endpoint is paginated:
 [`GET /api/proteins`](proteins-and-search.md#get-apiproteins) takes `limit` and
 `offset`. Every other list returns all its results in one response. Lists that
 could grow large are bounded: search returns the networks for the proteins you
-ask for, notifications return the newest 50, and user search returns at most
-10 matches.
+ask for, notifications return the newest 50, user search returns at most 10
+matches, and the typed graph's `resolve` returns at most 20 candidates per
+term.
 
 ## Cross-origin requests
 

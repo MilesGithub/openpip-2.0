@@ -2,8 +2,9 @@
 
 The typed relationship graph holds relationships between typed entities
 (genes, proteins and protein isoforms), with the evidence each release of a
-dataset states for them. It is still being built, and visitors see nothing
-of it yet. This page describes:
+dataset states for them. Its API shows each release to those who may see it
+([Typed graph](../developer/api/typed-graph.md)), and the portal's pages come
+later. This page describes:
 
 - registering a release of typed data, with its files;
 - `canonical_tsv_v1`, the format of its data file;
@@ -15,7 +16,8 @@ release, committing it, which imports its evidence into the graph, and
 publishing, withdrawing and discarding it. It also describes
 `graph_load_demo`, which loads openPIP's synthetic demonstration: two
 synthetic releases that it registers, dry-runs, commits and publishes.
-Nothing on either page changes what visitors see.
+Visitors see a release only through the typed graph's API, once it is
+published with a `public_view` approval.
 
 Everything here needs `TYPED_GRAPH_ENABLED` on
 ([Configuration reference](configuration.md#backend-variables)). While it is
@@ -230,7 +232,7 @@ header line that names the columns.
 | `subject_id` | yes | The subject's identifier, as the source writes it. |
 | `subject_type` | yes | The subject's entity type: `gene`, `protein` or `protein_isoform`. |
 | `subject_taxon` | yes | The subject's NCBI taxid: digits, from 1 to 2147483647, without a sign or leading zeros. Every entity type needs one. |
-| `subject_label` | no | A label for the subject, at most 255 characters, used only for an entity the release would create. An existing entity keeps its label, and a different one is noted; one that another release creates between the dry run and the commit keeps that release's label, without a note. |
+| `subject_label` | no | A label for the subject, at most 255 characters, used only for an entity the release would create. An existing entity keeps its label, which the API shows only to those who may read the release that wrote it, and otherwise the identifier, and a different one is noted; one that another release creates between the dry run and the commit keeps that release's label, without a note. |
 | `object_namespace` | yes | The object's, as for the subject. |
 | `object_id` | yes | The object's, as for the subject. |
 | `object_type` | yes | The object's, as for the subject. |

@@ -142,6 +142,7 @@ nav:
           - Datasets, downloads and uploads: developer/api/datasets.md
           - Saved networks and sharing: developer/api/sharing.md
           - Site settings and administration: developer/api/administration.md
+          - Typed graph: developer/api/typed-graph.md
       - PSICQUIC service: developer/psicquic.md
   - About:
       - Citing openPIP: about/citation.md
