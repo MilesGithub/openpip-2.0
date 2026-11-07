@@ -2194,7 +2194,7 @@ All paths are under `/api/graph/v1/`.
 
 | Method and path | Purpose | Phase |
 |---|---|---|
-| `GET status` | `{typed_graph, api_version, registry_version: {code, database}, features, limits}`. Always 200; the only route that answers when the switch is off | 2 |
+| `GET status` | `{typed_graph, api_version, registry_version: {code, database}, features, limits}`. 200 for any well-formed GET, with the switch on or off and whatever the token; an unknown parameter is a 400, as on every route. The only route that answers when the switch is off | 2 |
 | `GET vocabularies` | The registries: entity and relationship types with definitions, namespaces, score types, outcomes, effects, genetic signs, evidence bases, assertion methods, context facets | 2 |
 | `GET resolve` | Takes `q`, `namespace`, `taxon`, `entity_type`, `releases` and `browser`. Returns, per term, `{term, status, candidates[{entity, matches: [{kind, namespace, value, case_exact, version_mismatch}]}]}`, where status is `resolved`, `candidate`, `ambiguous` or `unmatched`, counted over distinct entities (section 4.1). Visible entities only | 2 |
 | `GET entities/{entity_id}` | Identity, the identifiers the caller may see (section 3.4) with links, reference relationships, relationship counts by type, releases. Takes `releases` and `browser`. 301 to the survivor when merged | 2 |
@@ -2236,7 +2236,8 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
   "query": {"seeds": ["entity:12"], "layers": ["transcriptional_regulation"]},
   "nodes": [
     {"id": "entity:12", "type": "gene", "label": "SYN-TF1", "taxon": 32630,
-     "is_seed": true, "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-TF1"}}
+     "status": "provisional", "is_seed": true,
+     "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-TF1"}}
   ],
   "edges": [
     {"id": "relationship:40", "type": "transcriptional_regulation",
@@ -2251,9 +2252,15 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
      "releases": ["release:3"], "is_synthetic": true}
   ],
   "releases": [
-    {"id": "release:3", "dataset": "synthetic-regulation", "version": "v1",
-     "is_synthetic": true, "licence": {"name": "MIT (repository licence)"},
-     "attribution": "", "scopes": ["public_view"]}
+    {"id": "release:3",
+     "dataset": {"slug": "synthetic-regulation", "title": "Synthetic regulation example"},
+     "version": "v1", "status": "published", "superseded": false,
+     "is_synthetic": true,
+     "licence": {"name": "MIT License", "spdx_id": null,
+                 "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"},
+     "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+     "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; …",
+     "scopes": ["internal"]}
   ],
   "page": {"truncated": false, "max_edges": 250, "omitted": {}},
   "warnings": [{"code": "tested_absent_hidden", "detail": "1 tested-absent assertion hidden"}]
@@ -2834,10 +2841,12 @@ avoid extending the known weak spots:
   URL-encoded, and outbound links use `rel="noopener noreferrer"`.
 - **Uploads and exports.** Uploads are treated as untrusted data
   (section 8), and exports guard CSV cells against formula injection.
-- **Throttling.** Throttle identity depends on the host proxy setting
-  `X-Forwarded-For` (BUG-033). Without that proxy, all anonymous callers can
-  share one bucket. The per-request hard caps and the site-wide network
-  budget bound the cost regardless.
+- **Throttling.** Per-caller limits rely on a host proxy that sets
+  `X-Forwarded-For` (BUG-033). Without one, callers that send no such header
+  share one limit, and a caller that sends one chooses its own, so the
+  per-caller limits stop nobody. The per-request caps and the site-wide
+  network budget hold either way. The header can also name an account's
+  counter, so such a caller can use up a logged-in user's limits.
 - **Approvals.** Approvals record who decided and why, and survive account
   deletion through the username snapshot.
 
@@ -3208,6 +3217,106 @@ built (IMPLEMENTATION_PLAN.md, G6; OPEN_QUESTIONS.md, A13, C16 and E16):
 - the D12 clauses that are not service-level are F2's, A2's, F3's, B1's,
   X1's, F1's, F4's and H1's, and what A1, A2, B1, F1, F3, X1, RF1a and H1
   take over from G6 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**A1's specification** took these decisions, S1 to S28 as its PR lists
+them, after four independent reviews, whose probes prototyped it on
+PostgreSQL, and two audits. Those marked ★ are flagged to the owner, and a
+question left unanswered takes its default (OPEN_QUESTIONS.md, A9 and A14
+to A19):
+
+- S1: every typed response carries `Vary: Authorization`, the 404 and the
+  301 included, since responses differ by caller and no shared cache may
+  serve a staff body to a visitor (7.1);
+- S2: while the switch is off, `status` gives `registry_version` as
+  `{code, database: null}`, always an object, every `features` key false
+  and `limits` present, and reads no table (7.2);
+- S3 ★: `status.features` is keyed by the route groups of 7.2 (`resolve`,
+  `entities`, `network`, `relationships`, `browsers`, `datasets`, `summary`
+  and `exports`), each true only while the switch is on and the build
+  serves the group, and tested against the served routes; `admin/…` has no
+  key, and AD1 chooses (open question A14);
+- S4: `releases` takes comma-separated `release:<id>` refs and is
+  repeatable; a malformed value, an empty one or more than 50 is a 400, and
+  a well-formed ref is a selection the service filters without a word,
+  which is how 7.1's rule on unknown values and D9's silent drop agree;
+- S5 ★: an entity created by no release and named by no visible assertion
+  is invisible to everyone, staff included, until RF1a. This deliberately
+  narrows section 4.1, where an entity whose identifiers an operator
+  entered is visible to staff, since a `ReleaseSet` does not say who the
+  caller is (open question A17);
+- S6: `created_by_release` is named only when it is among the response's
+  release entries, so a visible entity never names the embargoed or
+  superseded release that created it;
+- S7: `entity_id` is `entity:<id>`, and anything else is a 400 reported
+  with the request's other problems;
+- S8: the 301 ships now, only when the caller may see both the merged row
+  and its survivor, and every other case is the nonexistent id's 404;
+  `resolve` returns merged and retired rows with their `status`; chains
+  are P5's to prevent;
+- S9 ★: `relationship_counts` count relationships with supporting visible
+  evidence, not every visible assertion;
+- S10 ★: `scopes` lists every effective scope to every caller;
+- S11 ★: the site-wide network budget's initial rate is 120/min
+  (`graph_network_site`), twice `graph_network`, so one caller alone cannot
+  spend it. It keeps the workers free only while a network call averages
+  under 1.5 s (3 × 60 / 120); at the 5 s timeout they saturate at 36/min.
+  The one-minute window admits all 120 at once, and P1 decides whether
+  `2/sec` replaces it. All five rates land in A1, with classes for
+  `graph_read`, `graph_resolve`, `graph_network` and the budget;
+  `graph_export`'s class is E1's (open question A15);
+- S12: `q` splits on commas, tabs and new lines, never on spaces, is
+  repeatable, and holds 25 terms of 200 characters each, so 7.1's cap on
+  `q` is per term; there is no `limit` parameter; a cut shows as `truncated`
+  per term, from `limit` + 1, and as `page.truncated`, `page.omitted` and
+  one `candidates_truncated` warning per distinct term cut;
+- S13: the visibility predicates live inside the resolver, as new
+  keywords, and not in a post-filter;
+- S14 ★: the release entry's `dataset` is `{slug, title}`, and `licence` is
+  always `{name, spdx_id, url}` with blanks as `null`, since every visible
+  release has a snapshot (7.3's example is updated);
+- S15: closed sets are `{value, label}`, the label being the value in
+  words, and `effects` and `genetic_signs` include the summary-only keys,
+  with `stored: false`;
+- S16: the page's headings are `###` under `##`, where 7.1 and
+  IMPLEMENTATION_PLAN.md §1 said `##`: the docs contract accepts levels 2
+  to 4, and the other API pages use `###`. Its examples come from the
+  demonstration, pinned up to ids;
+- S17: `status` authenticates nobody and is throttled by `UserRateThrottle`
+  alone, so a stale token never turns it into a 401, and page loads spend
+  neither `graph_read` nor the address's `anon` allowance. "Always 200" is
+  read as "for any well-formed GET", so an unknown parameter is still a 400
+  (7.2);
+- S18: `TypedGraphView.check_throttles` stops at the first denial, and the
+  scoped class is listed first, so a request a scoped limit refuses spends
+  neither the global allowances nor the site-wide budget;
+- S19: a `ParameterError` is answered by `handle_exception`, not raised as
+  a DRF `ValidationError`, which would stringify `null` and integers;
+- S20: a single-valued parameter given twice is a 400, a control character
+  in a term is a 400, and `q` also splits on tabs;
+- S21 ★: `Entity.label` and `description` are shown and matched only when
+  the caller may read the release that wrote them, otherwise the primary
+  identifier's value and `""`; "may read" ignores the selection, and there
+  is no walk up `supersedes` (open question A16);
+- S22: `resolve` carries `releases`, `page` and `warnings`, as `network`
+  does (7.3), and each candidate lists its `releases` (3.7, D9);
+- S23: `reference_relationships` use the edge shape of 7.3, with ref
+  strings and `is_synthetic`, beside a top-level `nodes`, so v1 has one edge
+  shape;
+- S24: the release entry carries `changes_note` (8; 7.3's example is
+  updated);
+- S25 ★: rate tables list only the scopes a route uses, though all five
+  rates are settings, and the wording of `features` does not say who flips
+  a key (open question A19);
+- S26 ★: `q` cannot name a label holding a comma, tab or new line, and the
+  page says so; stopping the split on a repeated `q` is the alternative,
+  and the larger change (open question A18);
+- S27: A1 adds no index: `naming_releases` uses the DISTINCT form, and P1
+  gets the `(entity, release)` index;
+- S28: `graph.resolution` depends on `graph.entity_visibility`, never the
+  reverse, and `ROLE_ORDER` is defined in the latter.
+
+What A2, B1, F1, F4, X1, C1, H1, E1, AD1, L2, P1, P5 and RF1a take over from
+A1 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

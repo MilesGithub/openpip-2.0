@@ -94,9 +94,9 @@ No version has been tagged yet. Everything below is in development towards
 - Approval and visibility rules: nothing typed is visible without an
   effective approval, viewing, bulk download and external services are each
   approved on their own, a correction never hides public data, and a
-  withdrawn release is hidden at once. Still behind `TYPED_GRAPH_ENABLED`
-  and shown to no visitor; with it on, staff see the catalogue and licensing
-  records in the Django admin.
+  withdrawn release is hidden at once. Still behind `TYPED_GRAPH_ENABLED`;
+  with it on, staff see the catalogue and licensing records in the Django
+  admin.
 - Relationships between typed entities, and the evidence each release states
   for them: typed relationships (directed, or one per pair for symmetric
   types), relationship and score types, vocabulary terms, and evidence
@@ -107,8 +107,8 @@ No version has been tagged yet. Everything below is in development towards
   counts only evidence from releases the viewer may see, and counts records
   of one observation once. Recording a record's evidence again changes
   nothing, and contradictory findings are kept side by side. Still behind
-  `TYPED_GRAPH_ENABLED` and shown to no visitor; with it on, staff see the
-  relationship types, score types and terms in the Django admin, read-only.
+  `TYPED_GRAPH_ENABLED`; with it on, staff see the relationship types, score
+  types and terms in the Django admin, read-only.
 - Registering and checking releases of typed data, described in the
   operator guide's new Typed data format page. `manage.py
   graph_register_release` registers a release with the adapter that reads
@@ -123,7 +123,7 @@ No version has been tagged yet. Everything below is in development towards
   import would create, and conflicts with other releases. A dry run writes
   only its run and the release's source records; a release of real data
   needs an approval first, and a synthetic release is checked, not trusted.
-  Still behind `TYPED_GRAPH_ENABLED`, and shown to no visitor.
+  Still behind `TYPED_GRAPH_ENABLED`.
 - Importing releases of typed data, and their lifecycle, described in the
   operator guide's new Typed releases page. `manage.py graph_import
   --commit` imports what a release's latest dry run reported, with the same
@@ -139,7 +139,7 @@ No version has been tagged yet. Everything below is in development towards
   draft to import it again, and `graph_check` lists what needs an operator,
   exiting 1 for a problem. One dry run, commit or discard of a release runs
   at a time, and a file that states more than 250,000 distinct identifiers
-  is refused. Still behind `TYPED_GRAPH_ENABLED`, and shown to no visitor.
+  is refused. Still behind `TYPED_GRAPH_ENABLED`.
 - A synthetic demonstration of the typed graph, described in the operator
   guide's Typed releases page: one dataset in two synthetic releases, v2
   correcting one effect of v1, whose rows cover the cases the typed graph
@@ -149,8 +149,13 @@ No version has been tagged yet. Everything below is in development towards
   MIT licence snapshot and an internal approval for each, so that only
   staff see them. Run again, it completes a load that stopped and writes
   nothing once the demonstration is loaded, and it never overrides an
-  operator's decision. Still behind `TYPED_GRAPH_ENABLED`, and shown to no
-  visitor.
+  operator's decision. Still behind `TYPED_GRAPH_ENABLED`.
+- A read API for the typed graph under `/api/graph/v1/`, described in the
+  developer guide's new Typed graph page: `status`, `vocabularies`, `resolve`
+  and `entities/{entity_id}`. While `TYPED_GRAPH_ENABLED` is off, every route
+  but `status` answers 404. With it on, visitors see only releases with a
+  `public_view` approval, so the demonstration stays with staff until an
+  operator records one.
 
 ### Fixed
 

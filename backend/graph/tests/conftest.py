@@ -4,9 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 from django.conf import settings as django_settings
+from django.core.cache import cache
 from django.core.management import call_command
+from rest_framework.test import APIClient
 
+from graph.demo import load_demo
 from graph.models import CasePolicy, Scope, VersionPolicy
+from graph.resolution import RESOLVED, resolve
 from graph.tests.factories import (
     IdentifierNamespaceFactory,
     StaffUserFactory,
@@ -68,6 +72,56 @@ def registry(db, settings):
     """The registries from the JSON, loaded as an operator would."""
     settings.TYPED_GRAPH_ENABLED = True
     call_command("graph_sync_registry", stdout=io.StringIO())
+
+
+@pytest.fixture
+def staff_client(db):
+    """A client authenticated as an active staff account. force_authenticate
+    swaps in DRF's own authenticator, so it hides a view that authenticates
+    nobody: test_api_base covers that with a real token."""
+    client = APIClient()
+    client.force_authenticate(StaffUserFactory())
+    return client
+
+
+@pytest.fixture
+def visitor_client():
+    """A client with no account. A logged-in non-staff user, who is a visitor
+    too, comes from the root fixture user_auth_client (a real bearer token)."""
+    return APIClient()
+
+
+@pytest.fixture
+def demo(registry):
+    """The demonstration as graph.demo.load_demo leaves it, loaded by alice,
+    an active staff account: its releases, `staff`, a client authenticated as
+    alice, and `entity`, the entity a primary identifier names, through the
+    resolver."""
+    alice = StaffUserFactory(username="alice")
+    result = load_demo(loaded_by=alice)
+    staff = APIClient()
+    staff.force_authenticate(alice)
+
+    def entity(value):
+        found = resolve(value)
+        assert found.status == RESOLVED, (value, found)
+        [candidate] = found.candidates
+        return candidate.entity
+
+    return SimpleNamespace(
+        alice=alice,
+        v1=result.releases["v1"],
+        v2=result.releases["v2"],
+        staff=staff,
+        entity=entity,
+    )
+
+
+@pytest.fixture(autouse=True)
+def fresh_throttles(request):
+    """Throttle counters live in the cache, outside the test's transaction."""
+    if request.node.path.name.startswith("test_api_"):
+        cache.clear()
 
 
 @pytest.fixture

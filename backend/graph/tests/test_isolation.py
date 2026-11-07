@@ -22,7 +22,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.db import connection, migrations
 from django.db.migrations.loader import MigrationLoader
-from django.urls import Resolver404, URLResolver, get_resolver, resolve
+from django.urls import URLResolver, get_resolver
 
 NEW_APPS = ["graph"]
 # Besides itself and the user model.
@@ -486,7 +486,7 @@ def test_graph_steps_back_to_0001_and_forward_again():
     assert new_tables() <= tables()
 
 
-# ── Off by default, and nothing reachable ───────────────────────────────────
+# ── Off by default, and reachable only under /api/graph/v1/ ─────────────────
 
 
 def test_the_switch_is_off_by_default(monkeypatch):
@@ -501,7 +501,7 @@ def test_the_switch_is_off_by_default(monkeypatch):
     assert runpy.run_path(str(base))["TYPED_GRAPH_ENABLED"] is False
 
 
-def test_no_url_pattern_starts_with_api_graph():
+def test_every_api_graph_route_is_under_v1():
     def walk(patterns, prefix=""):
         for pattern in patterns:
             route = prefix + str(pattern.pattern)
@@ -513,8 +513,7 @@ def test_no_url_pattern_starts_with_api_graph():
         # A re_path under path("api/", ...) joins as "api/^graph/...".
         return route.replace("^", "").replace("$", "").lstrip("/")
 
-    routes = list(walk(get_resolver().url_patterns))
-    assert routes
-    assert not [route for route in routes if normalized(route).startswith("api/graph")]
-    with pytest.raises(Resolver404):
-        resolve("/api/graph/")
+    routes = [normalized(route) for route in walk(get_resolver().url_patterns)]
+    typed = [route for route in routes if route.startswith("api/graph")]
+    assert typed
+    assert [route for route in typed if not route.startswith("api/graph/v1/")] == []
