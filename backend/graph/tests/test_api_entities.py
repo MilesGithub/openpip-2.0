@@ -20,6 +20,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from graph.api import views
 from graph.api.limits import API_VERSION, MAX_RELEASES
+from graph.api.serializers import EdgeSerializer
 from graph.demo import DATASET, DATASET_SLUG, DEMO_LICENCE, LICENCE_URL
 from graph.ingest.registry import get_adapter
 from graph.models import (
@@ -281,6 +282,44 @@ def test_the_page_of_syn_tf1(demo, visitor_client):
                 "target": f"entity:{p1.pk}",
                 "releases": refs(demo.v2),
                 "is_synthetic": True,
+                "qualifiers": {},
+                "shown": True,
+                "effect": "not_applicable",
+                "effect_counts": {
+                    "activating": 0,
+                    "inhibiting": 0,
+                    "unknown": 0,
+                    "not_stated": 1,
+                },
+                "genetic_sign": "not_applicable",
+                "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+                "outcome_counts": {
+                    "supported": 1,
+                    "tested_absent": 0,
+                    "inconclusive": 0,
+                    "not_significant": 0,
+                },
+                "independent_outcome_counts": {
+                    "supported": 1,
+                    "tested_absent": 0,
+                    "inconclusive": 0,
+                    "not_significant": 0,
+                },
+                "assertion_count": 1,
+                "evidence_count": 1,
+                "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+                "by_basis": {"unknown": 1},
+                "level": None,
+                "level_counts": {},
+                "level_assigned": None,
+                "tested_levels": {},
+                "outside_filters": 0,
+                "outside_outcome_counts": {
+                    "supported": 0,
+                    "tested_absent": 0,
+                    "inconclusive": 0,
+                    "not_significant": 0,
+                },
             }
         ],
         "nodes": [
@@ -626,6 +665,47 @@ def test_a_release_that_only_states_an_edge_is_listed(registry, visitor_client):
     assert ids(body["releases"]) == refs(shown, ev.release)
     assert body["reference_relationships"][0]["releases"] == refs(ev.release)
     assert body["reference_relationships"][0]["is_synthetic"] is False
+
+
+def test_a_reference_edge_has_the_shared_edge_shape(registry, visitor_client):
+    # One edge shape for every route: the eight keys of the first version
+    # first, with the values they had, then the summary's figures.
+    shown = public()
+    entity = entity_of("protein", created_by_release=shown)
+    ev = shown_evidence()
+    isoform = entity_of("protein_isoform")
+    edge = link("isoform_of", isoform, entity)
+    state(ev, edge)
+    advance(ev.release, PUBLISHED)
+    [listed] = page(visitor_client, entity)["reference_relationships"]
+    fields = list(EdgeSerializer().fields)
+    assert list(listed) == fields
+    assert fields[:8] == [
+        "id",
+        "type",
+        "family",
+        "orientation",
+        "source",
+        "target",
+        "releases",
+        "is_synthetic",
+    ]
+    assert (listed["id"], listed["source"], listed["target"]) == (
+        f"relationship:{edge.pk}",
+        f"entity:{isoform.pk}",
+        f"entity:{entity.pk}",
+    )
+    assert (listed["releases"], listed["is_synthetic"]) == (refs(ev.release), False)
+    assert (listed["shown"], listed["assertion_count"], listed["effect"]) == (
+        True,
+        1,
+        "not_applicable",
+    )
+    assert (listed["level"], listed["level_counts"], listed["tested_levels"]) == (
+        None,
+        {},
+        {},
+    )
 
 
 def test_a_release_withdrawn_while_the_page_is_read_is_named_nowhere(

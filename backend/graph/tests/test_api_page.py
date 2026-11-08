@@ -19,30 +19,53 @@ from graph.api import limits
 from graph.api.params import MAX_PROBLEMS
 from graph.api.serializers import (
     CandidateSerializer,
+    ContextSerializer,
+    EdgeSerializer,
     EntityNodeSerializer,
     EntityQuerySerializer,
     EntitySerializer,
+    EvidencePageSerializer,
+    EvidencePublicationSerializer,
+    EvidenceQuerySerializer,
+    EvidenceRowSerializer,
     FeaturesSerializer,
     LimitsSerializer,
+    MethodSerializer,
+    NetworkNodeSerializer,
+    NetworkQuerySerializer,
     ParameterErrorSerializer,
+    ParticipantSerializer,
     ProblemSerializer,
+    PublicationSerializer,
     RegistryVersionSerializer,
+    RelationshipQuerySerializer,
+    ReleaseCountsSerializer,
     ReleaseEntrySerializer,
     ResolveQuerySerializer,
     ResolveResultSerializer,
+    ScoreSerializer,
+    SourceRecordSerializer,
+    TermRefSerializer,
     VocabulariesSerializer,
 )
 from graph.api.views import ResolveView
+from graph.claims import canonical_relationship, find_relationship
 from graph.models import ApprovalScope, EntityStatus
 from graph.resolution import AMBIGUOUS, CANDIDATE, MATCH_KINDS, RESOLVED, UNMATCHED
 from graph.tests import test_operator_guide as guide
 from graph.tests.api_helpers import (
     BASE,
     ENTITY,
+    EVIDENCE,
+    NETWORK,
+    RELATIONSHIP,
     RESOLVE,
     STATUS,
     VOCABULARIES,
     entity_url,
+    evidence_url,
+    network_url,
+    relationship_url,
     typed_routes,
     without_ids,
 )
@@ -72,6 +95,7 @@ HEADINGS = [
     "### What you may see",
     "### Entity nodes",
     "### Release entries",
+    "### Edges",
     "## Errors",
     "## Rate limits",
     "## Status",
@@ -82,6 +106,11 @@ HEADINGS = [
     f"### GET {RESOLVE}",
     "## Entities",
     f"### GET {ENTITY}",
+    "## Networks",
+    f"### GET {NETWORK}",
+    "## Relationships",
+    f"### GET {RELATIONSHIP}",
+    f"### GET {EVIDENCE}",
 ]
 # The examples' requests, as the page states them.
 RESOLVE_EXAMPLE = f"{RESOLVE}?q=SYN-TF1,SYN-SHARED"
@@ -93,17 +122,39 @@ RATE_ROWS = {
     "graph_resolve": (
         "Typed graph `resolve`, per IP address, or per account when logged in"
     ),
+    "graph_network": (
+        "Typed graph `network` and relationship pages, per IP address, or per "
+        "account when logged in"
+    ),
+    "graph_network_site": "Typed graph `network`, from everyone combined",
 }
 RATE_WORDS = {
     "graph_read": "typed graph reads",
     "graph_resolve": "typed graph `resolve`",
+    "graph_network": "typed graph `network` and relationship pages",
+    "graph_network_site": "typed graph `network`",
 }
 UNITS = {"min": "minute", "hour": "hour"}
 # The rows of a route's key table that name a key of a list, by their prefix.
+# The network's edges are the shared Edges table, so it has none.
 NESTED = {
     RESOLVE: {
         "results[].": ResolveResultSerializer,
         "candidates[].": CandidateSerializer,
+    },
+    RELATIONSHIP: {"by_release[].": ReleaseCountsSerializer},
+    EVIDENCE: {
+        "evidence[].": EvidenceRowSerializer,
+        "evidence[].record.": SourceRecordSerializer,
+        "evidence[].eco_term.": TermRefSerializer,
+        "evidence[].interaction_type.": TermRefSerializer,
+        "evidence[].methods[].": MethodSerializer,
+        "evidence[].scores[].": ScoreSerializer,
+        "evidence[].contexts[].": ContextSerializer,
+        "evidence[].contexts[].term.": TermRefSerializer,
+        "evidence[].participants[].": ParticipantSerializer,
+        "evidence[].publications[].": EvidencePublicationSerializer,
+        "evidence[].publications[].publication.": PublicationSerializer,
     },
 }
 
@@ -148,6 +199,18 @@ def table(heading, header) -> dict:
 
 def up_to_ids(body) -> str:
     return without_ids(json.dumps(body))
+
+
+def mixed_relationship(demo):
+    """SYN-TF2 → SYN-G2, which v2 states with both effects: relationship:9 on
+    a first load, the relationship the page's examples read."""
+    found = find_relationship(
+        canonical_relationship(
+            "transcriptional_regulation", demo.entity("SYN-TF2"), demo.entity("SYN-G2")
+        )
+    )
+    assert found is not None
+    return found
 
 
 def request_line(terms, chars, letter="a") -> int:
@@ -196,8 +259,10 @@ def test_each_routes_key_table_lists_its_keys(method, path, view):
     (
         ("### Entity nodes", ["Key", "Contents"], EntityNodeSerializer),
         ("### Release entries", ["Key", "Contents"], ReleaseEntrySerializer),
+        ("### Edges", ["Key", "Contents"], EdgeSerializer),
         (f"### GET {STATUS}", ["`features` key", "Covers"], FeaturesSerializer),
         (f"### GET {STATUS}", ["`limits` key", "Contents"], LimitsSerializer),
+        (f"### GET {NETWORK}", ["`nodes[]` key", "Contents"], NetworkNodeSerializer),
     ),
 )
 def test_a_shared_shapes_table_lists_its_keys(heading, header, serializer):
@@ -214,8 +279,66 @@ def test_a_shared_shapes_table_lists_its_keys(heading, header, serializer):
             {"taxon", "status", "primary_identifier"},
         ),
         ("### Release entries", "", ReleaseEntrySerializer, {"changes_note"}),
+        (
+            "### Edges",
+            "",
+            EdgeSerializer,
+            {"effect", "genetic_sign", "level", "level_assigned"},
+        ),
         ("## Errors", "errors[].", ProblemSerializer, {"value", "allowed", "limit"}),
         (f"### GET {ENTITY}", "", EntitySerializer, {"created_by_release"}),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].",
+            EvidenceRowSerializer,
+            {
+                "record",
+                "eco_term",
+                "effect",
+                "genetic_sign",
+                "interaction_type",
+                "interaction_level",
+            },
+        ),
+        (f"### GET {EVIDENCE}", "evidence[].record.", SourceRecordSerializer, {"raw"}),
+        (f"### GET {EVIDENCE}", "evidence[].eco_term.", TermRefSerializer, {"label"}),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].interaction_type.",
+            TermRefSerializer,
+            {"label"},
+        ),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].contexts[].term.",
+            TermRefSerializer,
+            {"label"},
+        ),
+        (f"### GET {EVIDENCE}", "evidence[].methods[].", MethodSerializer, {"label"}),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].scores[].",
+            ScoreSerializer,
+            {"value", "unit"},
+        ),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].contexts[].",
+            ContextSerializer,
+            {"term", "taxon"},
+        ),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].participants[].",
+            ParticipantSerializer,
+            {"stated_entity"},
+        ),
+        (
+            f"### GET {EVIDENCE}",
+            "evidence[].publications[].publication.",
+            PublicationSerializer,
+            {"pmid", "doi", "pmcid", "imex_id", "local_key", "year", "url"},
+        ),
     ),
 )
 def test_a_table_says_which_values_may_be_null(heading, prefix, serializer, nullable):
@@ -232,6 +355,10 @@ def test_a_table_says_which_values_may_be_null(heading, prefix, serializer, null
         (f"### GET {STATUS}", "registry_version", RegistryVersionSerializer),
         (f"### GET {RESOLVE}", "query", ResolveQuerySerializer),
         (f"### GET {ENTITY}", "query", EntityQuerySerializer),
+        (f"### GET {NETWORK}", "query", NetworkQuerySerializer),
+        (f"### GET {RELATIONSHIP}", "query", RelationshipQuerySerializer),
+        (f"### GET {EVIDENCE}", "query", EvidenceQuerySerializer),
+        (f"### GET {EVIDENCE}", "page", EvidencePageSerializer),
     ),
 )
 def test_a_row_says_which_of_its_keys_may_be_null(heading, key, serializer):
@@ -281,6 +408,20 @@ def test_the_caps_are_the_limits():
         f"and {limits.RESOLVE_MAX_CANDIDATES} are listed",
         f"At most {limits.RESOLVE_MAX_CANDIDATES}, each as below",
         f"One entry per problem, at most {MAX_PROBLEMS}.",
+        f"`seeds` names at most {limits.MAX_SEEDS} entities, `layers` at most "
+        f"{limits.MAX_LAYERS} layers and `context.*` at most "
+        f"{limits.MAX_CONTEXT_FACETS} facets",
+        f"a network holds at most {limits.MAX_EDGES:,} edges (`max_edges`, "
+        f"{limits.DEFAULT_MAX_EDGES} unless asked) and {limits.MAX_NODES} nodes",
+        f"each seed's {limits.CANDIDATES_PER_SEED} most covered relationships "
+        "are ranked",
+        f"A `context.*` value is at most {limits.MAX_CONTEXT_CHARS} characters",
+        f"an evidence page holds {limits.EVIDENCE_PAGE_SIZE} rows unless asked, "
+        f"at most {limits.EVIDENCE_MAX_PAGE_SIZE}, and ends early when its raw "
+        f"records pass {limits.EVIDENCE_PAGE_RAW_CHARS:,} characters",
+        f"under a {limits.STATEMENT_TIMEOUT_MS // 1000} s timeout",
+        f"once {limits.STATEMENT_TIMEOUT_MS // 1000} s have passed",
+        f"within about {2 * limits.STATEMENT_TIMEOUT_MS // 1000} s",
     ):
         assert stated in text
     pagination = " ".join(guide.section("## Pagination", page=INDEX).split())
@@ -300,6 +441,8 @@ def test_the_page_says_what_a_client_must_know():
         "stored identifier of a visible entity is listed.",
         "`relationship_counts` count relationships with supporting evidence in "
         "the selected releases.",
+        "That agrees with the network's default, which shows a relationship only "
+        "when supporting evidence covers it.",
         "It gets the web server's own HTML error, with no `detail` or `errors`: "
         "gunicorn's 400 up to 8,190 bytes and nginx's 414 beyond that.",
     ):
@@ -343,7 +486,7 @@ def test_no_shipped_setting_moves_the_limits_on_the_page():
 def test_the_page_describes_only_what_is_served():
     # A scope or route lands on the page with the code that uses it.
     text = PAGE.read_text(encoding="utf-8")
-    for word in ("graph_network", "graph_export", "budget", "browser=", "/network"):
+    for word in ("graph_export", "browser="):
         assert word not in text
 
 
@@ -369,6 +512,36 @@ def test_the_entity_example_is_the_response(demo):
     assert up_to_ids(block) == up_to_ids(response.json())
     request = f"`GET {BASE}entities/{block['query']['entity_id']}`"
     assert request in section(f"### GET {ENTITY}")
+
+
+def test_the_network_example_is_the_response(demo):
+    block = json.loads(guide.json_block("is_seed", page=PAGE))
+    response = demo.staff.get(network_url(demo.entity("SYN-TF1")))
+    assert up_to_ids(block) == up_to_ids(response.json())
+    [seed] = block["query"]["seeds"]
+    assert f"`GET {NETWORK}?seeds={seed}`" in section(f"### GET {NETWORK}")
+
+
+def test_the_relationship_example_is_the_response(demo):
+    block = json.loads(guide.json_block("by_release", page=PAGE))
+    response = demo.staff.get(relationship_url(mixed_relationship(demo)))
+    assert up_to_ids(block) == up_to_ids(response.json())
+    request = f"`GET {BASE}relationships/{block['query']['relationship_ref']}`"
+    assert request in section(f"### GET {RELATIONSHIP}")
+
+
+def test_the_evidence_example_is_the_response(demo):
+    block = json.loads(guide.json_block("evidence_group", page=PAGE))
+    body = demo.staff.get(evidence_url(mixed_relationship(demo))).json()
+    # A record's raw columns come in the order the database keeps them:
+    # PostgreSQL's jsonb sorts an object's keys, SQLite keeps the file's. The
+    # columns and their values are compared, every other key in order.
+    for page in (block, body):
+        for row in page["evidence"]:
+            row["record"]["raw"] = dict(sorted(row["record"]["raw"].items()))
+    assert up_to_ids(block) == up_to_ids(body)
+    request = f"`GET {BASE}relationships/{block['query']['relationship_ref']}/evidence`"
+    assert request in section(f"### GET {EVIDENCE}")
 
 
 def test_the_vocabulary_example_is_the_encodes_entry(registry, visitor_client):

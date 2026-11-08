@@ -149,7 +149,10 @@ on the reference portal (BUG-034).
 
 ### GET /api/proteins
 
-Browse and filter all proteins. This is the only paginated endpoint.
+Browse and filter all proteins. This is the only legacy endpoint that
+paginates; the typed graph's evidence list
+([Typed graph](typed-graph.md#get-apigraphv1relationshipsrelationship_refevidence))
+takes `after` and `page_size`.
 
 | Parameter | Notes |
 |---|---|

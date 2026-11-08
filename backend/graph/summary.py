@@ -506,6 +506,41 @@ def term_label(term, *, releases) -> str | None:
     )
 
 
+def term_labels(terms, *, releases) -> dict:
+    """The labels of many terms by the rule of term_label: {key: label or
+    None}, keyed by a Term row's pk or by the normalized CURIE, a malformed
+    CURIE by its own text. Crosswalk terms cost no query; the others are read
+    in one, so a page of evidence rows labels its terms in one statement
+    whatever their number. While the switch is off every value is None, with
+    no query."""
+    releases = issued_release_set(releases)
+    on = typed_graph_enabled()
+    labels, wanted = {}, set()
+    for term in terms:
+        curie = term.pk if isinstance(term, Term) else term
+        if not isinstance(curie, str):
+            raise TypeError(f"A term or its CURIE, not {term!r}.")
+        try:
+            curie = normalize_curie(curie)
+        except TermError:
+            labels[curie] = None
+            continue
+        pinned = PHYSICAL_INTERACTION_LEVELS.get(curie)
+        labels[curie] = pinned[1] if pinned is not None and on else None
+        if pinned is None:
+            wanted.add(curie)
+    if wanted and on:
+        rows = Term.objects.filter(
+            pk__in=sorted(wanted),
+            label_release_id__in=storable(releases.ids),
+            label_release__status__in=VISIBLE_STATUSES,
+            label_release__is_synthetic=False,
+        ).values_list("pk", "label")
+        for curie, label in rows:
+            labels[curie] = label
+    return labels
+
+
 def independence_links(observations) -> dict:
     """{assertion id: the observation it belongs to}, each observation named
     by the smallest assertion id among the records that describe it.

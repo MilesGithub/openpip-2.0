@@ -14,6 +14,7 @@ class, so a `post` here would demand a POST heading on every page.
 from django.core.exceptions import TooManyFieldsSent
 from django.http import Http404
 from django.utils.cache import patch_vary_headers
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import AllowAny
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
@@ -21,10 +22,27 @@ from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from ..entity_visibility import label_release_set
+from ..neighbourhood import QueryTimedOut
 from ..preconditions import typed_graph_enabled
 from ..visibility import Purpose, ReleaseSet, visible_release_ids
 from .params import ParameterError, Params
 from .throttling import GraphReadThrottle
+
+
+class RequestTimedOut(APIException):
+    """A statement ran past the timeout or the request passed its deadline
+    (graph.neighbourhood.QueryTimedOut). 503, not 504: the API is no gateway,
+    and nginx's own upstream timeout is a 504, so a client can tell them
+    apart. No Retry-After: a cancelled statement is as likely a large request
+    as a loaded server, so the detail says what to narrow, and a client must
+    not repeat the request unchanged."""
+
+    status_code = 503
+    default_detail = (
+        "The request took too long to compute. Narrow it before repeating it: "
+        "fewer seeds or layers, a lower max_edges, or a smaller page_size."
+    )
+    default_code = "timeout"
 
 
 class TypedGraphView(APIView):
@@ -73,6 +91,10 @@ class TypedGraphView(APIView):
             return Response(
                 {"detail": "Too many query parameters.", "errors": []}, status=400
             )
+        if isinstance(exc, QueryTimedOut):
+            # Through DRF, so the body follows the negotiated renderer, as a
+            # 404 does.
+            return super().handle_exception(RequestTimedOut())
         return super().handle_exception(exc)
 
     def check_throttles(self, request):

@@ -85,12 +85,23 @@ These are set in code, not by environment variables.
 | Setting | Value | Where |
 |---|---|---|
 | Login token lifetime | access 1 hour, refresh 7 days; refresh tokens rotate on use | `settings/base.py` `SIMPLE_JWT` |
-| Rate limits | anonymous 600/min, signed-in 1200/min, PSICQUIC 60/min, typed graph reads 300/min and typed graph `resolve` 120/min per caller, security-question answers 10/hour per caller and 10/hour per email address | `settings/base.py` `DEFAULT_THROTTLE_RATES` |
+| Rate limits | anonymous 600/min, signed-in 1200/min, PSICQUIC 60/min, typed graph reads 300/min, typed graph `resolve` 120/min and typed graph `network` and relationship pages 60/min per caller, and typed graph `network` 120/min from everyone combined, which is site-wide only with `REDIS_URL` and otherwise per worker, security-question answers 10/hour per caller and 10/hour per email address | `settings/base.py` `DEFAULT_THROTTLE_RATES` |
 | HTTPS (production) | when `PUBLIC_URL` is `https://`: HTTPS redirect, secure cookies, HSTS 1 hour; trusts `X-Forwarded-Proto: https` from the proxy | `settings/prod.py` |
 | Client address (production) | the last address in `X-Forwarded-For`, which your HTTPS proxy must set | `settings/prod.py` `NUM_PROXIES` |
 | Upload size limit | 500 MB per request | `frontend/nginx.conf` `client_max_body_size` |
 | Media files | `backend/mediafiles/` (development); the `media` volume (production) | `settings/base.py` `MEDIA_ROOT` |
 | Typed graph release files | `backend/graph_files/` (development); the `graph_files` volume (production). Never served, and outside the media and static files ([Typed data format](typed-data-format.md#where-release-files-live)) | `settings/base.py` `GRAPH_FILES_ROOT` |
+
+The typed graph's `network` and relationship routes run each database
+statement that reads relationships or evidence under a statement timeout on
+PostgreSQL, and answer 503 when one is cancelled ([Typed graph](../developer/api/typed-graph.md#errors)). The query
+planner's choices for those statements rest on the statistics of every table
+a release writes, `graph_entity` among them (a `taxon` filter reads it). So
+right after a large release is committed, and until autovacuum's `ANALYZE` has
+run over those tables, a network that otherwise answers in milliseconds can
+time out. Running `ANALYZE;` in the openPIP database by hand ends the lag at
+once; an `ANALYZE` of `graph_relationship` and `graph_evidenceassertion` alone
+is not enough.
 
 ## Generating a secret key
 
