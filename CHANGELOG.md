@@ -156,6 +156,13 @@ No version has been tagged yet. Everything below is in development towards
   but `status` answers 404. With it on, visitors see only releases with a
   `public_view` approval, so the demonstration stays with staff until an
   operator records one.
+- The typed graph's network, relationship and evidence routes under
+  `/api/graph/v1/`, described in the developer guide's Typed graph page:
+  `network` around up to ten seeds, ranked, capped and summarized by the
+  evidence rules under a statement timeout and a request deadline,
+  `relationships/{relationship_ref}` and its paginated `evidence`; the entity
+  page's reference edges take the shared edge shape. Still behind
+  `TYPED_GRAPH_ENABLED`.
 
 ### Fixed
 

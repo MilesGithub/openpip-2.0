@@ -25,6 +25,7 @@ asserts that no other value holds a forbidden one. A hidden term must also cost
 what an unknown term does, and a hidden id what a nonexistent id does.
 """
 
+import json
 import re
 from types import SimpleNamespace
 from urllib.parse import urlencode
@@ -39,11 +40,14 @@ from graph.tests.api_helpers import (
     HIDDEN_KINDS,
     SAMPLES,
     entity_url,
+    evidence_url,
     hidden_evidence,
     hide,
     ids,
     link,
+    network_url,
     pin,
+    relationship_url,
     resolve_url,
     state,
     typed_routes,
@@ -103,6 +107,7 @@ def world_of(kind, staff) -> SimpleNamespace:
         s=s,
         s_primary="P38398",
         v=v,
+        both_state=both_state,
         hidden_edges=hidden_edges,
     )
 
@@ -196,6 +201,22 @@ def assert_seen(client, world, query):
     assert hidden in ids(v["releases"])
     assert f"entity:{world.h.pk}" in ids(v["nodes"])
 
+    # The network: the hidden regulation edge under the default layers, both
+    # encodes edges when named, the hidden release listed.
+    network = body_of(client, network_url(world.v, **query))
+    assert ids(network["edges"]) == [f"relationship:{world.hidden_edges[1].pk}"]
+    assert f"entity:{world.h.pk}" in ids(network["nodes"])
+    layered = body_of(client, network_url(world.v, layers="encodes", **query))
+    assert ids(layered["edges"]) == [
+        f"relationship:{world.both_state.pk}",
+        f"relationship:{world.hidden_edges[0].pk}",
+    ]
+    assert hidden in ids(layered["releases"])
+    page = body_of(client, relationship_url(world.hidden_edges[1], **query))
+    assert ids(page["releases"]) == [hidden]
+    listed = body_of(client, evidence_url(world.hidden_edges[1], **query))
+    assert [row["release"] for row in listed["evidence"]] == [hidden]
+
 
 def assert_hidden(client, world, *, pinned, reads_text):
     """The release is outside the caller's set. A selection of it alone names
@@ -212,6 +233,13 @@ def assert_hidden(client, world, *, pinned, reads_text):
     if pinned:
         assert client.get(entity_url(world.s, **query)).json() == NOT_FOUND
         assert client.get(entity_url(world.v, **query)).json() == NOT_FOUND
+        # The selection names only the hidden release, so the caller's set is
+        # empty: no seed is visible and no relationship exists.
+        for layers in ({}, {"layers": "encodes"}):
+            network = body_of(client, network_url(world.v, **layers, **query))
+            assert (network["nodes"], network["edges"]) == ([], [])
+        for build in (relationship_url, evidence_url):
+            assert client.get(build(world.both_state, **query)).json() == NOT_FOUND
         return
 
     public = f"release:{world.public.pk}"
@@ -227,6 +255,35 @@ def assert_hidden(client, world, *, pinned, reads_text):
     assert ids(v["releases"]) == [public]
     assert [edge["releases"] for edge in v["reference_relationships"]] == [[public]]
     assert ids(v["nodes"]) == [f"entity:{world.s.pk}", f"entity:{world.v.pk}"]
+
+    # The network around V: under the default layers its only candidate is
+    # the hidden regulation edge, so V stands alone; the encodes layer lists
+    # the edge both releases state, through the public one alone, with S's
+    # text as the caller may read it.
+    network = body_of(client, network_url(world.v))
+    assert (ids(network["nodes"]), network["edges"]) == ([f"entity:{world.v.pk}"], [])
+    layered = body_of(client, network_url(world.v, layers="encodes"))
+    [edge] = layered["edges"]
+    assert edge["id"] == f"relationship:{world.both_state.pk}"
+    assert edge["releases"] == [public]
+    assert ids(layered["nodes"]) == [f"entity:{world.s.pk}", f"entity:{world.v.pk}"]
+    labels = {node["id"]: node["label"] for node in layered["nodes"]}
+    assert labels[f"entity:{world.s.pk}"] == (
+        world.s.label if reads_text else world.s_primary
+    )
+    # H is dropped without a word, so its network is empty under any layers.
+    for layers in ({}, {"layers": "encodes"}):
+        empty = body_of(client, network_url(world.h, **layers))
+        assert (empty["nodes"], empty["edges"], empty["warnings"]) == ([], [], [])
+    # The page and the evidence of the edge both releases state show the
+    # public release's part alone.
+    page = body_of(client, relationship_url(world.both_state))
+    assert page["edge"]["releases"] == [public]
+    assert [row["release"] for row in page["by_release"]] == [public]
+    assert ids(page["releases"]) == [public]
+    listed = body_of(client, evidence_url(world.both_state))
+    assert [row["release"] for row in listed["evidence"]] == [public]
+    assert ids(listed["releases"]) == [public]
 
 
 def answer_to(client, term, query) -> tuple:
@@ -251,6 +308,13 @@ def assert_costs_alike(client, world, query):
     if query:
         nowhere = f"{nowhere}?{urlencode(query)}"
     assert page_at(client, entity_url(world.h, **query)) == page_at(client, nowhere)
+    # A hidden edge's page and evidence read like a nonexistent id's.
+    missing = SimpleNamespace(pk=max(edge.pk for edge in world.hidden_edges) + 1_000)
+    for build in (relationship_url, evidence_url):
+        absent = page_at(client, build(missing, **query))
+        assert (absent[0], json.loads(absent[1])) == (404, NOT_FOUND)
+        for edge in world.hidden_edges:
+            assert page_at(client, build(edge, **query)) == absent, edge
 
 
 @pytest.mark.parametrize("caller", ("visitor", "staff"))

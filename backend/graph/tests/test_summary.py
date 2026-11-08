@@ -21,6 +21,7 @@ from graph.models import (
     MethodRole,
     Outcome,
     RelationshipType,
+    Term,
 )
 from graph.summary import (
     ALL_OUTCOMES,
@@ -34,8 +35,9 @@ from graph.summary import (
     independent_count,
     summarize,
     term_label,
+    term_labels,
 )
-from graph.terms import get_or_create_term
+from graph.terms import TermError, get_or_create_term, normalize_curie
 from graph.tests.factories import (
     AssertionParticipantFactory,
     EvidenceAssertionFactory,
@@ -1313,3 +1315,113 @@ def test_covered_assertions_is_c_over_every_relationship(ev):
     assert sorted(counted_edges) == sorted([first.pk, second.pk])
     with pytest.raises(TypeError):
         covered_assertions(releases=releases, filters={"outcomes": {"supported"}})
+
+
+# ── term_labels() ───────────────────────────────────────────────────────────
+
+
+def label_key(term) -> str:
+    """How term_labels keys a term: a row by its pk, text by its normalized
+    CURIE, a malformed CURIE by its own text."""
+    curie = term.pk if isinstance(term, Term) else term
+    try:
+        return normalize_curie(curie)
+    except TermError:
+        return curie
+
+
+def test_term_labels_reads_many_terms_in_one_query_as_term_label_reads_each(
+    ev, django_assert_num_queries
+):
+    hidden = release(public=False)
+    get_or_create_term(
+        "ECO:0000353", "a label visitors may not see", import_run=hidden.run
+    )
+    get_or_create_term("MI:0019", "coimmunoprecipitation", import_run=ev.run)
+    get_or_create_term("MI:0492", "in vitro", import_run=ev.run)
+    unlabelled = TermFactory(curie="MI:9003")
+    publish(ev, hidden)
+    releases = visitor()
+    terms = [
+        "MI:0407",
+        "mi:0915",
+        "ECO:0000353",
+        Term.objects.get(pk="MI:0019"),
+        "MI:0492",
+        unlabelled,
+        "MI:18",
+        "bogus",
+        "MI:9999",
+    ]
+    with django_assert_num_queries(1):
+        labels = term_labels(terms, releases=releases)
+    assert labels == {
+        "MI:0407": "direct interaction",
+        "MI:0915": "physical association",
+        "ECO:0000353": None,
+        "MI:0019": "coimmunoprecipitation",
+        "MI:0492": "in vitro",
+        "MI:9003": None,
+        "MI:18": None,
+        "bogus": None,
+        "MI:9999": None,
+    }
+    for term in terms:
+        assert labels[label_key(term)] == term_label(term, releases=releases), term
+    # A caller who may read the hidden release reads its label from both.
+    for term in ("ECO:0000353", "MI:0019"):
+        assert term_labels([term], releases=staff())[term] == term_label(
+            term, releases=staff()
+        )
+    assert term_labels(["ECO:0000353"], releases=staff()) == {
+        "ECO:0000353": "a label visitors may not see"
+    }
+
+
+def test_term_labels_costs_nothing_for_crosswalk_terms(ev, django_assert_num_queries):
+    releases = visitor()
+    with django_assert_num_queries(0):
+        assert term_labels(["MI:0407", "mi:0915", "MI:18"], releases=releases) == {
+            "MI:0407": "direct interaction",
+            "MI:0915": "physical association",
+            "MI:18": None,
+        }
+        assert term_labels([], releases=releases) == {}
+    with pytest.raises(TypeError):
+        term_labels([12], releases=releases)
+    with pytest.raises(TypeError):
+        term_labels(["MI:0407"], releases=ReleaseSet(frozenset(), frozenset()))
+
+
+def test_term_labels_shows_nothing_while_the_switch_is_off(
+    ev, settings, django_assert_num_queries
+):
+    get_or_create_term("MI:0019", "coimmunoprecipitation", import_run=ev.run)
+    publish(ev)
+    releases = visitor()
+    settings.TYPED_GRAPH_ENABLED = False
+    with django_assert_num_queries(0):
+        labels = term_labels(["MI:0019", "MI:0407", "bogus"], releases=releases)
+    assert labels == {"MI:0019": None, "MI:0407": None, "bogus": None}
+    assert term_label("MI:0407", releases=releases) is None
+
+
+def test_term_labels_shows_no_synthetic_label_and_none_through_a_stale_set(ev):
+    """term_label's other two clauses: a synthetic release labels no term even
+    when the caller's set holds it (D12), and a set issued before the
+    labelling release was withdrawn reads no label."""
+    synthetic = release(is_synthetic=True)
+    get_or_create_term("MI:0018", "SYN-two hybrid", import_run=synthetic.run)
+    get_or_create_term("MI:0019", "coimmunoprecipitation", import_run=ev.run)
+    publish(ev, synthetic)
+    for releases in (visitor(), staff()):
+        assert synthetic.release.pk in releases.ids
+        assert term_labels(["MI:0018"], releases=releases) == {"MI:0018": None}
+        assert term_label("MI:0018", releases=releases) is None
+    releases = visitor()
+    assert term_labels(["MI:0019"], releases=releases) == {
+        "MI:0019": "coimmunoprecipitation"
+    }
+    move(ev.release, WITHDRAWN)
+    assert term_labels(["MI:0019"], releases=releases) == {"MI:0019": None}
+    assert term_label("MI:0019", releases=releases) is None

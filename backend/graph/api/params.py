@@ -12,22 +12,44 @@ is a selection, never checked against what exists: a ref the caller may not
 see must read like one that names nothing.
 """
 
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from .limits import MAX_RELEASES, Q_MAX_CHARS, RESOLVE_MAX_TERMS
+from ..models import ContextFacet
+from ..summary import ContextMatch, ScoreRange
+from ..terms import TermError, normalize_curie, ontology_of
+from .limits import (
+    MAX_CONTEXT_CHARS,
+    MAX_CONTEXT_FACETS,
+    MAX_RELEASES,
+    Q_MAX_CHARS,
+    RESOLVE_MAX_TERMS,
+)
 from .refs import parse_ref
 
 # The most problems one 400 lists: an 8 KB URL must not give a 400 KB body.
 MAX_PROBLEMS = 20
 # Not spaces: labels may contain them.
 TERM_SEPARATORS = re.compile(r"[,\t\r\n]+")
+# A whole number as a ref's digits are written: no sign, no leading zero, at
+# most 19 digits, so int() never meets a string long enough to refuse.
+WHOLE_NUMBER = re.compile(r"0|[1-9][0-9]{0,18}")
+# A score bound, which float() then reads.
+BOUND = re.compile(r"-?(0|[1-9][0-9]*)(\.[0-9]+)?")
+MALFORMED_SCORE = (
+    "score looks like score_type:min:max, with an empty min or max for an open "
+    "bound."
+)
+# The context.<facet> parameters, in documentation order.
+CONTEXT_NAMES = tuple(f"context.{facet}" for facet in ContextFacet.values)
 # How the sentences of Params.refs name a kind: one of them, several of them.
 KIND_WORDS = {
     "entity": ("an entity", "entities"),
     "relationship": ("a relationship", "relationships"),
     "release": ("a release", "releases"),
+    "evidence": ("an evidence row", "evidence rows"),
 }
 
 
@@ -170,12 +192,256 @@ class Params:
         )
         return None
 
-    def taxon(self, allowed) -> int | None:
+    def choices(
+        self, name: str, allowed, *, what: str = "value", limit: int | None = None
+    ) -> tuple[str, ...] | None:
+        """The distinct valid pieces of a repeatable, comma-separated list, in
+        order of first appearance, each one of those `allowed` returns (called
+        only when the parameter is present); None when it is absent. `limit`
+        counts the distinct pieces. Pieces are not stripped, as refs are not.
+        """
+        if name not in self.query:
+            return None
+        pieces = [
+            piece for value in self.query.getlist(name) for piece in value.split(",")
+        ]
+        if not any(pieces):
+            self.add(Problem(name, detail=f"{name} names at least one {what}."))
+            return ()
+        choices = list(allowed())
+        listed = ", ".join(choices) or "none yet"
+        found = []
+        for piece in pieces:
+            if piece not in choices:
+                self.add(
+                    Problem(
+                        name,
+                        piece,
+                        allowed=choices,
+                        detail=f"Unknown {name} {piece!r}. Allowed: {listed}.",
+                    )
+                )
+            elif piece not in found:
+                found.append(piece)
+        if limit is not None and len(found) > limit:
+            self.add(
+                Problem(
+                    name,
+                    limit=limit,
+                    detail=f"{name} names at most {limit} {what}s.",
+                )
+            )
+        return tuple(found)
+
+    def flag(self, name: str) -> bool | None:
+        """true or false, as a bool."""
+        value = self.choice(name, lambda: ["true", "false"])
+        return None if value is None else value == "true"
+
+    def integer(self, name: str, *, floor: int, cap: int) -> int | None:
+        """A whole number from floor to cap, written as a ref's digits are
+        (WHOLE_NUMBER); a longer digit string is the same problem as a value
+        above the cap."""
+        value = self.single(name)
+        if value is None:
+            return None
+        if WHOLE_NUMBER.fullmatch(value) and floor <= int(value) <= cap:
+            return int(value)
+        self.add(
+            Problem(
+                name,
+                value,
+                limit=cap,
+                detail=f"{name} is a whole number from {floor} to {cap:,}.",
+            )
+        )
+        return None
+
+    def ref(self, name: str, kind: str) -> int | None:
+        """The id of one ref of this kind."""
+        value = self.single(name)
+        if value is None:
+            return None
+        pk = parse_ref(value, kind)
+        if pk is None:
+            one, _ = KIND_WORDS[kind]
+            self.add(
+                Problem(name, value, detail=f"{name}: {one} ref looks like {kind}:3.")
+            )
+        return pk
+
+    def taxon(self, allowed, *, name: str = "taxon") -> int | None:
         """The taxon, when it is one of the taxids (ints) `allowed` returns.
         Comparing strings refuses what int() alone would accept: +9606, 9_606,
         other scripts' digits."""
-        value = self.choice("taxon", lambda: [str(pk) for pk in sorted(allowed())])
+        value = self.choice(name, lambda: [str(pk) for pk in sorted(allowed())])
         return None if value is None else int(value)
+
+    def methods(self) -> tuple[str, ...] | None:
+        """The distinct detection methods of the comma-separated `method`, in
+        order of first appearance, each a PSI-MI CURIE in canonical form. A
+        CURIE is normalized, never looked up: a well-formed one that names no
+        term matches nothing, as a well-formed ref does."""
+        if "method" not in self.query:
+            return None
+        pieces = [
+            piece
+            for value in self.query.getlist("method")
+            for piece in value.split(",")
+        ]
+        if not any(pieces):
+            self.add(Problem("method", detail="method names at least one method."))
+            return ()
+        found = []
+        for piece in pieces:
+            try:
+                curie = normalize_curie(piece)
+                psi_mi = ontology_of(curie) == "psi-mi"
+            except TermError:
+                psi_mi = False
+            if not psi_mi:
+                self.add(
+                    Problem(
+                        "method",
+                        piece,
+                        detail=(
+                            "method: a detection method is a PSI-MI CURIE, such as "
+                            "MI:0018."
+                        ),
+                    )
+                )
+            elif curie not in found:
+                found.append(curie)
+        return tuple(found)
+
+    def scores(self, allowed) -> tuple[ScoreRange, ...] | None:
+        """The ranges of the repeatable `score`, each score_type:min:max split
+        from the right, since a slug holds a colon; the type one of the slugs
+        `allowed` returns (called once, when the parameter is present) and
+        named once; each bound empty, for an open one, or a finite decimal
+        number; min at most max. `slug::` selects every assertion with a
+        finite score of the type. A comma is no separator here: a value that
+        holds one is malformed."""
+        if "score" not in self.query:
+            return None
+        slugs = list(allowed())
+        listed = ", ".join(slugs) or "none yet"
+        ranges, named = [], set()
+        for value in self.query.getlist("score"):
+            if "," in value:
+                self.add(Problem("score", value, detail=MALFORMED_SCORE))
+                continue
+            parts = value.rsplit(":", 2)
+            if len(parts) != 3:
+                self.add(Problem("score", value, detail=MALFORMED_SCORE))
+                continue
+            slug, low, high = parts
+            if slug not in slugs:
+                self.add(
+                    Problem(
+                        "score",
+                        value,
+                        allowed=slugs,
+                        detail=f"Unknown score type {slug!r}. Allowed: {listed}.",
+                    )
+                )
+                continue
+            if slug in named:
+                self.add(
+                    Problem("score", value, detail="score names each score type once.")
+                )
+                continue
+            named.add(slug)
+            bounds = []
+            for text in (low, high):
+                if text == "":
+                    bounds.append(None)
+                elif not BOUND.fullmatch(text):
+                    self.add(Problem("score", value, detail=MALFORMED_SCORE))
+                    break
+                elif not math.isfinite(float(text)):
+                    self.add(
+                        Problem(
+                            "score", value, detail="score bounds are finite numbers."
+                        )
+                    )
+                    break
+                else:
+                    bounds.append(float(text))
+            if len(bounds) < 2:
+                continue
+            if (
+                bounds[0] is not None
+                and bounds[1] is not None
+                and bounds[0] > bounds[1]
+            ):
+                self.add(
+                    Problem(
+                        "score", value, detail=f"score: min {low} is above max {high}."
+                    )
+                )
+                continue
+            ranges.append(ScoreRange(slug, *bounds))
+        return tuple(ranges)
+
+    def contexts(self, taxids) -> tuple[ContextMatch, ...] | None:
+        """The matches of the context.<facet> parameters present, in
+        documentation order; None when none is. context.host_taxon is a
+        registered taxid (`taxids` as taxon() takes them). Another facet's
+        value that is a CURIE after stripping matches the term; any other text
+        is matched as written, at most MAX_CONTEXT_CHARS characters and with
+        no control character. At most MAX_CONTEXT_FACETS facets, the problem
+        attributed to the first past the cap once every value has been
+        checked."""
+        present = [name for name in CONTEXT_NAMES if name in self.query]
+        if not present:
+            return None
+        matches = []
+        for name in present:
+            facet = name.removeprefix("context.")
+            if facet == ContextFacet.HOST_TAXON:
+                taxid = self.taxon(taxids, name=name)
+                if taxid is not None:
+                    matches.append(ContextMatch(facet, taxid=taxid))
+                continue
+            value = self.single(name)
+            if value is None:
+                continue
+            if value == "":
+                self.add(Problem(name, detail=f"{name} names a value."))
+                continue
+            try:
+                curie = normalize_curie(value)
+            except TermError:
+                curie = None
+            if curie is not None:
+                matches.append(ContextMatch(facet, term=curie))
+            elif len(value) > MAX_CONTEXT_CHARS:
+                self.add(
+                    Problem(
+                        name,
+                        value,
+                        limit=MAX_CONTEXT_CHARS,
+                        detail=f"{name} is at most {MAX_CONTEXT_CHARS} characters.",
+                    )
+                )
+            elif any(unicodedata.category(letter) == "Cc" for letter in value):
+                self.add(
+                    Problem(name, value, detail=f"{name} holds a control character.")
+                )
+            else:
+                matches.append(ContextMatch(facet, raw=value))
+        if len(present) > MAX_CONTEXT_FACETS:
+            name = present[MAX_CONTEXT_FACETS]
+            self.add(
+                Problem(
+                    name,
+                    self.query.get(name),
+                    limit=MAX_CONTEXT_FACETS,
+                    detail=f"context names at most {MAX_CONTEXT_FACETS} facets.",
+                )
+            )
+        return tuple(matches)
 
     def refs(self, name: str, kind: str, limit: int) -> frozenset | None:
         """The ids of a repeatable, comma-separated list of refs; None when the

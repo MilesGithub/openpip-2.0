@@ -2,19 +2,38 @@
 its name does not start with test_.
 """
 
+import copy
 import datetime
+import itertools
 import re
 from urllib.parse import urlencode
 
+from django.db import connection
 from django.urls import URLResolver, get_resolver
 from django.utils import timezone
 
-from graph.models import ApprovalScope, ParticipantSide, RelationshipType
+from graph.models import (
+    ApprovalScope,
+    AssertionMethod,
+    AssertionParticipant,
+    Entity,
+    EntityType,
+    EvidenceAssertion,
+    EvidenceBasis,
+    Outcome,
+    ParticipantSide,
+    Relationship,
+    RelationshipType,
+    ResolutionBasis,
+    SourceRecord,
+)
 from graph.releases import discard_release, withdraw_release
 from graph.tests.factories import (
+    FAILED_CRITERION,
     AssertionParticipantFactory,
     EvidenceAssertionFactory,
     RelationshipFactory,
+    SourceRecordFactory,
     approvable_release,
     approve,
     evidence_release,
@@ -27,8 +46,11 @@ STATUS = f"{BASE}status"
 VOCABULARIES = f"{BASE}vocabularies"
 RESOLVE = f"{BASE}resolve"
 ENTITY = f"{BASE}entities/{{entity_id}}"
+NETWORK = f"{BASE}network"
+RELATIONSHIP = f"{BASE}relationships/{{relationship_ref}}"
+EVIDENCE = f"{RELATIONSHIP}/evidence"
 # Every path a test names by hand. typed_routes() finds what is served.
-PATHS = {STATUS, VOCABULARIES, RESOLVE, ENTITY}
+PATHS = {STATUS, VOCABULARIES, RESOLVE, ENTITY, NETWORK, RELATIONSHIP, EVIDENCE}
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -42,6 +64,25 @@ def entity_url(entity, **parameters) -> str:
     """The page of this row."""
     url = f"{BASE}entities/entity:{entity.pk}"
     return f"{url}?{urlencode(parameters)}" if parameters else url
+
+
+def network_url(*seeds, **parameters) -> str:
+    """The network around these rows, as one value of seeds. A parameter
+    given a list is repeated, as score is."""
+    seeds = ",".join(f"entity:{seed.pk}" for seed in seeds)
+    return f"{NETWORK}?{urlencode({'seeds': seeds, **parameters}, doseq=True)}"
+
+
+def relationship_url(relationship, **parameters) -> str:
+    """The page of this row. A parameter given a list is repeated."""
+    url = f"{BASE}relationships/relationship:{relationship.pk}"
+    return f"{url}?{urlencode(parameters, doseq=True)}" if parameters else url
+
+
+def evidence_url(relationship, **parameters) -> str:
+    """The evidence list of this row."""
+    url = f"{BASE}relationships/relationship:{relationship.pk}/evidence"
+    return f"{url}?{urlencode(parameters, doseq=True)}" if parameters else url
 
 
 # Each served path, with the requests that reach it: a builder takes the
@@ -63,10 +104,30 @@ SAMPLES = {
         lambda world: entity_url(world.s),
         lambda world: entity_url(world.v),
     ],
+    NETWORK: [
+        lambda world: network_url(world.h),
+        lambda world: network_url(world.s),
+        lambda world: network_url(world.v),
+        lambda world: network_url(world.v, layers="encodes"),
+        lambda world: network_url(world.h, layers="family:reference"),
+        lambda world: network_url(
+            world.h, world.s, world.v, outcome="all", include_partner_edges="true"
+        ),
+    ],
+    RELATIONSHIP: [
+        lambda world: relationship_url(world.hidden_edges[0]),
+        lambda world: relationship_url(world.hidden_edges[1]),
+        lambda world: relationship_url(world.both_state),
+    ],
+    EVIDENCE: [
+        lambda world: evidence_url(world.hidden_edges[0]),
+        lambda world: evidence_url(world.hidden_edges[1]),
+        lambda world: evidence_url(world.both_state),
+    ],
 }
 # The query a served path needs to answer at all, so that a test adding one
 # parameter tests only that.
-REQUIRED = {RESOLVE: "q=x"}
+REQUIRED = {RESOLVE: "q=x", NETWORK: "seeds=entity:1"}
 
 
 def typed_routes():
@@ -123,7 +184,7 @@ def without_ids(text) -> str:
         seen = numbers.setdefault(kind, {})
         return f"{kind}:#{seen.setdefault(pk, len(seen) + 1)}"
 
-    return re.sub(r"\b(entity|relationship|release):(\d+)", numbered, text)
+    return re.sub(r"\b(entity|relationship|release|evidence):(\d+)", numbered, text)
 
 
 def pin(*releases) -> dict:
@@ -164,19 +225,139 @@ def ids(entries) -> list:
 HIDDEN_KINDS = ("unapproved", "withdrawn", "embargoed", "draft", "staged", "discarded")
 
 
-def state(ev, relationship, **fields):
+def state(ev, relationship, *, record=None, participants=None, **fields):
     """An assertion of a release that is still a draft, with its participants,
-    which the assertion's factory does not write. `ev` is evidence_release's."""
+    which the assertion's factory does not write. `ev` is evidence_release's.
+    `record` is a mapped_record() row to state from instead of a fresh one,
+    for a large raw record or a release that stores none; `participants`
+    (side, entity, stated_entity, resolution_basis) tuples written in the
+    given order, the relationship's subject then its object unless given."""
     made = EvidenceAssertionFactory(
         relationship=relationship,
         release=ev.release,
         import_run=ev.run,
-        source_record=mapped_record(ev.release, ev.run),
+        source_record=record or mapped_record(ev.release, ev.run),
         **fields,
     )
-    AssertionParticipantFactory(assertion=made, side=ParticipantSide.SUBJECT)
-    AssertionParticipantFactory(assertion=made, side=ParticipantSide.OBJECT)
+    if participants is None:
+        AssertionParticipantFactory(assertion=made, side=ParticipantSide.SUBJECT)
+        AssertionParticipantFactory(assertion=made, side=ParticipantSide.OBJECT)
+        return made
+    for side, entity, stated_entity, basis in participants:
+        AssertionParticipantFactory(
+            assertion=made,
+            side=side,
+            entity=entity,
+            stated_entity=stated_entity,
+            resolution_basis=basis,
+        )
     return made
+
+
+# Tags one fan_out call's rows, so several calls write distinct keys.
+_FAN_OUTS = itertools.count()
+
+
+def fan_out(seed, n, ev, *, assertions_per_edge=1, outcome=Outcome.SUPPORTED):
+    """The bulk fixture of a high-degree seed: `n` partners of `seed`, a
+    transcriptional_regulation relationship from the seed to each,
+    `assertions_per_edge` assertions of `outcome` on each in `ev`'s draft
+    release (evidence_release's), and both participants of every assertion,
+    in a fixed number of statements whatever `n`. Returns the relationships
+    in partner order.
+
+    The assertions go through the base manager, since the guarded one refuses
+    bulk_create; they are valid by construction, and the guard's derive()
+    sets nothing an assertion has. The participants go through the guarded
+    manager, and make the seed and the partners visible once the release is
+    published. On PostgreSQL the two tables the ranking reads are then
+    ANALYZEd: rows bulk-loaded inside a test transaction carry no statistics,
+    and without them the planner reads the (release, outcome) index, hundreds
+    of times slower. The release stays a draft, so a test may call this
+    several times before it publishes with advance(ev.release, PUBLISHED)."""
+    tag = next(_FAN_OUTS)
+    gene = EntityType.objects.get(slug="gene")
+    regulation = RelationshipType.objects.get(slug="transcriptional_regulation")
+    partners = Entity.objects.bulk_create(
+        [
+            Entity(
+                entity_type=gene,
+                identity_key=f"fan||{tag}|{index}",
+                label=f"FAN-{tag}-{index}",
+                label_key=f"FAN-{tag}-{index}",
+                taxon_id=seed.taxon_id,
+            )
+            for index in range(n)
+        ],
+        batch_size=1000,
+    )
+    relationships = Relationship.objects.bulk_create(
+        [
+            Relationship(
+                relationship_type=regulation, subject=seed, object=partner, ordered=True
+            )
+            for partner in partners
+        ],
+        batch_size=1000,
+    )
+    records = SourceRecord.objects.bulk_create(
+        [
+            SourceRecordFactory.build(
+                release=ev.release,
+                file=ev.file,
+                import_run=ev.run,
+                record_key=f"fan-{tag}-{index}-{repeat}",
+                line_number=2 + index * assertions_per_edge + repeat,
+            )
+            for index in range(n)
+            for repeat in range(assertions_per_edge)
+        ],
+        batch_size=1000,
+    )
+    assertions = EvidenceAssertion._base_manager.bulk_create(
+        [
+            EvidenceAssertion(
+                relationship=relationships[index],
+                release=ev.release,
+                source_record=records[index * assertions_per_edge + repeat],
+                import_run=ev.run,
+                assertion_key="main",
+                outcome=outcome,
+                evidence_basis=EvidenceBasis.EXPERIMENTAL,
+                assertion_method=AssertionMethod.MANUAL_ASSERTION,
+                qualifiers=(
+                    copy.deepcopy(FAILED_CRITERION)
+                    if outcome == Outcome.NOT_SIGNIFICANT
+                    else {}
+                ),
+            )
+            for index in range(n)
+            for repeat in range(assertions_per_edge)
+        ],
+        batch_size=1000,
+    )
+    AssertionParticipant.objects.bulk_create(
+        [
+            AssertionParticipant(
+                assertion=assertion,
+                release=ev.release,
+                side=side,
+                entity=entity,
+                identifier_as_stated=entity.label,
+                resolution_basis=ResolutionBasis.PRIMARY,
+            )
+            for assertion in assertions
+            for side, entity in (
+                (ParticipantSide.SUBJECT, seed),
+                (ParticipantSide.OBJECT, assertion.relationship.object),
+            )
+        ],
+        batch_size=1000,
+    )
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute("ANALYZE graph_relationship, graph_evidenceassertion")
+    return relationships
 
 
 def hidden_evidence(kind):

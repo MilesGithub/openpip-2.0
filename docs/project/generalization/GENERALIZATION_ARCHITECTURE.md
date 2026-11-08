@@ -547,11 +547,13 @@ assertion's release (CASCADE), so it follows the same lifecycle (G3).
 
 **`graph.RelationshipReleaseStats`** (P1, and only if the benchmark needs it).
 Until then, ranking counts the visible assertions through the
-`(relationship, release)` and `(release, outcome)` indexes, within the caps
-and the statement timeout, and reports any candidates a pre-limit cut
-(section 4.5). If the highest-degree real seed misses the agreed latency
-target, P1 adds this table. For each (relationship, release) it would hold
-these additive counts:
+`(relationship, release)` index, within the caps and the statement timeout,
+and reports any candidates a pre-limit cut (section 4.5); the
+`(release, outcome)` index leads with the release, the wrong lead for a
+per-relationship count, and the planner takes it only without statistics.
+If the highest-degree real seed misses the agreed latency target, P1 adds
+this table. For each (relationship, release) it would hold these additive
+counts:
 
 - supported, tested-absent and inconclusive assertions;
 - supported assertions by evidence basis;
@@ -1125,8 +1127,13 @@ These rules are tested on the synthetic release.
   evidence-level filter, by the count of matching assertions. The count is
   taken through the `(relationship, release)` index over a per-seed
   pre-limited candidate set, within the caps and the statement timeout.
-  Whenever the pre-limit cuts candidates, `page.omitted` and a warning say
-  so. Ties are broken by id. Ranking by assertions can favour an observation
+  Each seed's pre-limit keeps its most covered candidates, ties to the
+  lowest id, so a hub shows its best-supported edges whatever order its
+  releases were loaded in; hidden relationships, whose evidence passes the
+  other filters but has none of the requested outcomes, are counted over
+  every candidate of the request, not the pre-limited set. Whenever the
+  pre-limit cuts candidates, `page.omitted` and a warning say so. Ties are
+  broken by ascending id. Ranking by assertions can favour an observation
   that several sources repeat. That is a deliberate trade-off: the assertion
   count comes from an index, while the independent count needs every
   assertion's origin and methods. Every edge that is shown is still
@@ -1455,7 +1462,11 @@ and B-tree indexes.
   `ATOMIC_REQUESTS`, so `SET LOCAL` outside a transaction would do nothing. A
   session-level `SET` would persist on the pooled connection
   (`CONN_MAX_AGE=60`, `backend/openpip/settings/prod.py:26`) and then cut off
-  the legacy `/api/search` on that worker.
+  the legacy `/api/search` on that worker. Implemented by
+  `graph/neighbourhood.py` (`statement_timeout`, `timed`, `QueryTimedOut`)
+  and used by `network` and both relationship routes; the network also
+  holds a request deadline, after which it sends no further statement, so
+  a request ends within about twice the timeout.
 - **Portability.** Schema features stay portable to the SQLite fallback that
   tests use when `DATABASE_URL` is unset
   (`backend/openpip/settings/base.py:89-91`): partial unique constraints,
@@ -2178,10 +2189,10 @@ This step goes into `docs/operator-guide/migrating.md` with the bridge PR.
 | Prefix | `/api/graph/v1/`, one include in `backend/openpip/urls.py` |
 | Switch and gate | Every view subclasses one base view. It raises 404 in `initial()` when the switch is off (except `status`), applies the visibility function, and sets throttles. An architecture test asserts that every `/api/graph/v1/` route uses it |
 | Permissions | Reads are `AllowAny`, declared explicitly because the global default is `IsAuthenticated`. Admin routes are `IsAdminUser` (later, CU1's curator permission) |
-| Throttles | Scoped `EveryCallerRateThrottle` classes (`backend/core/throttling.py:4-18`), on top of the global anon and user limits: `graph_read` 300/min, `graph_resolve` 120/min, `graph_network` 60/min and `graph_export` 20/hour per caller. Also a **site-wide** budget for network calls, because per-caller limits cannot protect three sync gunicorn workers (`docker-compose.prod.yml:41`). These are initial values, set in `DEFAULT_THROTTLE_RATES` and documented |
+| Throttles | Scoped `EveryCallerRateThrottle` classes (`backend/core/throttling.py:4-18`), on top of the global anon and user limits: `graph_read` 300/min, `graph_resolve` 120/min, `graph_network` 60/min (`network` and the relationship page) and `graph_export` 20/hour per caller. Also a **site-wide** budget for network calls, because per-caller limits cannot protect three sync gunicorn workers (`docker-compose.prod.yml:43`); the `network` handler applies it after validation, so a malformed request, which reads no data, spends none of it. These are initial values, set in `DEFAULT_THROTTLE_RATES` and documented |
 | Pagination | Cursor pagination ordered by id for evidence and lists (default 50, max 200). Network responses are capped and report truncation instead of paginating |
 | Hard limits | Initial values, to be confirmed by the benchmark: `q` ≤ 200 characters; ≤ 25 terms per resolve, ≤ 20 candidates each; ≤ 10 seeds; depth 1; ≤ 20 layers; ≤ 50 releases; edges default 250, max 1,000; ≤ 200 per seed; nodes ≤ 500; request body ≤ 64 KB; statement timeout 5 s on PostgreSQL (D8) |
-| Errors | An unknown parameter or value returns 400 with the allowed values, never a confident empty result (the PSICQUIC rule, `backend/psicquic/miql.py:46-59`). Exceeding a cap returns 400; truncating to a cap is reported in `page` |
+| Errors | An unknown parameter or value returns 400 with the allowed values, never a confident empty result (the PSICQUIC rule, `backend/psicquic/miql.py:46-59`). Exceeding a cap returns 400; truncating to a cap is reported in `page`. A statement the timeout cancels, or a network past its request deadline, returns 503 with a body that names what to narrow and no `Retry-After` (D8) |
 | Numbers | NaN and infinity are never emitted (unlike the legacy `_safe_float` path, `backend/interactions/search_service.py:39-43`) |
 | Reserved names | No `format` query parameter, because DRF reserves it |
 | Ids | Opaque strings: `entity:<id>`, `relationship:<id>`, `evidence:<id>`, `release:<id>`. Federated legacy data use `ppi-protein:<pk>`, `ppi-interaction:<pk>` and `ppi-evidence:<pk>`. The first two are copied from the legacy dump and survive a reload. The third is not: see D11 |
@@ -2199,8 +2210,8 @@ All paths are under `/api/graph/v1/`.
 | `GET resolve` | Takes `q`, `namespace`, `taxon`, `entity_type`, `releases` and `browser`. Returns, per term, `{term, status, candidates[{entity, matches: [{kind, namespace, value, case_exact, version_mismatch}]}]}`, where status is `resolved`, `candidate`, `ambiguous` or `unmatched`, counted over distinct entities (section 4.1). Visible entities only | 2 |
 | `GET entities/{entity_id}` | Identity, the identifiers the caller may see (section 3.4) with links, reference relationships, relationship counts by type, releases. Takes `releases` and `browser`. 301 to the survivor when merged | 2 |
 | `GET network` | Bounded neighbourhood; see 7.3 | 2 |
-| `GET relationships/{relationship_ref}` | The claim's definition, endpoints, qualifiers, summary and per-release counts. Takes `releases` and `browser` | 2 |
-| `GET relationships/{relationship_ref}/evidence` | Cursor-paginated assertions with full provenance (7.3). Takes `releases` and `browser` | 2 |
+| `GET relationships/{relationship_ref}` | The claim's definition, endpoints, qualifiers, summary under the network's evidence-level filters (`outcome`, `evidence_basis`, `effect`, `method`, `level`, `score`, `context.<facet>`), so a panel and the network agree, and per-release counts over the assertions that pass every filter but the outcome filter. Takes `releases` and `browser`. Rationed per caller at `graph_network`'s rate, without the site-wide budget | 2 |
+| `GET relationships/{relationship_ref}/evidence` | Keyset-paginated assertions with full provenance (7.3): `after=evidence:<id>` and `page_size`, under the same filters, every outcome unless `outcome` narrows it. Takes `releases` and `browser` | 2 |
 | `GET browsers`, `GET browsers/{slug}` | Gallery list, filtered by the facets brief §6 lists: `q` (title and summary text), `tag` (biology area), `relationship_type` (interaction type), `taxon` (species), `assay`, `year` (header publication year), `status` and `availability`; filters combine, and an unknown value gives 400. Then one instance's configuration, releases with licence and attribution, and computed availability | 2 |
 | `GET datasets`, `GET datasets/{slug}`, `GET releases/{release_id}` | Typed catalogue. Releases without `public_view` appear as metadata only, without counts | 4 (C1) |
 | `GET summary` | Hub figures from the stored statistics of visible releases in the default set, never typed in by hand. Totals add only quantities that add up across releases (section 3.6) | 4 (H1) |
@@ -2216,54 +2227,269 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
 `GET /api/graph/v1/network` takes:
 
 - `seeds`: entity refs, at most 10;
-- `layers`: relationship type slugs or `family:<name>`;
+- `layers`: relationship type slugs or `family:<name>`, at most 20; every
+  non-reference type unless given, so reference types are walked only when
+  named;
 - `releases` or (from B1) `browser`. Without either, the default release set
   excludes superseded releases (section 3.7);
 - `expand`: `reference` adds each seed's reference closure as marked,
-  derived seeds (section 4.6; delivered with X1);
-- `direction`: `out`, `in` or `both`;
-- `outcome`: `supported` (default), `tested_absent`, `inconclusive`,
-  `not_significant` or `all`;
-- `evidence_basis`, `effect`, `method`;
-- `score=<score_type>:<min>:<max>`, repeatable. Each applies only to its own
-  score type, and different types are never pooled;
-- `context.<facet>=<term>`, `taxon`, `include_partner_edges` and
-  `max_edges`.
+  derived seeds (section 4.6; delivered with X1, and a 400 until then);
+- `direction`: `out`, `in` or `both` (the default);
+- `outcome`: a comma-separated list of `supported` (the default),
+  `tested_absent`, `inconclusive` and `not_significant`, or `all`, which
+  stands alone;
+- `evidence_basis`, `effect`, `method` and `level`, each a comma-separated
+  list; `level` applies to the physical family;
+- `score=<score_type>:<min>:<max>`, repeatable, once per score type; an
+  empty bound is open, and `<score_type>::` selects every assertion with a
+  finite score of that type. Each applies only to its own score type, and
+  different types are never pooled;
+- `context.<facet>=<value>` for each of the twelve facets, at most four per
+  request: `host_taxon` takes a taxid, the others a PSI-MI or ECO CURIE,
+  which matches the term, or any other text, which matches the value as
+  written;
+- `taxon`, the partners' taxon: the seed is never dropped for its own;
+- `include_partner_edges` (default `false`) and `max_edges` (default 250, at
+  most 1,000).
+
+`GET /api/graph/v1/network?seeds=entity:7` on the synthetic demonstration,
+the network around SYN-TF1 in the default set (v2), as the API answers it:
 
 ```json
 {
   "api_version": "graph/v1",
-  "query": {"seeds": ["entity:12"], "layers": ["transcriptional_regulation"]},
+  "query": {
+    "seeds": ["entity:7"],
+    "layers": null,
+    "direction": null,
+    "outcome": null,
+    "evidence_basis": null,
+    "effect": null,
+    "method": null,
+    "level": null,
+    "score": null,
+    "context": {},
+    "taxon": null,
+    "include_partner_edges": null,
+    "max_edges": null,
+    "releases": null
+  },
   "nodes": [
-    {"id": "entity:12", "type": "gene", "label": "SYN-TF1", "taxon": 32630,
-     "status": "provisional", "is_seed": true,
-     "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-TF1"}}
+    {
+      "id": "entity:1",
+      "type": "gene",
+      "label": "SYN-G1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G1"},
+      "is_seed": false
+    },
+    {
+      "id": "entity:4",
+      "type": "gene",
+      "label": "SYN-G4",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G4"},
+      "is_seed": false
+    },
+    {
+      "id": "entity:7",
+      "type": "gene",
+      "label": "SYN-TF1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_gene",
+        "value": "SYN-TF1"
+      },
+      "is_seed": true
+    }
   ],
   "edges": [
-    {"id": "relationship:40", "type": "transcriptional_regulation",
-     "family": "regulation", "orientation": "directed",
-     "source": "entity:12", "target": "entity:15",
-     "effect": "activating",
-     "effect_counts": {"activating": 1, "inhibiting": 0, "unknown": 0, "not_stated": 0},
-     "outcome_counts": {"supported": 1, "tested_absent": 0, "inconclusive": 0},
-     "evidence_count": 1, "assertion_count": 1,
-     "distinct": {"publications": 0, "releases": 1, "datasets": 1},
-     "by_basis": {"experimental": 1},
-     "releases": ["release:3"], "is_synthetic": true}
+    {
+      "id": "relationship:5",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:1",
+      "target": "entity:7",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:6",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:1",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:8",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:4",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "unknown",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 1,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    }
   ],
   "releases": [
-    {"id": "release:3",
-     "dataset": {"slug": "synthetic-regulation", "title": "Synthetic regulation example"},
-     "version": "v1", "status": "published", "superseded": false,
-     "is_synthetic": true,
-     "licence": {"name": "MIT License", "spdx_id": null,
-                 "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"},
-     "attribution": "Copyright (c) 2016-2026 The openPIP authors",
-     "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; …",
-     "scopes": ["internal"]}
+    {
+      "id": "release:2",
+      "dataset": {
+        "slug": "synthetic-regulation",
+        "title": "Synthetic regulation example"
+      },
+      "version": "v2",
+      "status": "published",
+      "superseded": false,
+      "is_synthetic": true,
+      "licence": {
+        "name": "MIT License",
+        "spdx_id": null,
+        "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+      },
+      "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+      "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+      "scopes": ["internal"]
+    }
   ],
-  "page": {"truncated": false, "max_edges": 250, "omitted": {}},
-  "warnings": [{"code": "tested_absent_hidden", "detail": "1 tested-absent assertion hidden"}]
+  "page": {
+    "truncated": false,
+    "max_edges": 250,
+    "omitted": {},
+    "hidden": {
+      "supported": 0,
+      "tested_absent": 1,
+      "inconclusive": 0,
+      "not_significant": 0
+    }
+  },
+  "warnings": [
+    {
+      "code": "tested_absent_hidden",
+      "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+    }
+  ]
 }
 ```
 
@@ -2281,13 +2507,21 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
 - Federated legacy edges also carry `provenance_fidelity: "dataset_level"`,
   and every value held per interaction, `negative` included, at edge level
   with "contributing dataset unknown" (D11).
-- The query count is constant, independent of fan-out, and tested with
-  `django_assert_max_num_queries`.
+- The query count is bounded by the number of seeds and independent of
+  fan-out, and tested with `django_assert_max_num_queries`: one candidate
+  statement per visible seed, the rest fixed.
+- Every edge carries the summary's figures (`shown`, `outcome_counts` with
+  its four keys, `independent_outcome_counts`, `level_assigned`,
+  `tested_levels`, `outside_filters` and `outside_outcome_counts`), so
+  one edge shape serves the network, the relationship page and the entity
+  page's reference relationships.
 
 An evidence row (`relationships/{ref}/evidence`) carries:
 
-- `id`, and the release: id, dataset, version, `is_synthetic`, citation,
-  licence, attribution;
+- `id`, and the release's ref, whose entry (dataset, version,
+  `is_synthetic`, licence, attribution, note of changes, scopes) is in the
+  response's `releases`; "citation" and the participants' "roles" are
+  dropped until a model holds them (milestone M1);
 - the source record key and line number;
 - `outcome`, `evidence_basis`, `assertion_method`, the ECO term, `effect` and
   `effect_as_stated`, `genetic_sign`, `interaction_type`,
@@ -2295,8 +2529,9 @@ An evidence row (`relationships/{ref}/evidence`) carries:
 - the methods, each with role, CURIE and label;
 - the scores, each with type, label, value, raw value, value kind, direction
   and unit;
-- the context facets, and the participants (as stated, resolution basis,
-  roles);
+- the context facets, and the participants (side, entity, the isoform
+  stated when the caller may see it, identifier as stated, resolution
+  basis);
 - `qualifiers`, `evidence_group` and the publications, with their roles.
 
 The verbatim `raw` record is included only for staff, or when the release has
@@ -3259,7 +3494,8 @@ to A19):
 - S11 ★: the site-wide network budget's initial rate is 120/min
   (`graph_network_site`), twice `graph_network`, so one caller alone cannot
   spend it. It keeps the workers free only while a network call averages
-  under 1.5 s (3 × 60 / 120); at the 5 s timeout they saturate at 36/min.
+  under 1.5 s (3 × 60 / 120); a network request ends within about 10 s
+  (N1), so they saturate at 18/min.
   The one-minute window admits all 120 at once, and P1 decides whether
   `2/sec` replaces it. All five rates land in A1, with classes for
   `graph_read`, `graph_resolve`, `graph_network` and the budget;
@@ -3317,6 +3553,124 @@ to A19):
 
 What A2, B1, F1, F4, X1, C1, H1, E1, AD1, L2, P1, P5 and RF1a take over from
 A1 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**A2's specification** took these decisions, N1 to N18 as its PR lists
+them, after four independent reviews, whose probes prototyped it on
+PostgreSQL, and three audits. Those marked ★ are flagged to the owner, and a
+question left unanswered takes its default (OPEN_QUESTIONS.md, B1, B10, C4,
+A14, A15 and A21 to A36):
+
+- N1 ★: a statement the timeout cancels, or a network past its request
+  deadline, answers 503 `{"detail": "The request took too long to compute.
+  Narrow it before repeating it: fewer seeds or layers, a lower max_edges,
+  or a smaller page_size."}` with no `Retry-After`, since a cancelled
+  statement is as likely a large request as a loaded server and a client
+  must not retry it unchanged; the 5 s statement timeout covers `network`
+  and both relationship routes, and the request deadline (5 s from the
+  first statement, after which no further statement is sent, so a request
+  ends within about 10 s) covers the network, whose statement count grows
+  with the seeds (7.1, D8; open question A21);
+- N2 ★: the statement count is bounded by the seed count and independent of
+  fan-out, which corrects 7.3's "constant"; one statement per seed stands
+  under X1's derived seeds, which X1 caps or batches (A22);
+- N3 ★: one per-seed number, 200 candidates per seed, the most covered
+  first and ties to the lowest id, among relationships with covered
+  evidence within the layers and direction; the ranking is global over the
+  union and there is no separate per-seed result cap; the pre-limit is a
+  SQL `LIMIT`, and the ranking and caps run over those SQL-bounded rows;
+  `MAX_EDGES` stays 1,000, with `summarize`'s fetch of 50,000 rows measured
+  at 1.9 s on the prototype (A23);
+- N4: ties are broken by ascending id (4.5);
+- N5 ★: the caps refuse edges by rule: the first edge refused for
+  `max_edges` ends the walk, while an edge refused for the node cap (500)
+  is omitted and the walk goes on, so every edge between two shown nodes
+  that the edge budget allows is shown; `page.omitted` holds `candidates`
+  (lookups the pre-limit cut) and `edges` (ranked candidates refused), and
+  `warnings` say which cap refused how many (A24);
+- N6 ★: a relationship whose only visible evidence is tested-absent,
+  inconclusive or not significant exists: its page is 200 with
+  `shown: false`, and in a network it is hidden and counted in
+  `page.hidden` (4.5; A25);
+- N7 ★: `layers` absent means every non-reference type, reference types
+  are layers when named (`encodes`, `isoform_of`, `family:reference`), and
+  `expand` is a 400 until X1; both relationship routes take the network's
+  evidence-level filters, and the evidence list's default outcome set is
+  every outcome (7.2; A26);
+- N8 ★: `outcome` is a comma-separated list, or `all`, and so are
+  `evidence_basis`, `effect`, `method` and `level`, distinct pieces in order
+  of first appearance; `direction` defaults to `both`;
+  `include_partner_edges` is `true`/`false`, default `false`,
+  direction-free, within `max_edges`, adding no node and looked up only
+  when the edge budget has room; `taxon` filters the partners, and the seed
+  is never dropped for its own taxon; the page's per-release counts are
+  `by_release` over the assertions that pass every filter but the outcome
+  filter (7.3; A27);
+- N9 ★: `status.limits` publishes the ten network and evidence caps
+  (`max_seeds`, `max_layers`, `max_context_facets`, `default_max_edges`,
+  `max_edges`, `candidates_per_seed`, `max_nodes`, `evidence_page_size`,
+  `evidence_max_page_size`, `evidence_page_raw_chars`), amending open
+  question A14 (A28);
+- N10 ★: evidence pages go by keyset, `after=evidence:<id>` and `page_size`
+  (default 50, at most 200, a 400 above), with `page: {page_size, next}`
+  and the list keyed `evidence`; DRF's `CursorPagination` is not used (it
+  answers 404 on a bad cursor, clamps silently and emits absolute links
+  under `results`); an `after` beyond 64 bits is an empty page without a
+  query (7.1; A29);
+- N11 ★: hidden edges are reported as relationships per outcome in
+  `page.hidden`, always four keys, with one `<outcome>_hidden` warning per
+  non-zero count, computed over every candidate of the request in one
+  aggregate, exact, never over the pre-limited rows (open questions B1 and
+  B10; A30);
+- N12 ★: `raw` as open question C4 states it (staff, or an effective
+  `public_view`), `null` without stored raw rows; the gate hides nothing
+  from anyone who may see the row today and guards B1's instance sets and
+  later roles; an evidence row names its release by ref beside the
+  response's entries, with no inline copy, no `citation` and no participant
+  `roles` before M1; publication text is the first writer's until R1/M1
+  records its provenance (A31);
+- N13 ★: the relationship page throttles under `graph_network` per caller,
+  the network's rate, without the site-wide budget, since summarizing a
+  relationship's evidence grows with the data and no cap bounds it; the
+  evidence list stays under `graph_read`; both run under the statement
+  timeout (7.1; A32);
+- N14: `score=<slug>:<min>:<max>` is split from the right; an unknown slug
+  is a 400 listing the registered slugs; a bound outside the registry's
+  range is a selection that matches nothing; `<slug>::` means "has a finite
+  score of this type"; `context.<facet>` are twelve explicit names, a CURIE
+  (after stripping) matching the term, other text the value as written, and
+  `host_taxon` a taxid; `genetic_sign` is not a parameter yet;
+  `term_labels` joins `graph/summary.py`, keyed by `pk` or normalized CURIE
+  and taking the may-read set; the edge shape carries every `EdgeSummary`
+  figure (`shown`, `qualifiers`, `independent_outcome_counts`,
+  `level_assigned`, `tested_levels`, `outside_filters`,
+  `outside_outcome_counts`), so F3 needs no second shape;
+- N15 ★: an evidence page ends early when the readable `raw` records it
+  holds pass 2,000,000 characters (`evidence_page_raw_chars`), `next`
+  naming the last delivered row, `page_size` staying the row cap: a page of
+  200 megabyte-scale records would otherwise be rendered in a worker's
+  memory; the characters are counted in the database and only the
+  delivered rows' readable records are read, so a worker reads no raw
+  record the page does not deliver (A33);
+- N16 ★: the site-wide budget is applied by the network handler after
+  validation, not listed on the view, so a 400, a 401, a 406 or a request a
+  per-caller limit refused spends none, and a request that reaches the
+  computation spends it whether it answers 200 or 503;
+  IMPLEMENTATION_PLAN.md's "the budget last" is corrected (7.1; A34);
+- N17 ★: one `score` range per score type and at most four `context.*`
+  facets per request (`max_context_facets`, published), because every such
+  filter is copied into every per-seed statement and PostgreSQL's planning
+  of the statement grows faster than linearly with their number (7 ms,
+  117 ms and 1.7 s at 1, 10 and 20 ranges on the prototype; 50 killed the
+  probe's backend); with both caps, a ten-seed request using every
+  filter kind still takes 1.3–2.4 s, mostly planning, which P1 and P8
+  take over (A35);
+- N18 ★: one edge shape: the entity page's `reference_relationships[]` are
+  edges of the same shape too, A1's eight keys keeping their position and
+  the summary's figures following, at no added query, so F1 types one edge
+  and F2 has every channel on every edge (S23; A36).
+
+What B1, F1, F2, F3, F4, X1, E1, L2, R1, R2, M1, P1 and P8 take over from A2
+is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

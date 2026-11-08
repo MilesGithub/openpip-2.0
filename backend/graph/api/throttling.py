@@ -25,8 +25,12 @@ class GraphNetworkThrottle(EveryCallerRateThrottle):
 
 class GraphNetworkBudgetThrottle(SimpleRateThrottle):
     """One counter for every caller: per-caller limits cannot protect three
-    sync gunicorn workers. A route lists it last, so it counts only requests
-    every per-caller limit let through.
+    sync gunicorn workers. No route lists it: the network handler applies it
+    itself, after validation and before any read, so it counts only requests
+    that reach the computation, whether they answer 200 or 503. A malformed
+    request, one a per-caller limit refused, a 401 and a 406 spend nothing.
+    Listed on the view it would count in initial(), before the handler, and
+    a stream of zero-query 400s could deny the route to everyone.
 
     It is site-wide only through a shared cache (REDIS_URL): with the
     local-memory cache each worker counts alone, so the bound is three times

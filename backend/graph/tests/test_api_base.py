@@ -40,7 +40,10 @@ from graph.models import ApprovalScope, EntityStatus
 from graph.tests.api_helpers import (
     BASE,
     ENTITY,
+    EVIDENCE,
+    NETWORK,
     PATHS,
+    RELATIONSHIP,
     REQUIRED,
     RESOLVE,
     SAMPLES,
@@ -408,7 +411,8 @@ def test_the_error_list_is_bounded(switch_on, visitor_client):
 
 
 def test_a_ref_problem_reads_for_every_kind():
-    # No route takes a list of entity refs yet, so no route shows these.
+    # The network's seeds show these; the collector is pinned here on its own,
+    # under the name that route gives it.
     many = ",".join(f"entity:{index}" for index in range(11))
     details = []
     for value in ("release:3", many, ","):
@@ -422,7 +426,18 @@ def test_a_ref_problem_reads_for_every_kind():
     ]
 
 
-@pytest.mark.parametrize("path", (STATUS, VOCABULARIES, RESOLVE, reachable(ENTITY)))
+@pytest.mark.parametrize(
+    "path",
+    (
+        STATUS,
+        VOCABULARIES,
+        RESOLVE,
+        reachable(ENTITY),
+        NETWORK,
+        reachable(RELATIONSHIP),
+        reachable(EVIDENCE),
+    ),
+)
 def test_too_many_parameters_is_a_json_400(path, switch_on, visitor_client):
     # Django refuses the query string from the 1,001st field, in DRF's
     # negotiation, and would answer with its HTML 400.
@@ -544,7 +559,8 @@ def test_each_graph_scope_has_a_rate_and_each_class_a_scope(settings):
     for throttle in classes:
         assert throttle.scope.startswith("graph_")
         assert throttle().rate == rates[throttle.scope]
-    # No route carries it yet, so no request can show that it counts accounts.
+    # The network and the relationship page carry it; the per-account
+    # parametrization below proves it counts accounts.
     assert issubclass(GraphNetworkThrottle, EveryCallerRateThrottle)
 
 
@@ -581,20 +597,25 @@ def test_resolve_has_its_own_scope(switch_on, visitor_client, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "path, throttle, scope",
+    "path, throttle, scope, first",
     [
-        (VOCABULARIES, GraphReadThrottle, "graph_read"),
-        (f"{RESOLVE}?q=x", GraphResolveThrottle, "graph_resolve"),
+        (VOCABULARIES, GraphReadThrottle, "graph_read", 200),
+        (f"{RESOLVE}?q=x", GraphResolveThrottle, "graph_resolve", 200),
+        (f"{NETWORK}?seeds=entity:1", GraphNetworkThrottle, "graph_network", 200),
+        (reachable(RELATIONSHIP), GraphNetworkThrottle, "graph_network", 404),
+        (reachable(EVIDENCE), GraphReadThrottle, "graph_read", 404),
     ],
 )
 def test_a_logged_in_caller_is_counted_per_account(
-    path, throttle, scope, switch_on, user_auth_client, regular_user, monkeypatch
+    path, throttle, scope, first, switch_on, user_auth_client, regular_user, monkeypatch
 ):
     # AnonRateThrottle keys no authenticated request, so a scope built on it
-    # would stop applying at login, and anyone can register.
+    # would stop applying at login, and anyone can register. `first` is what
+    # the route answers with no data: a throttle counts in initial(), before
+    # a handler's 404.
     monkeypatch.setattr(throttle, "THROTTLE_RATES", {scope: "1/min"})
     codes = [user_auth_client.get(path).status_code for _ in range(2)]
-    assert codes == [200, 429]
+    assert codes == [first, 429]
     assert len(cache.get(f"throttle_{scope}_user-{regular_user.pk}", [])) == 1
     assert history(scope) == []
 

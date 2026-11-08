@@ -12,8 +12,8 @@ is recorded, and the questions it raised are decided. T1 (CI) and the
 legacy reset warning are merged into the fork's `main` (PRs #1 and #2), and
 so are G1 to G5 (PRs #4 to #7, and #9, which brought G5's PR #8 to main);
 G6 adds the synthetic demonstration release and its loader; A1 adds the
-read API's foundation; nothing else described here as proposed has been
-implemented yet.
+read API's foundation; A2 adds the network, relationship and evidence
+routes; nothing else described here as proposed has been implemented yet.
 
 | File | Contents |
 |---|---|

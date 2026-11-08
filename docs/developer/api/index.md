@@ -86,7 +86,9 @@ Validation errors name the offending fields instead:
 | 429 | Rate limit exceeded. The body says how many seconds to wait. |
 
 The typed graph API ([Typed graph](typed-graph.md)) adds an `errors` list
-naming each parameter and its allowed values.
+naming each parameter and its allowed values, and its `network` and
+relationship routes can answer 503 when a request took too long
+([Typed graph](typed-graph.md#errors)).
 
 PSICQUIC errors are plain text, not JSON. See the
 [PSICQUIC page](../psicquic.md#errors).
@@ -100,6 +102,8 @@ PSICQUIC errors are plain text, not JSON. See the
 | PSICQUIC, per IP address, or per account when logged in | 60 requests per minute |
 | Typed graph reads, per IP address, or per account when logged in | 300 requests per minute |
 | Typed graph `resolve`, per IP address, or per account when logged in | 120 requests per minute |
+| Typed graph `network` and relationship pages, per IP address, or per account when logged in | 60 requests per minute |
+| Typed graph `network`, from everyone combined | 120 requests per minute |
 | Security-question answers, per IP address, or per account when logged in | 10 per hour |
 | Security-question answers about any one email address, from everyone combined | 10 per hour |
 
@@ -107,13 +111,15 @@ A request over the limit gets 429.
 
 ## Pagination
 
-Only one endpoint is paginated:
+Two endpoints are paginated:
 [`GET /api/proteins`](proteins-and-search.md#get-apiproteins) takes `limit` and
-`offset`. Every other list returns all its results in one response. Lists that
-could grow large are bounded: search returns the networks for the proteins you
-ask for, notifications return the newest 50, user search returns at most 10
-matches, and the typed graph's `resolve` returns at most 20 candidates per
-term.
+`offset`, and the typed graph's evidence list
+([`GET /api/graph/v1/relationships/{relationship_ref}/evidence`](typed-graph.md#get-apigraphv1relationshipsrelationship_refevidence))
+takes `after` and `page_size`. Every other list returns all its results in one
+response. Lists that could grow large are bounded: search returns the networks
+for the proteins you ask for, notifications return the newest 50, user search
+returns at most 10 matches, the typed graph's `resolve` returns at most 20
+candidates per term, and its `network` is capped and reports what it cut.
 
 ## Cross-origin requests
 

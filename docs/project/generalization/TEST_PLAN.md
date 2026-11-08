@@ -857,8 +857,9 @@ whose dataset id and name both match.
 
 ### 5.12 Performance (A2, X1, P1)
 
-- **Caps live in SQL.** Caps and per-seed pre-limits are applied inside SQL,
-  not after building Python lists. A test with a high-degree seed (thousands
+- **Caps live in SQL.** Per-seed pre-limits are SQL `LIMIT`s, one statement
+  per seed; the edge and node caps are applied over those SQL-bounded rows,
+  never over an unbounded list. A test with a high-degree seed (thousands
   of partners, made with factories) returns within the edge and per-seed caps
   in a bounded number of queries, and reports what the pre-limit cut.
 - **Ranking** counts visible assertions through the

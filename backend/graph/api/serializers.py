@@ -49,6 +49,16 @@ class LimitsSerializer(serializers.Serializer):
     resolve_max_terms = serializers.IntegerField()
     resolve_max_candidates = serializers.IntegerField()
     max_releases = serializers.IntegerField()
+    max_seeds = serializers.IntegerField()
+    max_layers = serializers.IntegerField()
+    max_context_facets = serializers.IntegerField()
+    default_max_edges = serializers.IntegerField()
+    max_edges = serializers.IntegerField()
+    candidates_per_seed = serializers.IntegerField()
+    max_nodes = serializers.IntegerField()
+    evidence_page_size = serializers.IntegerField()
+    evidence_max_page_size = serializers.IntegerField()
+    evidence_page_raw_chars = serializers.IntegerField()
     throttles = serializers.DictField(child=serializers.CharField())
 
 
@@ -209,6 +219,50 @@ class WarningSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
+class DistinctSerializer(serializers.Serializer):
+    publications = serializers.IntegerField()
+    releases = serializers.IntegerField()
+    datasets = serializers.IntegerField()
+
+
+class EdgeSerializer(serializers.Serializer):
+    """One relationship as the network, the relationship page and the entity
+    page show it (architecture §7.3): the eight keys of the first version
+    first, then every figure of its summary. v1 allows only additive change,
+    so it has one edge shape, built by shapes.edge."""
+
+    id = serializers.CharField()
+    type = serializers.CharField()
+    family = serializers.CharField()
+    orientation = serializers.CharField()
+    source = serializers.CharField()
+    target = serializers.CharField()
+    releases = serializers.ListField(child=serializers.CharField())
+    is_synthetic = serializers.BooleanField()
+    qualifiers = serializers.JSONField()
+    shown = serializers.BooleanField()
+    # Null without covered support.
+    effect = serializers.CharField(allow_null=True)
+    effect_counts = serializers.DictField(child=serializers.IntegerField())
+    genetic_sign = serializers.CharField(allow_null=True)
+    sign_counts = serializers.DictField(child=serializers.IntegerField())
+    outcome_counts = serializers.DictField(child=serializers.IntegerField())
+    independent_outcome_counts = serializers.DictField(child=serializers.IntegerField())
+    assertion_count = serializers.IntegerField()
+    evidence_count = serializers.IntegerField()
+    distinct = DistinctSerializer()
+    by_basis = serializers.DictField(child=serializers.IntegerField())
+    # Physical family only, and only with covered support.
+    level = serializers.CharField(allow_null=True)
+    level_counts = serializers.DictField(child=serializers.IntegerField())
+    level_assigned = serializers.BooleanField(allow_null=True)
+    tested_levels = serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField())
+    )
+    outside_filters = serializers.IntegerField()
+    outside_outcome_counts = serializers.DictField(child=serializers.IntegerField())
+
+
 # ── Resolve ─────────────────────────────────────────────────────────────────
 
 
@@ -270,20 +324,6 @@ class IdentifierSerializer(serializers.Serializer):
     url = serializers.CharField(allow_null=True)
 
 
-class ReferenceRelationshipSerializer(serializers.Serializer):
-    """The keys and types of an edge of architecture §7.3: v1 allows only
-    additive change, so it has one edge shape."""
-
-    id = serializers.CharField()
-    type = serializers.CharField()
-    family = serializers.CharField()
-    orientation = serializers.CharField()
-    source = serializers.CharField()
-    target = serializers.CharField()
-    releases = serializers.ListField(child=serializers.CharField())
-    is_synthetic = serializers.BooleanField()
-
-
 class EntityQuerySerializer(serializers.Serializer):
     entity_id = serializers.CharField()
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
@@ -296,7 +336,209 @@ class EntitySerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True)
     created_by_release = serializers.CharField(allow_null=True)
     identifiers = IdentifierSerializer(many=True)
-    reference_relationships = ReferenceRelationshipSerializer(many=True)
+    reference_relationships = EdgeSerializer(many=True)
     nodes = EntityNodeSerializer(many=True)
     relationship_counts = serializers.DictField(child=serializers.IntegerField())
     releases = ReleaseEntrySerializer(many=True)
+
+
+# ── Network ─────────────────────────────────────────────────────────────────
+
+
+class NetworkNodeSerializer(EntityNodeSerializer):
+    is_seed = serializers.BooleanField()
+
+
+class NetworkQuerySerializer(serializers.Serializer):
+    seeds = serializers.ListField(child=serializers.CharField())
+    layers = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    direction = serializers.CharField(allow_null=True)
+    outcome = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    evidence_basis = serializers.ListField(
+        child=serializers.CharField(), allow_null=True
+    )
+    effect = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    method = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    level = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    score = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    # {facet: value} of the context.<facet> parameters given; {} for none.
+    context = serializers.DictField(child=serializers.CharField())
+    taxon = serializers.IntegerField(allow_null=True)
+    include_partner_edges = serializers.BooleanField(allow_null=True)
+    max_edges = serializers.IntegerField(allow_null=True)
+    releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+
+
+class NetworkPageSerializer(serializers.Serializer):
+    truncated = serializers.BooleanField()
+    max_edges = serializers.IntegerField()
+    omitted = serializers.DictField(child=serializers.IntegerField())
+    hidden = serializers.DictField(child=serializers.IntegerField())
+
+
+class NetworkSerializer(serializers.Serializer):
+    api_version = serializers.CharField()
+    query = NetworkQuerySerializer()
+    nodes = NetworkNodeSerializer(many=True)
+    edges = EdgeSerializer(many=True)
+    releases = ReleaseEntrySerializer(many=True)
+    page = NetworkPageSerializer()
+    warnings = WarningSerializer(many=True)
+
+
+# ── Relationships ───────────────────────────────────────────────────────────
+
+
+class RelationshipQuerySerializer(serializers.Serializer):
+    relationship_ref = serializers.CharField()
+    outcome = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    evidence_basis = serializers.ListField(
+        child=serializers.CharField(), allow_null=True
+    )
+    effect = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    method = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    level = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    score = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    context = serializers.DictField(child=serializers.CharField())
+    releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+
+
+class ReleaseCountsSerializer(serializers.Serializer):
+    release = serializers.CharField()
+    outcome_counts = serializers.DictField(child=serializers.IntegerField())
+
+
+class RelationshipSerializer(serializers.Serializer):
+    api_version = serializers.CharField()
+    query = RelationshipQuerySerializer()
+    edge = EdgeSerializer()
+    definition = serializers.CharField(allow_blank=True)
+    nodes = EntityNodeSerializer(many=True)
+    by_release = ReleaseCountsSerializer(many=True)
+    releases = ReleaseEntrySerializer(many=True)
+
+
+class EvidenceQuerySerializer(serializers.Serializer):
+    relationship_ref = serializers.CharField()
+    outcome = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    evidence_basis = serializers.ListField(
+        child=serializers.CharField(), allow_null=True
+    )
+    effect = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    method = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    level = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    score = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    context = serializers.DictField(child=serializers.CharField())
+    after = serializers.CharField(allow_null=True)
+    page_size = serializers.IntegerField(allow_null=True)
+    releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+
+
+class TermRefSerializer(serializers.Serializer):
+    curie = serializers.CharField()
+    # Null when the caller may not read the release that stated it.
+    label = serializers.CharField(allow_null=True)
+
+
+class SourceRecordSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    line_number = serializers.IntegerField()
+    # The verbatim record, or null when the caller may not read it or the
+    # release stores none.
+    raw = serializers.JSONField(allow_null=True)
+
+
+class MethodSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    curie = serializers.CharField()
+    label = serializers.CharField(allow_null=True)
+
+
+class ScoreSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    label = serializers.CharField()
+    # Null when the raw value gives no finite number.
+    value = serializers.FloatField(allow_null=True)
+    raw_value = serializers.CharField()
+    value_kind = serializers.CharField()
+    direction = serializers.CharField()
+    unit = serializers.CharField(allow_null=True)
+
+
+class ContextSerializer(serializers.Serializer):
+    facet = serializers.CharField()
+    term = TermRefSerializer(allow_null=True)
+    taxon = serializers.IntegerField(allow_null=True)
+    label = serializers.CharField(allow_blank=True)
+    raw_value = serializers.CharField()
+
+
+class ParticipantSerializer(serializers.Serializer):
+    side = serializers.CharField()
+    entity = serializers.CharField()
+    # The isoform the source named, when the caller may see it.
+    stated_entity = serializers.CharField(allow_null=True)
+    identifier_as_stated = serializers.CharField()
+    resolution_basis = serializers.CharField()
+
+
+class PublicationSerializer(serializers.Serializer):
+    pmid = serializers.CharField(allow_null=True)
+    doi = serializers.CharField(allow_null=True)
+    pmcid = serializers.CharField(allow_null=True)
+    imex_id = serializers.CharField(allow_null=True)
+    local_key = serializers.CharField(allow_null=True)
+    title = serializers.CharField(allow_blank=True)
+    authors = serializers.CharField(allow_blank=True)
+    journal = serializers.CharField(allow_blank=True)
+    year = serializers.IntegerField(allow_null=True)
+    url = serializers.CharField(allow_null=True)
+    is_synthetic = serializers.BooleanField()
+
+
+class EvidencePublicationSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    publication = PublicationSerializer()
+
+
+class EvidenceRowSerializer(serializers.Serializer):
+    """One assertion with its provenance (architecture §7.3), built by
+    shapes.evidence_rows."""
+
+    id = serializers.CharField()
+    release = serializers.CharField()
+    # Null for a row with no stored record, which no row has yet.
+    record = SourceRecordSerializer(allow_null=True)
+    outcome = serializers.CharField()
+    evidence_basis = serializers.CharField()
+    assertion_method = serializers.CharField()
+    eco_term = TermRefSerializer(allow_null=True)
+    # Null when the source states none.
+    effect = serializers.CharField(allow_null=True)
+    effect_as_stated = serializers.CharField(allow_blank=True)
+    genetic_sign = serializers.CharField(allow_null=True)
+    interaction_type = TermRefSerializer(allow_null=True)
+    # Null outside the physical family.
+    interaction_level = serializers.CharField(allow_null=True)
+    relationship_as_stated = serializers.CharField(allow_blank=True)
+    methods = MethodSerializer(many=True)
+    scores = ScoreSerializer(many=True)
+    contexts = ContextSerializer(many=True)
+    participants = ParticipantSerializer(many=True)
+    qualifiers = serializers.JSONField()
+    evidence_group = serializers.CharField(allow_blank=True)
+    publications = EvidencePublicationSerializer(many=True)
+
+
+class EvidencePageSerializer(serializers.Serializer):
+    page_size = serializers.IntegerField()
+    # The ref of the page's last row when more rows follow.
+    next = serializers.CharField(allow_null=True)
+
+
+class EvidenceSerializer(serializers.Serializer):
+    api_version = serializers.CharField()
+    query = EvidenceQuerySerializer()
+    evidence = EvidenceRowSerializer(many=True)
+    releases = ReleaseEntrySerializer(many=True)
+    page = EvidencePageSerializer()
