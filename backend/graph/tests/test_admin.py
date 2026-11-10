@@ -74,6 +74,7 @@ from graph.tests.factories import (
     approvable_release,
     approve,
 )
+from graph.tests.test_isolation import NEW_APPS
 from graph.tests.test_provenance import advance
 
 COMPLETE = DueDiligenceStatus.COMPLETE
@@ -129,7 +130,6 @@ VIEW_ONLY = (
     UsageApproval,
     DueDiligenceChange,
 )
-GRAPH_DIR = Path(apps.get_app_config("graph").path)
 
 
 def name_of(model) -> str:
@@ -867,10 +867,12 @@ def test_a_licence_snapshot_offers_releases_by_dataset_and_version(browser, swit
 # ── Plain text ──────────────────────────────────────────────────────────────
 
 
-def test_nothing_in_the_graph_app_marks_text_as_html():
-    for path in sorted(GRAPH_DIR.rglob("*.py")):
-        if "tests" in path.relative_to(GRAPH_DIR).parts:
-            continue
-        source = path.read_text(encoding="utf-8")
-        for name in ("format_html", "mark_safe", "SafeString", "html_safe"):
-            assert name not in source, f"{path.name} uses {name}"
+def test_nothing_in_the_new_apps_marks_text_as_html():
+    for app in NEW_APPS:
+        root = Path(apps.get_app_config(app).path)
+        for path in sorted(root.rglob("*.py")):
+            if "tests" in path.relative_to(root).parts:
+                continue
+            source = path.read_text(encoding="utf-8")
+            for name in ("format_html", "mark_safe", "SafeString", "html_safe"):
+                assert name not in source, f"{app}/{path.name} uses {name}"

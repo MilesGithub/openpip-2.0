@@ -15,7 +15,8 @@ later. This page describes:
 release, committing it, which imports its evidence into the graph, and
 publishing, withdrawing and discarding it. It also describes
 `graph_load_demo`, which loads openPIP's synthetic demonstration: two
-synthetic releases that it registers, dry-runs, commits and publishes.
+synthetic releases that it registers, dry-runs, commits and publishes, and
+two browser instances that it records for staff.
 Visitors see a release only through the typed graph's API, once it is
 published with a `public_view` approval.
 
@@ -964,7 +965,8 @@ openPIP's synthetic demonstration is a complete worked example: the files
 in `backend/graph/demo_data/synthetic_regulation/`, two releases of one
 dataset in `canonical_tsv_v1` with their manifest, whose README lists the
 case each row covers, rows that a dry run rejects included.
-`graph_load_demo` registers, dry-runs, commits and publishes them
+`graph_load_demo` registers, dry-runs, commits and publishes them, and
+records two browser instances for staff
 ([Loading the synthetic demonstration](typed-releases.md#loading-the-synthetic-demonstration)).
 
 ## Where release files live

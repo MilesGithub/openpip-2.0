@@ -118,6 +118,7 @@ jobs:
           python manage.py migrate
           python manage.py migrate graph 0001
           python manage.py migrate
+          python manage.py migrate browsers zero
           python manage.py migrate graph zero
           python manage.py migrate
 

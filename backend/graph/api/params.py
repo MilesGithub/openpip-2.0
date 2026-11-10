@@ -17,6 +17,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from browsers.rules import MAX_SLUG_CHARS, SLUG
+
 from ..models import ContextFacet
 from ..summary import ContextMatch, ScoreRange
 from ..terms import TermError, normalize_curie, ontology_of
@@ -171,6 +173,34 @@ class Params:
             )
         return terms
 
+    def phrase(self, name: str) -> str | None:
+        """One value, stripped, read as one phrase: never split, as terms()
+        splits resolve's q. It is refused when it is empty once stripped,
+        longer than Q_MAX_CHARS characters, or holds a control character,
+        which no text it is matched against may hold."""
+        value = self.single(name)
+        if value is None:
+            return None
+        phrase = value.strip()
+        if not phrase:
+            self.add(Problem(name, value or None, detail=f"{name} names a value."))
+            return None
+        refused = False
+        if len(phrase) > Q_MAX_CHARS:
+            self.add(
+                Problem(
+                    name,
+                    phrase,
+                    limit=Q_MAX_CHARS,
+                    detail=f"{name} is at most {Q_MAX_CHARS} characters.",
+                )
+            )
+            refused = True
+        if any(unicodedata.category(letter) == "Cc" for letter in phrase):
+            self.add(Problem(name, phrase, detail=f"{name} holds a control character."))
+            refused = True
+        return None if refused else phrase
+
     def choice(self, name: str, allowed) -> str | None:
         """The value, when it is one of those `allowed` returns. `allowed` is a
         callable with no arguments, called only when the parameter is present,
@@ -270,6 +300,22 @@ class Params:
             )
         return pk
 
+    def slug(self, name: str, example: str) -> str | None:
+        """One slug, as browsers.rules writes them: lower-case letters and
+        digits in groups joined by single hyphens, at most MAX_SLUG_CHARS
+        characters, `example` showing one. As a well-formed ref is, a
+        well-formed slug is a selection, never checked against what
+        exists."""
+        value = self.single(name)
+        if value is None:
+            return None
+        if len(value) <= MAX_SLUG_CHARS and SLUG.fullmatch(value):
+            return value
+        self.add(
+            Problem(name, value, detail=f"{name} looks like a slug, such as {example}.")
+        )
+        return None
+
     def taxon(self, allowed, *, name: str = "taxon") -> int | None:
         """The taxon, when it is one of the taxids (ints) `allowed` returns.
         Comparing strings refuses what int() alone would accept: +9606, 9_606,
@@ -313,6 +359,34 @@ class Params:
             elif curie not in found:
                 found.append(curie)
         return tuple(found)
+
+    def curie(self, name: str, ontology: str, example: str) -> str | None:
+        """One CURIE of this ontology (graph.terms), in canonical form. As
+        each piece of methods() is, it is normalized and never looked up: a
+        well-formed one that names no term matches nothing."""
+        value = self.single(name)
+        if value is None:
+            return None
+        try:
+            curie = normalize_curie(value)
+            known = ontology_of(curie) == ontology
+        except TermError:
+            known = False
+        if known:
+            return curie
+        # The sentence says "an assay" and would say "a method".
+        article = "an" if name[0] in "aeiou" else "a"
+        self.add(
+            Problem(
+                name,
+                value,
+                detail=(
+                    f"{name}: {article} {name} is a {ontology.upper()} CURIE, such "
+                    f"as {example}."
+                ),
+            )
+        )
+        return None
 
     def scores(self, allowed) -> tuple[ScoreRange, ...] | None:
         """The ranges of the repeatable `score`, each score_type:min:max split

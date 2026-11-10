@@ -6,9 +6,12 @@ on, a handler reads the caller's parameters, then reads data only through the
 sets graph.visibility issues, passed to the services untouched.
 
 A handler that reads data calls selection() in its parameter order, then
-self.params.raise_problems(), then release_set() and label_set(). Subclasses
-define only `get`: the docs contract derives a route's methods from the view
-class, so a `post` here would demand a POST heading on every page.
+self.params.raise_problems(), then release_set() and label_set(). A browser=
+slug selects the releases of the instance it names, looked up by
+release_set() once every parameter has passed, so a 400 still reads nothing.
+Subclasses define only `get`: the docs contract derives a route's methods
+from the view class, so a `post` here would demand a POST heading on every
+page.
 """
 
 from django.core.exceptions import TooManyFieldsSent
@@ -21,11 +24,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
+from browsers.selection import instance_releases
+
 from ..entity_visibility import label_release_set
 from ..neighbourhood import QueryTimedOut
 from ..preconditions import typed_graph_enabled
 from ..visibility import Purpose, ReleaseSet, visible_release_ids
-from .params import ParameterError, Params
+from .params import ParameterError, Params, Problem
 from .throttling import GraphReadThrottle
 
 
@@ -71,13 +76,27 @@ class TypedGraphView(APIView):
         super().initial(request, *args, **kwargs)
         self.params = Params(request.query_params, allowed=self.allowed_params)
         self.pinned = None
+        # Read by release_set(), echoed by the handlers.
+        self.browser = None
 
     def selection(self) -> None:
-        """Reads the caller's selection of releases. B1 changes this method alone."""
+        """Reads the caller's selection of releases: releases= or browser=."""
         self.pinned = self.params.releases()
+        self.browser = self.params.slug("browser", "synthetic-regulation")
+        if self.browser is not None and "releases" in self.params.query:
+            self.params.add(
+                Problem(
+                    "browser",
+                    self.browser,
+                    detail="browser and releases are not given together.",
+                )
+            )
 
     def release_set(self) -> ReleaseSet:
-        return visible_release_ids(self.request, self.purpose, pinned=self.pinned)
+        pinned = self.pinned
+        if self.browser is not None:
+            pinned = instance_releases(self.browser, self.request)
+        return visible_release_ids(self.request, self.purpose, pinned=pinned)
 
     def label_set(self) -> ReleaseSet:
         return label_release_set(self.request)

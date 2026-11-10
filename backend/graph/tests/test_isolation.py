@@ -1,11 +1,11 @@
 """The typed apps cannot reach, alter or depend on the pre-existing tables.
 
-Every check except the import scan runs over NEW_APPS. The PR that creates a
-new app adds it here, in dependency order, with the apps its migrations may
-depend on: browsers (B1), portal_profile (O1) and, if it is ever built,
-graph_bridge (L1), whose declared legacy links are its only exception. The
-same tests, the schema snapshot and the round trip to zero included, then
-cover it.
+Every check runs over NEW_APPS. The PR that creates a new app extends
+NEW_APPS, in dependency order, and MAY_DEPEND_ON, with the apps its
+migrations may depend on: portal_profile (O1) and, if it is ever built,
+graph_bridge (L1), whose declared legacy links are its only exception. Every
+check, the import scan, the schema snapshot and the round trip to zero
+included, then covers it.
 """
 
 import ast
@@ -24,9 +24,9 @@ from django.db import connection, migrations
 from django.db.migrations.loader import MigrationLoader
 from django.urls import URLResolver, get_resolver
 
-NEW_APPS = ["graph"]
+NEW_APPS = ["graph", "browsers"]
 # Besides itself and the user model.
-MAY_DEPEND_ON = {"graph": set()}
+MAY_DEPEND_ON = {"graph": set(), "browsers": {"graph"}}
 
 ALLOWED_OPERATIONS = (
     migrations.CreateModel,
@@ -54,7 +54,6 @@ LEGACY_APPS = (
     "psicquic",
 )
 MANIFEST = Path(__file__).with_name("legacy_migrations.json")
-GRAPH_DIR = Path(apps.get_app_config("graph").path)
 USER_APP = get_user_model()._meta.app_label
 
 
@@ -65,6 +64,13 @@ def new_models():
 
 def new_tables() -> set[str]:
     return {model._meta.db_table for model in new_models()}
+
+
+def app_tables(app) -> set[str]:
+    return {
+        model._meta.db_table
+        for model in apps.get_app_config(app).get_models(include_auto_created=True)
+    }
 
 
 def new_app_migrations():
@@ -215,6 +221,38 @@ def test_graph_0003_is_checked_and_depends_only_on_0002():
         assert model in created, f"0003 alters {model}, which it does not create"
 
 
+# The models browsers.0001 creates: instances, their selection and their
+# header citation.
+BROWSERS_MODELS = {
+    "browserinstance",
+    "browserinstancerelease",
+    "browserinstancepublication",
+}
+
+
+def test_browsers_0001_is_checked_and_depends_only_on_graph_0003_and_the_user_model():
+    # As graph's above, but found by app and name: both apps have a
+    # 0001_initial.
+    found = {(app, name): migration for app, name, migration in new_app_migrations()}
+    migration = found[("browsers", "0001_initial")]
+    assert set(migration.dependencies) == {
+        ("graph", "0003_relationships_evidence"),
+        (USER_APP, "__first__"),
+    }
+    assert {type(operation) for operation in migration.operations} <= set(
+        ALLOWED_OPERATIONS
+    )
+    created = {
+        operation.name.lower()
+        for operation in migration.operations
+        if isinstance(operation, migrations.CreateModel)
+    }
+    assert created == BROWSERS_MODELS
+    for operation in migration.operations:
+        model = (getattr(operation, "model_name", None) or operation.name).lower()
+        assert model in created, f"0001 alters {model}, which it does not create"
+
+
 def test_the_pre_existing_apps_migrations_match_the_manifest():
     # A fork-only migration in a shared app would collide with upstream's
     # numbering. An upstream sync that brings new migrations updates the
@@ -228,20 +266,22 @@ def test_the_pre_existing_apps_migrations_match_the_manifest():
     assert found == json.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
-def test_graph_imports_no_legacy_app():
-    for path in sorted(GRAPH_DIR.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                modules = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                modules = [node.module or ""]
-            else:
-                continue
-            for module in modules:
-                assert (
-                    module.split(".")[0] not in LEGACY_APPS
-                ), f"{path.relative_to(GRAPH_DIR.parent)} imports {module}"
+def test_the_new_apps_import_no_legacy_app():
+    for app in NEW_APPS:
+        root = Path(apps.get_app_config(app).path)
+        for path in sorted(root.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                    modules = [node.module or ""]
+                else:
+                    continue
+                for module in modules:
+                    assert (
+                        module.split(".")[0] not in LEGACY_APPS
+                    ), f"{path.relative_to(root.parent)} imports {module}"
 
 
 # ── Migrating forward, back and forward again ───────────────────────────────
@@ -449,12 +489,13 @@ def test_graph_steps_back_to_0002_and_forward_again():
         if (model._meta.auto_created or model)._meta.model_name in EVIDENCE_MODELS
     }
     # G2's tables, and not the ones 0003 adds: those, and the relationship
-    # types' many-to-many tables, are all that goes.
+    # types' many-to-many tables, are all of graph's that go.
     assert "graph_datasetrelease" in provenance_tables
     assert "graph_relationship" not in provenance_tables
-    assert provenance_tables == new_tables() - evidence_tables
+    assert provenance_tables == app_tables("graph") - evidence_tables
     try:
         migrate("graph", "0002")
+        # browsers.0001 depends on 0003, so it is unapplied first.
         assert new_tables() & tables() == provenance_tables
         with connection.cursor() as cursor:
             columns = connection.introspection.get_table_description(

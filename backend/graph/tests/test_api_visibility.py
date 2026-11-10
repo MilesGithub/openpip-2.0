@@ -2,8 +2,9 @@
 
 api_helpers.SAMPLES names the requests of every served route, so a route with
 no sample fails here. Each kind of hidden release is walked by a visitor and
-by staff, with no selection and with a selection of that release, over one set
-of rows:
+by staff, with no selection, with a selection of that release by its ref,
+and with the slug of an instance that selects it alone, which pins the same
+set, over one set of rows:
 
 - H, created and named only by the hidden release, with a label, a primary
   identifier and an alias;
@@ -22,28 +23,46 @@ Staff see an embargoed release, which only loses its public scopes, and a
 staged one once they pin it: those are asserted as seen. The walk skips the
 caller's own words, which query and results[].term return by contract, and
 asserts that no other value holds a forbidden one. A hidden term must also cost
-what an unknown term does, and a hidden id what a nonexistent id does.
+what an unknown term does, and a hidden id what a nonexistent id does; for a
+visitor, an instance they may not reach reads as an unknown slug, on its page
+and through browser= on every route that takes it.
+
+Three browser instances stand beside them: a public one selecting only the
+hidden release, one only staff reach selecting only the public one, and a
+public planned one selecting none. The hidden release declares a taxon no
+other release does, and both releases carry their stats, so a facet an
+instance derives from a release would show. Both browsers routes pin each
+instance to its own selection, whatever the request selects: the gallery
+names no release, so its samples run in every pass, and an instance's page
+runs only for a caller who may not see the hidden release pinned.
 """
 
 import json
 import re
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
+from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from graph.models import ApprovalScope, IdentifierNamespace, IdentifierRole
 from graph.tests.api_helpers import (
     BASE,
+    BROWSER,
+    BROWSERS,
     HIDDEN_KINDS,
+    RESOLVE,
     SAMPLES,
+    browser_url,
+    browsers_url,
     entity_url,
     evidence_url,
     hidden_evidence,
     hide,
     ids,
+    instance,
     link,
     network_url,
     pin,
@@ -52,19 +71,28 @@ from graph.tests.api_helpers import (
     state,
     typed_routes,
     walk_json,
+    with_stats,
 )
 from graph.tests.factories import (
     EntityIdentifierFactory,
+    ReleaseTaxonFactory,
     approve,
     entity_of,
     evidence_release,
+    taxon_of,
 )
-from graph.tests.test_provenance import PUBLISHED, advance
+from graph.tests.test_provenance import PUBLISHED, STAGED, advance
 
 NOT_FOUND = {"detail": "Not found."}
 # The selections that show a hidden release to staff, as whether it is pinned:
 # an embargo removes only the public scopes, and staff preview by pinning.
 STAFF_SEE = {"embargoed": (False, True), "staged": (True,)}
+# A test-only taxon, which only the hidden release declares.
+HIDDEN_TAXON = 999_999_911
+# The parameters that select releases, of which a request gives one.
+SELECTIONS = {"releases", "browser"}
+# A slug no instance has.
+NO_INSTANCE = "no-such-instance"
 
 
 def protein(release, label, primary, **fields):
@@ -79,8 +107,13 @@ def protein(release, label, primary, **fields):
 
 
 def world_of(kind, staff) -> SimpleNamespace:
-    """The rows of the module docstring, with a release of this kind."""
+    """The rows of the module docstring, with a release of this kind. Declared
+    taxa change only while a release is a draft, and stats while it is a
+    draft or staged, so both are written before the releases move on. The
+    public release's stats name only encodes, a reference type, so the staff
+    instance derives no type."""
     ev = hidden_evidence(kind)
+    ReleaseTaxonFactory(release=ev.release, taxon=taxon_of(HIDDEN_TAXON))
     h = protein(ev.release, "HIDDEN-LABEL", "Q9Y6K9")
     EntityIdentifierFactory(entity=h, value="HIDDEN-ALIAS", role=IdentifierRole.ALIAS)
     s = protein(ev.release, "SECRET-LABEL", "P38398", description="SECRET-DESCRIPTION")
@@ -90,6 +123,7 @@ def world_of(kind, staff) -> SimpleNamespace:
     v = entity_of(label="VISIBLE-LABEL", created_by_release=shown.release)
     both_state = link("encodes", v, s)
     state(shown, both_state)
+    with_stats(shown.release)
     advance(shown.release, PUBLISHED)
 
     hidden_edges = (
@@ -98,8 +132,10 @@ def world_of(kind, staff) -> SimpleNamespace:
     )
     for edge in (both_state, *hidden_edges):
         state(ev, edge)
+    with_stats(ev.release)
+    hidden = hide(ev, kind, staff)
     return SimpleNamespace(
-        hidden=hide(ev, kind, staff),
+        hidden=hidden,
         public=shown.release,
         h=h,
         h_primary="Q9Y6K9",
@@ -109,6 +145,12 @@ def world_of(kind, staff) -> SimpleNamespace:
         v=v,
         both_state=both_state,
         hidden_edges=hidden_edges,
+        hidden_taxon=HIDDEN_TAXON,
+        instance=instance(hidden, title="WORLD-INSTANCE"),
+        staff_instance=instance(
+            shown.release, visibility="staff", title="STAFF-INSTANCE"
+        ),
+        empty_instance=instance(status="planned", title="EMPTY-INSTANCE"),
     )
 
 
@@ -147,18 +189,36 @@ def leaks(body, words) -> list:
     ]
 
 
-def sample_urls(world, query):
-    """Every sample, each under this selection. status and vocabularies take
-    no parameters, so a pinned request to them is only the 400 of
-    test_api_base."""
+def with_query(url, query) -> str:
+    return f"{url}{'&' if '?' in url else '?'}{urlencode(query)}"
+
+
+def selects(url) -> bool:
+    """Whether the URL already selects releases."""
+    given = parse_qs(urlsplit(url).query, keep_blank_values=True)
+    return not SELECTIONS.isdisjoint(given)
+
+
+def sample_urls(world, query, *, sees_pinned):
+    """Every sample, each under this selection, appended to the samples of
+    every view that takes it. A sample that already selects gets no second
+    selection, which would be the 400 of releases with browser. status and
+    vocabularies take no parameters, so a selected request to them is only
+    the 400 of test_api_base. The browsers routes take no selection: they
+    pin each instance to its own. The gallery names no release, so its
+    samples come in every pass; an instance's page names those the caller
+    may see of its selection, so its samples come only when `sees_pinned` is
+    false, the caller not seeing the hidden release pinned."""
     views = {path: view for _, path, view in typed_routes()}
     for path, builders in SAMPLES.items():
+        if path == BROWSER and sees_pinned:
+            continue
         for build in builders:
             url = build(world)
-            if not query:
+            if not query or path in (BROWSERS, BROWSER):
                 yield url
-            elif "releases" in views[path].allowed_params:
-                yield f"{url}{'&' if '?' in url else '?'}{urlencode(query)}"
+            elif set(query) <= set(views[path].allowed_params) and not selects(url):
+                yield with_query(url, query)
 
 
 def body_of(client, url) -> dict:
@@ -217,17 +277,56 @@ def assert_seen(client, world, query):
     listed = body_of(client, evidence_url(world.hidden_edges[1], **query))
     assert [row["release"] for row in listed["evidence"]] == [hidden]
 
+    # The instance that selects it names it, though a staged release is not
+    # yet live.
+    detail = body_of(client, browser_url(world.instance.slug))
+    assert [item["release"] for item in detail["instance"]["selection"]] == [hidden]
+    assert ids(detail["releases"]) == [hidden]
+    assert detail["instance"]["availability"] == (
+        "metadata_only" if world.hidden.status == STAGED else "live"
+    )
 
-def assert_hidden(client, world, *, pinned, reads_text):
-    """The release is outside the caller's set. A selection of it alone names
-    nothing the caller may see; with none, S and V show through the public
-    release, and show nothing of the hidden one."""
-    query = pin(world.hidden) if pinned else {}
+
+def facets_of(client, world) -> list:
+    """The world instance's taxa and relationship types, on the gallery and
+    on its page."""
+    [item] = [
+        item
+        for item in body_of(client, BROWSERS)["instances"]
+        if item["slug"] == world.instance.slug
+    ]
+    page = body_of(client, browser_url(world.instance.slug))["instance"]
+    return [(shown["taxa"], shown["relationship_types"]) for shown in (item, page)]
+
+
+def listed_slugs(client, url) -> list:
+    return [item["slug"] for item in body_of(client, url)["instances"]]
+
+
+def assert_hidden(client, world, query, *, reads_text, sees_pinned):
+    """The release is outside the caller's set. A selection of it alone,
+    `query`, names nothing the caller may see; with none, S and V show
+    through the public release, and show nothing of the hidden one.
+    `sees_pinned`: the caller sees it pinned, as staff see a staged release,
+    which the browsers routes pin whatever the request selects."""
+    pinned = bool(query)
     forbidden = forbidden_words(world, reads_text=reads_text)
-    for url in sample_urls(world, query):
+    for url in sample_urls(world, query, sees_pinned=sees_pinned):
         response = client.get(url)
         assert response.status_code in (200, 404), (url, response.content)
         assert leaks(response.json(), forbidden) == [], url
+
+    # What the world instance derives is what its pinned selection shows.
+    by_taxon = browsers_url(taxon=world.hidden_taxon)
+    by_type = browsers_url(relationship_type="transcriptional_regulation")
+    if sees_pinned:
+        derived = ([world.hidden_taxon], ["transcriptional_regulation"])
+        assert facets_of(client, world) == [derived, derived]
+        assert listed_slugs(client, by_taxon) == [world.instance.slug]
+    else:
+        assert facets_of(client, world) == [([], []), ([], [])]
+        assert listed_slugs(client, by_taxon) == []
+        assert listed_slugs(client, by_type) == []
 
     assert client.get(entity_url(world.h, **query)).json() == NOT_FOUND
     if pinned:
@@ -299,8 +398,28 @@ def page_at(client, url) -> tuple:
     return response.status_code, response.content, len(queries)
 
 
-def assert_costs_alike(client, world, query):
-    """H reads like nothing at all."""
+def headed_page_at(client, url) -> tuple:
+    """page_at's answer with the response's headers."""
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get(url)
+    headers = sorted(response.headers.items())
+    return response.status_code, response.content, headers, len(queries)
+
+
+def browsed_at(client, url, slug) -> tuple:
+    """page_at's answer to the URL under browser=slug, the slug itself apart,
+    since the query echoes it."""
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get(with_query(url, {"browser": slug}))
+    body = response.content.decode().replace(slug, "SLUG")
+    return response.status_code, body, len(queries)
+
+
+def assert_costs_alike(client, world, query, *, caller):
+    """H reads like nothing at all. For a visitor, once per test: an instance
+    the caller may not reach reads like an unknown slug, on its page and
+    through browser= on every sample of the routes that take it, and a
+    selection hidden from the caller costs what an empty one does."""
     unknown = answer_to(client, "UNKNOWN-TERM", query)
     for term in (world.h.label, world.h_primary, world.h_alias):
         assert answer_to(client, term, query) == unknown, term
@@ -315,6 +434,29 @@ def assert_costs_alike(client, world, query):
         assert (absent[0], json.loads(absent[1])) == (404, NOT_FOUND)
         for edge in world.hidden_edges:
             assert page_at(client, build(edge, **query)) == absent, edge
+    if caller != "visitor" or query:
+        return
+    unknown = headed_page_at(client, browser_url(NO_INSTANCE))
+    assert (unknown[0], json.loads(unknown[1])) == (404, NOT_FOUND)
+    assert headed_page_at(client, browser_url(world.staff_instance.slug)) == unknown
+    views = {path: view for _, path, view in typed_routes()}
+    for path, builders in SAMPLES.items():
+        if "browser" in views[path].allowed_params:
+            for build in builders:
+                url = build(world)
+                assert browsed_at(client, url, world.staff_instance.slug) == (
+                    browsed_at(client, url, NO_INSTANCE)
+                ), url
+    # Their bodies differ, by the instance shown or named, so only what they
+    # cost is compared.
+    for hidden, empty in (
+        (browser_url(world.instance.slug), browser_url(world.empty_instance.slug)),
+        (
+            browsers_url(q=world.instance.title),
+            browsers_url(q=world.empty_instance.title),
+        ),
+    ):
+        assert page_at(client, hidden)[2] == page_at(client, empty)[2], hidden
 
 
 @pytest.mark.parametrize("caller", ("visitor", "staff"))
@@ -329,13 +471,31 @@ def test_nothing_from_a_hidden_release_appears(
     # May read ignores the selection, so staff read a staged creator's text
     # with none: it stays S's own text, and the release is named nowhere.
     reads_text = caller == "staff" and kind == "staged"
-    for pinned in (False, True):
-        query = pin(world.hidden) if pinned else {}
+    # The instance selects the hidden release alone, so its slug pins what
+    # the ref does.
+    for query in ({}, pin(world.hidden), {"browser": world.instance.slug}):
+        # Empty counters for each pass, as conftest.fresh_throttles gives
+        # each test: a visitor's passes send 35, 15 and 15 requests at
+        # graph_network's rate of 60 a minute.
+        cache.clear()
+        pinned = bool(query)
         if pinned in seen:
             assert_seen(client, world, query)
         else:
-            assert_hidden(client, world, pinned=pinned, reads_text=reads_text)
-            assert_costs_alike(client, world, query)
+            assert_hidden(
+                client,
+                world,
+                query,
+                reads_text=reads_text,
+                sees_pinned=True in seen,
+            )
+            assert_costs_alike(client, world, query, caller=caller)
+
+
+def test_every_served_route_has_a_sample():
+    """A key with an empty list passes the walk's check of the keys and
+    takes its route out of the walk."""
+    assert all(SAMPLES.values())
 
 
 def test_the_walk_finds_a_word_anywhere_but_in_the_callers_own():
@@ -356,3 +516,19 @@ def test_the_walk_finds_a_word_anywhere_but_in_the_callers_own():
         (("SECRET",), "SECRET"),
         (("releases", 0, "id"), "release:12"),
     ]
+
+
+def test_a_sample_that_selects_already_is_given_no_second_selection(monkeypatch):
+    # No sample selects today. One that did would otherwise be the 400 of
+    # releases with browser.
+    plain = resolve_url("x")
+    by_ref = resolve_url("x", releases="release:3")
+    by_slug = resolve_url("x", browser="an-instance")
+    monkeypatch.setattr(
+        f"{__name__}.SAMPLES",
+        {RESOLVE: [lambda world: by_ref, lambda world: by_slug, lambda world: plain]},
+    )
+    for query in ({"releases": "release:3"}, {"browser": "an-instance"}):
+        assert list(sample_urls(None, query, sees_pinned=False)) == [
+            f"{plain}&{urlencode(query)}"
+        ]

@@ -41,9 +41,10 @@ them. A bare number, a sign, a space or a leading zero is malformed, and gets
 [`relationships/{relationship_ref}`](#get-apigraphv1relationshipsrelationship_ref)
 and its [`evidence`](#get-apigraphv1relationshipsrelationship_refevidence)
 read a set of releases. The `releases` parameter selects it: comma-separated
-refs, which may also be spread over repeated parameters. A selection
-*replaces* the default set, so selecting only releases you may not see shows
-nothing.
+refs, which may also be spread over repeated parameters. The `browser`
+parameter selects it too: one [browser instance](#browser-instances)'s slug,
+for the releases that instance selects. A selection *replaces* the default
+set, so selecting only releases you may not see shows nothing.
 
 | `releases` | What you get |
 |---|---|
@@ -54,6 +55,20 @@ nothing.
 
 A value that is malformed or over the cap is refused, but a well-formed ref is
 a selection, and is never checked against what exists.
+
+`browser` selects every release of the instance, of either role, whatever the
+instance's own `status` or `availability`, and reads exactly as `releases`
+naming those refs does: a superseded release is flagged, a staff account also
+reads a staged one that has an `internal` approval, and a release you may not
+see is dropped without a word. An instance never widens what you may see. A
+selection does not scope labels ([What you may see](#what-you-may-see)), and
+`browser` selects releases only: give `taxon` as well to narrow by organism.
+
+| `browser` | What you get |
+|---|---|
+| The slug of a `typed` instance you may reach | The releases it selects, as above. |
+| A slug no instance has; an instance you may not reach; an instance of another `kind`; an instance that selects no release | Nothing is selected, as for a ref that names nothing, and all four read alike: `resolve` answers `unmatched`, the entity page and the relationship routes answer 404, and `network` drops every seed and answers an empty network. `query.browser` echoes the slug either way. |
+| A malformed slug, a slug given twice, or `browser` together with `releases` | 400 ([Errors](#errors)). |
 
 ### What you may see
 
@@ -87,9 +102,10 @@ relationship page in `nodes`, and `network` in `nodes` with `is_seed` added:
 
 ### Release entries
 
-Every response that reads a set of releases carries a `releases` list, sorted
-by id, with one entry for each release it names, so its attribution and
-licence travel with the data:
+Every response that names a release carries a `releases` list, sorted by id,
+with one entry for each release it names, so its attribution and licence
+travel with the data. The [gallery](#get-apigraphv1browsers) reads releases
+for availability and facets but names none, so it carries no such list:
 
 | Key | Contents |
 |---|---|
@@ -154,12 +170,19 @@ unknown parameter or value is never answered with an empty result.
 
 ```json
 {
-  "detail": "Unknown parameter 'foo'. Allowed: q, namespace, taxon, entity_type, releases. Unknown entity_type 'chemical'. Allowed: gene, protein, protein_isoform.",
+  "detail": "Unknown parameter 'foo'. Allowed: q, namespace, taxon, entity_type, releases, browser. Unknown entity_type 'chemical'. Allowed: gene, protein, protein_isoform.",
   "errors": [
     {
       "parameter": "foo",
       "value": null,
-      "allowed": ["q", "namespace", "taxon", "entity_type", "releases"],
+      "allowed": [
+        "q",
+        "namespace",
+        "taxon",
+        "entity_type",
+        "releases",
+        "browser"
+      ],
       "limit": null
     },
     {
@@ -185,7 +208,7 @@ unknown parameter or value is never answered with an empty result.
 |---|---|
 | 400 | As above. More than 1,000 query parameters get `{"detail": "Too many query parameters.", "errors": []}`. |
 | 401 | An invalid or expired token, on every route but `status`. |
-| 404 | `{"detail": "Not found."}`, on every route but `status` while the typed graph is off, and for an entity or relationship that does not exist or that you may not see, which read alike. It is never a 403. |
+| 404 | `{"detail": "Not found."}`, on every route but `status` while the typed graph is off, and for an entity, relationship or browser instance that does not exist or that you may not see, which read alike. It is never a 403. |
 | 406 | An `Accept` header the API cannot satisfy. |
 | 429 | Over a rate limit. The body says how many seconds to wait, and so does the `Retry-After` header. |
 | 503 | The request took too long to compute; narrow it before repeating it, and do not retry it unchanged. `network` and the relationship routes can answer it. |
@@ -218,7 +241,8 @@ whatever is asked.
 
 Three limits apply per caller, that is per IP address, or per account when
 logged in: one to `resolve`, one to `network` and the relationship page, and
-one that `vocabularies`, `entities/{entity_id}` and the evidence list share.
+one that `vocabularies`, `entities/{entity_id}`, the evidence list, `browsers`
+and `browsers/{slug}` share.
 [The rate table](index.md#rate-limits) gives their numbers. They come on top
 of the anonymous and logged-in limits, and a request they refuse does not
 count against those. `network` also has a site-wide budget, counted from
@@ -262,7 +286,7 @@ With the typed graph on:
     "entities": true,
     "network": true,
     "relationships": true,
-    "browsers": false,
+    "browsers": true,
     "datasets": false,
     "summary": false,
     "exports": false
@@ -348,7 +372,7 @@ And off:
 | `entities` | Entity pages ([`entities/{entity_id}`](#get-apigraphv1entitiesentity_id)). |
 | `network` | Networks around chosen entities ([`network`](#get-apigraphv1network)). |
 | `relationships` | Relationship pages and their evidence ([`relationships/{relationship_ref}`](#get-apigraphv1relationshipsrelationship_ref) and its [`evidence`](#get-apigraphv1relationshipsrelationship_refevidence)). |
-| `browsers` | The gallery of dataset-specific browsers. |
+| `browsers` | The gallery of browser instances and each instance's page ([`browsers`](#get-apigraphv1browsers) and [`browsers/{slug}`](#get-apigraphv1browsersslug)). |
 | `datasets` | The catalogue of datasets and releases. |
 | `summary` | Figures for the whole portal. |
 | `exports` | Filtered exports. |
@@ -359,7 +383,7 @@ key is `false`.
 
 | `limits` key | Contents |
 |---|---|
-| `q_max_chars` | The most characters in one term of `q`: a limit per term, not on the whole value. A request line has its own limit ([Errors](#errors)). |
+| `q_max_chars` | The most characters in `q`: on `resolve` a limit per term, not on the whole value, and on `browsers` a limit on the whole value, which is one phrase. A request line has its own limit ([Errors](#errors)). |
 | `resolve_max_terms` | The most terms in one `resolve` request. |
 | `resolve_max_candidates` | The most candidates listed for one term. |
 | `max_releases` | The most distinct releases a selection names. |
@@ -469,6 +493,7 @@ typed graph is off.
 | `taxon` | An NCBI taxid, from `vocabularies`. Only entities of this taxon. |
 | `entity_type` | An entity type's slug, from `vocabularies`. Only entities of this type. |
 | `releases` | The releases to read ([Selecting releases](#selecting-releases)). |
+| `browser` | A browser instance's slug: read only its releases ([Selecting releases](#selecting-releases)). Not with `releases`. |
 
 `q` splits on commas, tabs and new lines, never on spaces, because labels may
 hold spaces. `q` cannot name a label that holds a comma, tab or new line; use
@@ -529,7 +554,8 @@ and note of changes.
     "namespace": null,
     "taxon": null,
     "entity_type": null,
-    "releases": null
+    "releases": null,
+    "browser": null
   },
   "results": [
     {
@@ -655,7 +681,7 @@ and note of changes.
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | The request as read: `q`, a list of the terms as given, trimmed, with duplicates; `namespace` and `entity_type`, slugs or `null`; `taxon`, an integer or `null`; `releases`, the distinct refs named, sorted by id, or `null`. Never reduced to what you may see. |
+| `query` | The request as read: `q`, a list of the terms as given, trimmed, with duplicates; `namespace` and `entity_type`, slugs or `null`; `taxon`, an integer or `null`; `releases`, the distinct refs named, sorted by id, or `null`; `browser`, the slug as given, or `null`. Never reduced to what you may see. |
 | `results` | One entry per term of `query.q`, in that order. |
 | `results[].term` | The term. |
 | `results[].status` | The term's status, as above. |
@@ -671,7 +697,7 @@ and note of changes.
 
 | Status | Body |
 |---|---|
-| 400 | A term over the cap or holding a control character, no term at all, more than 25 terms, an unknown value of `namespace`, `taxon` or `entity_type`, a parameter given twice that takes one value, or a bad `releases`. See [Errors](#errors). |
+| 400 | A term over the cap or holding a control character, no term at all, more than 25 terms, an unknown value of `namespace`, `taxon` or `entity_type`, a parameter given twice that takes one value, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 404 | `{"detail": "Not found."}` while the typed graph is off. |
 
 ## Entities
@@ -686,6 +712,7 @@ that say so. It answers 404 while the typed graph is off.
 |---|---|
 | `entity_id` | In the path: the entity's ref, as in `entities/entity:12`. Any other value gets 400, unless it is empty or holds a slash, percent-encoded or not: such a path matches no route, and gets the server's own 404, which is not JSON. |
 | `releases` | The releases to read ([Selecting releases](#selecting-releases)). |
+| `browser` | A browser instance's slug: read only its releases ([Selecting releases](#selecting-releases)). Not with `releases`. |
 
 `GET /api/graph/v1/entities/entity:7` on the demonstration, the page of the
 gene SYN-TF1, with the default set:
@@ -693,7 +720,7 @@ gene SYN-TF1, with the default set:
 ```json
 {
   "api_version": "graph/v1",
-  "query": {"entity_id": "entity:7", "releases": null},
+  "query": {"entity_id": "entity:7", "releases": null, "browser": null},
   "entity": {
     "id": "entity:7",
     "type": "gene",
@@ -815,7 +842,7 @@ gene SYN-TF1, with the default set:
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | `{entity_id, releases}`: the ref as requested, and the distinct refs named, sorted by id, or `null`. |
+| `query` | `{entity_id, releases, browser}`: `entity_id`, the ref as requested; `releases`, the distinct refs named, sorted by id, or `null`; `browser`, the slug as given, or `null`. |
 | `entity` | The [entity node](#entity-nodes). |
 | `description` | The entity's description, when you may read the release that wrote it, otherwise `""`. Never `null`. |
 | `created_by_release` | The ref of the release that created the entity, only when `releases` lists it, otherwise `null`. Here v1 created the entity, and v2 supersedes v1, so it is outside the default set. |
@@ -837,7 +864,7 @@ relationship with SYN-G2, tested and not found, is not counted.
 | Status | Body |
 |---|---|
 | 301 | The entity was merged into another, and you may see both. The body is empty, and `Location` names the survivor's page, with your query string kept. |
-| 400 | A malformed `entity_id`, an unknown parameter or a bad `releases`. See [Errors](#errors). |
+| 400 | A malformed `entity_id`, an unknown parameter, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 404 | `{"detail": "Not found."}`: no such entity, or one you may not see, a merged entity whose survivor you may not see included. |
 
 ## Networks
@@ -866,6 +893,7 @@ typed graph is off.
 | `include_partner_edges` | `true` lists the edges among the partners too, within `max_edges` and adding no node. `false`, the default, lists the seeds' edges only. |
 | `max_edges` | The most edges to list, a whole number; the default unless given. |
 | `releases` | The releases to read ([Selecting releases](#selecting-releases)). |
+| `browser` | A browser instance's slug: read only its releases ([Selecting releases](#selecting-releases)). Not with `releases`. |
 
 `seeds` names at most 10 entities, `layers` at most 20 layers and `context.*`
 at most 4 facets; a network holds at most 1,000 edges (`max_edges`, 250 unless
@@ -917,7 +945,8 @@ reference layer was named:
     "taxon": null,
     "include_partner_edges": null,
     "max_edges": null,
-    "releases": null
+    "releases": null,
+    "browser": null
   },
   "nodes": [
     {
@@ -1141,7 +1170,7 @@ reference layer was named:
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | The request as read, its keys in the order of the parameter table, never reduced to what you may see. `seeds`, the distinct refs named, sorted by id. `layers`, the distinct layers named, in order of first appearance, or `null`. `direction`, as given, or `null`. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `taxon`, an integer or `null`. `include_partner_edges`, a boolean or `null`. `max_edges`, an integer or `null`. `releases`, the distinct refs named, sorted by id, or `null`. |
+| `query` | The request as read, its keys in the order of the parameter table, never reduced to what you may see. `seeds`, the distinct refs named, sorted by id. `layers`, the distinct layers named, in order of first appearance, or `null`. `direction`, as given, or `null`. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `taxon`, an integer or `null`. `include_partner_edges`, a boolean or `null`. `max_edges`, an integer or `null`. `releases`, the distinct refs named, sorted by id, or `null`. `browser`, the slug as given, or `null`. |
 | `nodes` | One node per entity that is a seed you may see or an end of a listed edge, sorted by numeric id, each as below. `[]` when no seed is visible. |
 | `edges` | The kept edges in rank order, each in the shared [edge shape](#edges), every one with `shown` `true`. `[]` when none. |
 | `releases` | The [release entries](#release-entries) of every release an edge lists. |
@@ -1166,7 +1195,7 @@ network is empty until an operator records `public_view`.
 
 | Status | Body |
 |---|---|
-| 400 | A missing or malformed `seeds`, more seeds, layers or context facets than the caps allow, an unknown layer, value or score type, a score type given twice, a `context.*` value over the cap or holding a control character, a bad `max_edges`, a parameter given twice that takes one value, an unknown parameter or a bad `releases`. See [Errors](#errors). |
+| 400 | A missing or malformed `seeds`, more seeds, layers or context facets than the caps allow, an unknown layer, value or score type, a score type given twice, a `context.*` value over the cap or holding a control character, a bad `max_edges`, a parameter given twice that takes one value, an unknown parameter, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 401 | An invalid or expired token. |
 | 404 | `{"detail": "Not found."}` while the typed graph is off. |
 | 406 | An `Accept` header the API cannot satisfy. |
@@ -1193,6 +1222,7 @@ release. It answers 404 while the typed graph is off.
 | `score` | As on `network`: once per score type. |
 | `context.host_taxon`, `context.tissue`, `context.cell_type`, `context.cell_line`, `context.condition`, `context.perturbation`, `context.compartment`, `context.assay_system`, `context.developmental_stage`, `context.timepoint`, `context.genome_assembly`, `context.other` | As on `network`: at most four of them per request. |
 | `releases` | The releases to read ([Selecting releases](#selecting-releases)). |
+| `browser` | A browser instance's slug: read only its releases ([Selecting releases](#selecting-releases)). Not with `releases`. |
 
 A relationship exists for you when a release in the set states any evidence
 for it, whatever its outcome. One whose only visible evidence is tested-absent,
@@ -1218,7 +1248,8 @@ edge reads `mixed`:
     "level": null,
     "score": null,
     "context": {},
-    "releases": null
+    "releases": null,
+    "browser": null
   },
   "edge": {
     "id": "relationship:9",
@@ -1328,7 +1359,7 @@ edge reads `mixed`:
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | The request as read, never reduced to what you may see: `relationship_ref`, as given. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `releases`, the distinct refs named, sorted by id, or `null`. |
+| `query` | The request as read, never reduced to what you may see: `relationship_ref`, as given. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `releases`, the distinct refs named, sorted by id, or `null`. `browser`, the slug as given, or `null`. |
 | `edge` | The relationship in the shared [edge shape](#edges), summarized under the request's filters. `shown` is `false` when no covered assertion has a requested outcome. |
 | `definition` | What the relationship type means, as `vocabularies` gives it. A string, possibly `""`. |
 | `nodes` | The [entity node](#entity-nodes) of each end, sorted by numeric id: one node for a relationship of an entity with itself. |
@@ -1339,7 +1370,7 @@ edge reads `mixed`:
 
 | Status | Body |
 |---|---|
-| 400 | A malformed `relationship_ref`, an unknown parameter or value, a bad `score` or `context.*`, or a bad `releases`. See [Errors](#errors). |
+| 400 | A malformed `relationship_ref`, an unknown parameter or value, a bad `score` or `context.*`, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 401 | An invalid or expired token. |
 | 404 | `{"detail": "Not found."}` while the typed graph is off, and for a relationship that does not exist or that you may not see, which read alike. |
 | 406 | An `Accept` header the API cannot satisfy. |
@@ -1366,6 +1397,7 @@ while the typed graph is off.
 | `after` | The ref of the row the page starts after, as in `after=evidence:36`: the page holds the rows with a greater id. Pass the previous page's `page.next`. It is a position, never checked against what exists. |
 | `page_size` | Rows per page, a whole number; the default unless given. |
 | `releases` | The releases to read ([Selecting releases](#selecting-releases)). |
+| `browser` | A browser instance's slug: read only its releases ([Selecting releases](#selecting-releases)). Not with `releases`. |
 
 Rows come in id order, and ids only grow, so a page reads the same however
 often it is asked for, and walking `after` from page to page misses nothing.
@@ -1399,7 +1431,8 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
     "context": {},
     "after": null,
     "page_size": null,
-    "releases": null
+    "releases": null,
+    "browser": null
   },
   "evidence": [
     {
@@ -1591,7 +1624,7 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | The request as read, never reduced to what you may see: `relationship_ref`, as given. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `after`, as given, or `null`. `page_size`, as given, or `null`. `releases`, the distinct refs named, sorted by id, or `null`. |
+| `query` | The request as read, never reduced to what you may see: `relationship_ref`, as given. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `after`, as given, or `null`. `page_size`, as given, or `null`. `releases`, the distinct refs named, sorted by id, or `null`. `browser`, the slug as given, or `null`. |
 | `evidence` | The page's rows, in id order, each as below. `[]` when no row remains. |
 | `evidence[].id` | The assertion's ref, as in `evidence:36`. |
 | `evidence[].release` | The ref of the release that states the row. Each has an entry in `releases`. |
@@ -1660,9 +1693,369 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 
 | Status | Body |
 |---|---|
-| 400 | A malformed `relationship_ref`, an unknown parameter or value, a bad `score` or `context.*`, a bad `after`, a `page_size` that is not a whole number within the cap, or a bad `releases`. See [Errors](#errors). |
+| 400 | A malformed `relationship_ref`, an unknown parameter or value, a bad `score` or `context.*`, a bad `after`, a `page_size` that is not a whole number within the cap, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 401 | An invalid or expired token. |
 | 404 | `{"detail": "Not found."}` while the typed graph is off, and for a relationship that does not exist or that you may not see, which read alike. |
 | 406 | An `Accept` header the API cannot satisfy. |
-| 429 | Over the limit that `vocabularies` and `entities/{entity_id}` share ([Rate limits](#rate-limits)). |
+| 429 | Over the limit that `vocabularies`, `entities/{entity_id}`, this list, `browsers` and `browsers/{slug}` share ([Rate limits](#rate-limits)). |
 | 503 | The request took too long to compute ([Errors](#errors)). |
+
+## Browser instances
+
+A browser instance is one entry of the portal's gallery, and will have its
+own page at `/browsers/<slug>`. The portal has neither the gallery nor those
+pages yet, so today a client reads an instance through these routes. It is
+configuration an admin edits: which releases it reads, how to cite them and
+how to show them. Its `kind` says what it is:
+
+| `kind` | What it is |
+|---|---|
+| `typed` | Chosen releases of this portal's typed graph. |
+| `portal_ppi` | This portal's own protein-interaction search, at `/search`. A portal has one. |
+| `external` | Another portal, at its `external_url`. |
+| `metadata_only` | A citation card, which holds no data. |
+
+An admin stores `status` (`planned`, `available` or `retired`) and
+`visibility` (`staff`, `unlisted` or `public`). `availability` is neither: it
+is computed for you on every request, and never stored. It takes the first
+row that applies:
+
+| Stored `status` | `kind` | `availability` |
+|---|---|---|
+| `retired` | any | `retired` |
+| `planned` | any | `planned` |
+| `available` | `external` | `external` |
+| `available` | `portal_ppi` | `live` |
+| `available` | `metadata_only` | `metadata_only` |
+| `available` | `typed` | By its selected releases, as below. |
+
+An available typed instance is `live` only while it selects at least one
+release and every release it selects, of either role, is published or
+superseded and visible to you, so an instance pinned to v1 stays `live` after
+v2 supersedes it. Otherwise it is `metadata_only`, which a client shows as
+"data unavailable", and a withdrawal or a revoked approval shows on the next
+request. `portal_ppi` is `live` for everyone, since the release gate does not
+cover this portal's own search.
+
+| Selected release | Visitor | Staff |
+|---|---|---|
+| Published, with `internal` and `public_view` in effect | `live` | `live` |
+| Published, with `internal` only | `metadata_only` | `live` |
+| Published under embargo | `metadata_only` | `live` |
+| Superseded, with both in effect | `live` | `live` |
+| Staged | `metadata_only` | `metadata_only` |
+| Draft, withdrawn or discarded | `metadata_only` | `metadata_only` |
+| `internal` revoked | `metadata_only` | `metadata_only` |
+| `public_view` revoked | `metadata_only` | `live` |
+| Due diligence reopened, on real data | `metadata_only` | `metadata_only` |
+| Two releases, one hidden from you | `metadata_only` | `metadata_only` |
+| None selected | `metadata_only` | `metadata_only` |
+
+A staged selected release makes the instance `metadata_only` for staff too,
+while `browser` still shows a staff account its data, as any selection does
+([Selecting releases](#selecting-releases)).
+
+`visibility` says who sees the instance, never its data. A `public` instance
+is listed for everyone, and staff list every instance, with its `visibility`.
+An `unlisted` instance is left out of a visitor's list, but anyone who knows
+or guesses its slug can open it, so `unlisted` keeps nothing secret. A
+`staff` instance answers a visitor exactly as a slug no instance has. An
+instance whose releases you may not see is still listed by its own
+`visibility`, and is `metadata_only` for you.
+
+A release you may not see is named nowhere in these two responses: it gets no
+ref, role, position, count or statistic, and `taxa`, `relationship_types` and
+`is_synthetic` read only the selected releases you may see.
+
+### Browser instance items
+
+Every instance in a response is this item, which the
+[gallery](#get-apigraphv1browsers) lists in `instances` and an
+[instance's page](#get-apigraphv1browsersslug) shows first, before its own
+keys:
+
+| Key | Contents |
+|---|---|
+| `slug` | The instance's slug, in its address. Lower-case letters and digits in groups joined by single hyphens, such as `synthetic-regulation`. |
+| `title`, `short_title`, `summary` | As stored, as plain text; `""` for a short title or summary not stated. |
+| `kind` | `typed`, `portal_ppi`, `external` or `metadata_only`. |
+| `status` | `planned`, `available` or `retired`, as stored. |
+| `visibility` | `staff`, `unlisted` or `public`. |
+| `availability` | `live`, `planned`, `external`, `metadata_only` or `retired`, computed for you on this request. |
+| `is_synthetic` | `true` when an admin states so, or when a selected release you may see is synthetic. |
+| `external_url` | An `external` instance's `https` address, as stored, which nothing here fetches; `null` for every other kind. |
+| `tags` | The biology areas an admin names, as stored. |
+| `taxa` | NCBI taxids, ascending, each named by `vocabularies`: those an admin states, or, when none is stated, those the selected releases you may see declare. |
+| `primary_taxon` | The NCBI taxid an admin states as primary, or `null`. |
+| `relationship_types` | Type slugs, ascending, from `vocabularies`: those an admin states, or, when none is stated, the non-reference types the selected releases you may see hold. |
+| `assays` | The detection methods an admin names, by CURIE, each `{curie, label}`. `label` is a string, or `null` when you may not read it. `[]` when none. |
+| `publications` | The instance's header citation, in the order an admin gives it, each paper with the keys of an evidence row's [`publication`](#get-apigraphv1relationshipsrelationship_refevidence). `[]` when none. |
+
+### GET /api/graph/v1/browsers
+
+The gallery: every instance you may list that passes the filters. It answers
+404 while the typed graph is off.
+
+| Parameter | Notes |
+|---|---|
+| `q` | Text that the title, short title or summary holds, whatever its case, stripped of the spaces around it. `q` is at most 200 characters, and holds no control character. |
+| `tag` | A tag the instance names, such as `gene_regulation`. A 400 lists them all. |
+| `relationship_type` | A relationship type's slug, from `vocabularies`, among the instance's `relationship_types`. |
+| `taxon` | An NCBI taxid, from `vocabularies`, among the instance's `taxa` or its `primary_taxon`. |
+| `assay` | A PSI-MI CURIE such as `MI:0018`, among the instance's `assays`. |
+| `year` | A whole number from 1 to 32,767: the year of a paper of the instance's `publications`. |
+| `status` | The stored status: `planned`, `available` or `retired`. |
+| `availability` | What the instance can show you now: `live`, `planned`, `external`, `metadata_only` or `retired`. |
+
+Each parameter takes one value, and one given twice gets 400. Filters combine
+with AND. A malformed value gets 400, and so does a value outside a closed
+set: `tag`, `relationship_type`, `taxon`, `status` and `availability`. A
+well-formed `q`, `year` or `assay` that no instance you may list has matches
+nothing, and the list comes back empty.
+
+`GET /api/graph/v1/browsers` on the demonstration, as a staff account sees
+it, with its two instances, which are for staff only:
+
+```json
+{
+  "api_version": "graph/v1",
+  "query": {
+    "q": null,
+    "tag": null,
+    "relationship_type": null,
+    "taxon": null,
+    "assay": null,
+    "year": null,
+    "status": null,
+    "availability": null
+  },
+  "instances": [
+    {
+      "slug": "protein-interactions",
+      "title": "Protein interactions on this portal",
+      "short_title": "Protein interactions",
+      "summary": "The protein interactions this portal's search serves.",
+      "kind": "portal_ppi",
+      "status": "available",
+      "visibility": "staff",
+      "availability": "live",
+      "is_synthetic": false,
+      "external_url": null,
+      "tags": ["protein_interaction"],
+      "taxa": [],
+      "primary_taxon": null,
+      "relationship_types": [],
+      "assays": [],
+      "publications": []
+    },
+    {
+      "slug": "synthetic-regulation",
+      "title": "Synthetic regulation example",
+      "short_title": "Synthetic regulation",
+      "summary": "Invented regulation and protein interactions for trying the typed graph. They describe no real gene or protein.",
+      "kind": "typed",
+      "status": "available",
+      "visibility": "staff",
+      "availability": "live",
+      "is_synthetic": true,
+      "external_url": null,
+      "tags": ["gene_regulation", "protein_interaction"],
+      "taxa": [32630],
+      "primary_taxon": 32630,
+      "relationship_types": [
+        "physical_interaction",
+        "transcriptional_regulation"
+      ],
+      "assays": [],
+      "publications": [
+        {
+          "pmid": null,
+          "doi": null,
+          "pmcid": null,
+          "imex_id": null,
+          "local_key": "syn-paper-1",
+          "title": "SYN demonstration paper 1 (synthetic: not a real publication)",
+          "authors": "",
+          "journal": "",
+          "year": 2026,
+          "url": null,
+          "is_synthetic": true
+        },
+        {
+          "pmid": null,
+          "doi": null,
+          "pmcid": null,
+          "imex_id": null,
+          "local_key": "syn-paper-2",
+          "title": "SYN demonstration paper 2 (synthetic: not a real publication)",
+          "authors": "",
+          "journal": "",
+          "year": 2026,
+          "url": null,
+          "is_synthetic": true
+        }
+      ]
+    }
+  ],
+  "page": {"next": null}
+}
+```
+
+| Key | Contents |
+|---|---|
+| `api_version` | `graph/v1`. |
+| `query` | The request as read, its keys in the order of the parameter table: `q`, the text as stripped, or `null`; `tag`, as given, or `null`; `relationship_type`, as given, or `null`; `taxon`, an integer, or `null`; `assay`, a normalized CURIE, or `null`; `year`, an integer, or `null`; `status`, as given, or `null`; `availability`, as given, or `null`. |
+| `instances` | The matching [items](#browser-instance-items), ordered by the gallery order an admin sets, then by slug. `[]` when none matches. |
+| `page` | `{next}`: `next` is `null` in this version, which returns every instance you may list on one page; a client follows `page.next` until it is `null`. |
+
+The list names no release: release versions and licences are on an
+[instance's page](#get-apigraphv1browsersslug).
+
+| Status | Body |
+|---|---|
+| 200 | The list, possibly empty. |
+| 400 | An unknown parameter, a value given twice, or a malformed or closed-set value, as above. See [Errors](#errors). |
+| 401 | An invalid or expired token. |
+| 404 | `{"detail": "Not found."}` while the typed graph is off. |
+| 406 | An `Accept` header the API cannot satisfy. |
+| 429 | Over the limit it shares with `vocabularies`, the entity page and the evidence list ([Rate limits](#rate-limits)). |
+
+### GET /api/graph/v1/browsers/{slug}
+
+One instance, as you may see it: its [item](#browser-instance-items), then
+its texts, the entity types it states, its selection, its presentation and
+whether external services may read its data, with the release entries of the
+selected releases you may see. It answers 404 while the typed graph is off.
+
+| Parameter | Notes |
+|---|---|
+| `slug` | In the path: the instance's slug, as in `browsers/synthetic-regulation`. Any other value gets the 404 below, unless it is empty or holds a slash, percent-encoded or not: such a path matches no route, and gets the server's own 404, which is not JSON. The route takes no query parameter. |
+
+`GET /api/graph/v1/browsers/synthetic-regulation` on the demonstration, as a
+staff account sees it:
+
+```json
+{
+  "api_version": "graph/v1",
+  "query": {"slug": "synthetic-regulation"},
+  "instance": {
+    "slug": "synthetic-regulation",
+    "title": "Synthetic regulation example",
+    "short_title": "Synthetic regulation",
+    "summary": "Invented regulation and protein interactions for trying the typed graph. They describe no real gene or protein.",
+    "kind": "typed",
+    "status": "available",
+    "visibility": "staff",
+    "availability": "live",
+    "is_synthetic": true,
+    "external_url": null,
+    "tags": ["gene_regulation", "protein_interaction"],
+    "taxa": [32630],
+    "primary_taxon": 32630,
+    "relationship_types": [
+      "physical_interaction",
+      "transcriptional_regulation"
+    ],
+    "assays": [],
+    "publications": [
+      {
+        "pmid": null,
+        "doi": null,
+        "pmcid": null,
+        "imex_id": null,
+        "local_key": "syn-paper-1",
+        "title": "SYN demonstration paper 1 (synthetic: not a real publication)",
+        "authors": "",
+        "journal": "",
+        "year": 2026,
+        "url": null,
+        "is_synthetic": true
+      },
+      {
+        "pmid": null,
+        "doi": null,
+        "pmcid": null,
+        "imex_id": null,
+        "local_key": "syn-paper-2",
+        "title": "SYN demonstration paper 2 (synthetic: not a real publication)",
+        "authors": "",
+        "journal": "",
+        "year": 2026,
+        "url": null,
+        "is_synthetic": true
+      }
+    ],
+    "description": "",
+    "methods_text": "",
+    "stated_entity_types": [],
+    "selection": [{"release": "release:2", "role": "primary"}],
+    "presentation": {},
+    "allow_external_services": false,
+    "external_services_effective": false
+  },
+  "releases": [
+    {
+      "id": "release:2",
+      "dataset": {
+        "slug": "synthetic-regulation",
+        "title": "Synthetic regulation example"
+      },
+      "version": "v2",
+      "status": "published",
+      "superseded": false,
+      "is_synthetic": true,
+      "licence": {
+        "name": "MIT License",
+        "spdx_id": null,
+        "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+      },
+      "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+      "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+      "scopes": ["internal"]
+    }
+  ]
+}
+```
+
+| Key | Contents |
+|---|---|
+| `api_version` | `graph/v1`. |
+| `query` | `{slug}`: the path value. |
+| `instance` | The [item](#browser-instance-items)'s keys, in the same order, then the keys below. |
+| `releases` | The [release entries](#release-entries) of the selected releases you may see, sorted by id. `[]` when there are none. |
+
+| Added `instance` key | Contents |
+|---|---|
+| `description`, `methods_text` | As stored, as plain text; `""` when not stated. |
+| `stated_entity_types` | The entity types an admin states, slugs ascending; `[]` when none. Unlike `taxa` and `relationship_types`, these are never derived. |
+| `selection` | The selected releases you may see, in the instance's order, each `{release, role}`: `release` is a ref with an entry in `releases`, and `role` is `primary`, the study's own, or `context`, a release that supports it. No stored position is shown, since its gaps would count the hidden releases between those listed. `[]` when you may see none. |
+| `presentation` | As stored, verbatim: how the instance asks to be shown. `{}` means every default. It changes nothing a route returns. |
+| `allow_external_services` | Whether an admin allows the instance's pages to send identifiers to outside services. |
+| `external_services_effective` | `true` only for a typed instance, when `allow_external_services` is on, it is `live` for you, and every release it selects has an effective `external_services` approval. |
+
+`presentation` is a closed object, in which every value is a name and no key
+holds text, a URL, HTML or CSS. A key left out takes its default:
+
+| `presentation` key | Domain |
+|---|---|
+| `version` | The number 1, required once any other key is given. |
+| `default_layers` | At most 20 distinct names, each a relationship type's slug from `vocabularies` or `family:<name>` of a family that some type has. |
+| `default_filters` | An object of at most these filters, each valued as the network's parameter of that name: `direction`, `outcome`, `evidence_basis`, `effect`, `level`. All but the first are lists. |
+| `filter_panels` | Distinct ids from these, every one unless given: `layers`, `direction`, `outcome`, `evidence_basis`, `effect`, `method`, `level`, `score`, `context`, `taxon`. |
+| `layout` | One of these, the first unless given: `cose`, `cola`, `concentric`, `circle`, `grid`, `breadthfirst`. |
+| `evidence_panels` | Distinct ids from these, every one unless given: `summary`, `evidence`, `publications`, `scores`, `contexts`, `record`. |
+| `node_label_namespace` | A namespace's slug, from `vocabularies`, or `null`, which shows the entity's own label. |
+| `accent` | One of these, the first unless given: `blue`, `teal`, `green`, `amber`, `red`, `purple`, `grey`. |
+
+A paper's `title`, `authors`, `journal`, `year` and `url` in `publications`
+are as the portal first recorded them for that paper, on the list and on
+this page, as on the evidence list.
+
+| Status | Body |
+|---|---|
+| 200 | The instance. |
+| 400 | Any query parameter: the route takes none. See [Errors](#errors). |
+| 401 | An invalid or expired token. |
+| 404 | `{"detail": "Not found."}` while the typed graph is off, and for an unknown slug, a malformed one or an instance you may not reach, which read alike. |
+| 406 | An `Accept` header the API cannot satisfy. |
+| 429 | Over the limit it shares with `vocabularies`, the entity page and the evidence list ([Rate limits](#rate-limits)). |

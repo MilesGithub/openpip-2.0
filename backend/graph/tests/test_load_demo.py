@@ -7,7 +7,8 @@ refused snapshot or approval, in the middle of v1's commit (marked, given
 up, unmarked or killed), and a discard; an operator's denial, revocation or
 snapshot, before or after publication, or during a load; a withdrawal; a
 public v1; the advice a refusal carries, followed to the end; a newer
-adapter version and changed files; and the command's output.
+adapter version and changed files; the two browser instances; and the
+command's output.
 
 A stop is made where it happens in production: graph.demo imports each
 service by name, and a test replaces one with a wrapper that raises once,
@@ -20,6 +21,7 @@ test_demo_matrix's."""
 
 import hashlib
 import io
+import json
 import shutil
 from dataclasses import replace
 from types import SimpleNamespace
@@ -27,12 +29,16 @@ from types import SimpleNamespace
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import InterfaceError, connection
 from django.test import RequestFactory
 from django.utils import timezone
 
+from browsers import demo as browsers_demo
+from browsers.demo import DEMO_SLUG, PORTAL_PPI_SLUG
+from browsers.models import BrowserInstance, Kind
 from graph import demo, storage
 from graph import releases as releases_module
 from graph.approvals import (
@@ -47,6 +53,7 @@ from graph.demo import (
     DATASET_SLUG,
     DEMO_DIR,
     DEMO_LICENCE,
+    DEMO_PAPERS,
     DEMO_RATIONALE,
     SOURCE_SLUG,
     DemoError,
@@ -89,6 +96,7 @@ from graph.models import (
 from graph.registry import REGISTRY_VERSION
 from graph.releases import ReleaseError, discard_release, withdraw_release
 from graph.stats import release_stats
+from graph.tests.api_helpers import instance
 from graph.tests.factories import (
     DatasetReleaseFactory,
     DataSourceFactory,
@@ -118,6 +126,12 @@ ALL_CREATED = "created 13 entities, 14 relationships, 2 publications and 2 terms
 NONE_CREATED = "created 0 entities, 0 relationships, 0 publications and 0 terms"
 LOADED_ALREADY = "The synthetic demonstration was loaded already: nothing was written."
 NO_PROBLEM = "No problems, and nothing to review."
+INSTANCES_CREATED = (
+    "Browser instances: synthetic-regulation created, protein-interactions created."
+)
+INSTANCES_FOUND = (
+    "Browser instances: synthetic-regulation found, protein-interactions found."
+)
 
 # Spec §2.2: the rows v1's dry run reports and never imports.
 REJECTED = [
@@ -442,6 +456,18 @@ def assert_loaded():
         )
         assert approval.licence_id == licence.pk
         assert effective_scopes(release) == {INTERNAL}
+    demonstration = BrowserInstance.objects.get(slug=DEMO_SLUG)
+    assert list(demonstration.selection.values_list("release_id", "role", "order")) == [
+        (v2.pk, "primary", 0)
+    ]
+    assert list(
+        demonstration.citations.values_list("publication__local_key", "role", "order")
+    ) == [("syn-paper-1", "primary", 0), ("syn-paper-2", "primary", 1)]
+    assert list(
+        BrowserInstance.objects.filter(kind=Kind.PORTAL_PPI).values_list(
+            "slug", "status", "visibility"
+        )
+    ) == [(PORTAL_PPI_SLUG, "available", "staff")]
     assert checked() == NO_PROBLEM
 
 
@@ -594,6 +620,7 @@ def test_a_full_load_writes_the_demonstration(alice):
         f"{commit2.pk}: created 0 entities, 0 relationships, 0 publications and 0 "
         f"terms; licence snapshot {l2.pk} recorded; internal approval {a2.pk} "
         f"recorded; published, superseding release {v1.pk}.",
+        INSTANCES_CREATED,
         f"The synthetic demonstration is loaded: release {v2.pk} (v2) is current, "
         "for staff only; visitors see it once a public_view approval is recorded "
         "with graph_approve.",
@@ -774,6 +801,7 @@ def test_a_rerun_writes_nothing(alice, graph_files_root):
         f"internal approval {internal(v1).pk} kept; superseded by release {v2.pk}.",
         f"{named(v2)}: registered already; licence snapshot {snapshot(v2).pk} kept; "
         f"internal approval {internal(v2).pk} kept; published already.",
+        INSTANCES_FOUND,
         LOADED_ALREADY,
     )
     assert again.releases == {"v1": v1, "v2": v2}
@@ -795,7 +823,7 @@ def test_a_lost_stored_copy_is_restored(alice):
         f"snapshot {snapshot(v1).pk} kept; internal approval {internal(v1).pk} kept; "
         f"superseded by release {v2.pk}."
     )
-    assert again.lines[3] == loaded(v2)
+    assert again.lines[3:] == (INSTANCES_FOUND, loaded(v2))
     assert natural_rows() == rows
     assert checked() == NO_PROBLEM
 
@@ -827,6 +855,7 @@ def test_a_stop_after_v1_is_published_is_completed(alice, monkeypatch):
         loaded_whole(
             v2, V2_DRY, NONE_CREATED, f"published, superseding release {v1.pk}"
         ),
+        INSTANCES_CREATED,
         loaded(v2),
     )
     assert result.wrote is True
@@ -854,7 +883,7 @@ def test_a_stop_before_v2_is_published_is_completed(alice, monkeypatch):
         f"{snapshot(v2).pk} kept; internal approval {internal(v2).pk} kept; "
         f"published, superseding release {v1.pk}."
     )
-    assert result.lines[3] == loaded(v2)
+    assert result.lines[3:] == (INSTANCES_CREATED, loaded(v2))
     assert counts() == counted
     assert_loaded()
 
@@ -1337,7 +1366,7 @@ def test_what_an_operator_did_to_a_published_release_is_reported_and_kept(alice)
         f"internal approval {first.pk} revoked by alice; superseded by release "
         f"{v2.pk}."
     )
-    assert result.lines[3] == LOADED_ALREADY
+    assert result.lines[3:] == (INSTANCES_FOUND, LOADED_ALREADY)
     assert (natural_rows(), counts()) == (rows, counted)
     # An operator records newer terms for v2: its approval relies on the
     # older snapshot, which the line names.
@@ -1397,6 +1426,7 @@ def test_v1_withdrawn_after_it_was_published_leaves_v2_to_publish(alice, monkeyp
         f"{named(v2)}: registered already; committed already; licence snapshot "
         f"{snapshot(v2).pk} kept; internal approval {internal(v2).pk} kept; "
         f"published; release {v1.pk}, which it corrects, stays withdrawn.",
+        INSTANCES_CREATED,
         loaded(v2),
     )
     assert (release_of("v1").status, release_of("v2").status) == (WITHDRAWN, PUBLISHED)
@@ -1516,6 +1546,7 @@ def test_a_public_v1_needs_v2_approved_for_public_view_first(alice, monkeypatch)
         f"{named(v2)}: registered already; committed already; licence snapshot "
         f"{snapshot(v2).pk} kept; internal approval {internal(v2).pk} kept; "
         f"published, superseding release {v1.pk}.",
+        INSTANCES_CREATED,
         loaded(v2, "and visitors see it (public_view)"),
     )
     assert visible_release_ids(request_for(None), Purpose.VIEW).ids == {v2.pk}
@@ -1574,7 +1605,8 @@ def test_the_last_line_says_who_sees_the_current_release(alice, monkeypatch):
         v2, PUBLIC_VIEW, Decision.DENIED, rationale="Not public.", decided_by=alice
     )
     result = load_demo(loaded_by=alice)
-    assert result.lines[3] == loaded(
+    assert result.lines[3] == INSTANCES_CREATED
+    assert result.lines[4] == loaded(
         v2,
         f"for staff only; its public_view decision {denial.pk} is a denial: revoke "
         f"it with graph_revoke --approval {denial.pk}, then record an approval with "
@@ -1586,7 +1618,8 @@ def test_the_last_line_says_who_sees_the_current_release(alice, monkeypatch):
     (storage.root() / v1.files.get(role=FileRole.DATA).storage_path).unlink()
     again = load_demo(loaded_by=alice)
     assert again.wrote is True
-    assert again.lines[3] == loaded(
+    assert again.lines[3] == INSTANCES_FOUND
+    assert again.lines[4] == loaded(
         v2, "but no one sees it: its internal approval is not effective"
     )
     assert visible_release_ids(request_for(alice), Purpose.VIEW).ids == frozenset()
@@ -1658,7 +1691,7 @@ def test_what_a_concurrent_load_did_meanwhile_is_kept(alice, monkeypatch):
         f"internal approval {internal(v1).pk} kept; published."
     )
     assert result.lines[2].endswith("; published (meanwhile).")
-    assert result.lines[3] == loaded(v2)
+    assert result.lines[3:] == (INSTANCES_CREATED, loaded(v2))
     assert (
         snapshot(v1).recorded_by_username,
         internal(v1).decided_by_username,
@@ -2070,6 +2103,7 @@ def test_a_newer_adapter_version_keeps_what_was_committed(alice, monkeypatch, ch
         f"approval {internal(v1).pk} kept; superseded by release {v2.pk}.",
         f"{named(v2)}: {kept}; licence snapshot {snapshot(v2).pk} kept; internal "
         f"approval {internal(v2).pk} kept; published already.",
+        INSTANCES_FOUND,
         LOADED_ALREADY,
     )
     assert natural_rows() == rows
@@ -2094,6 +2128,7 @@ def test_a_draft_takes_a_newer_adapter_version(alice, monkeypatch):
         f"{commit.pk}: {NONE_CREATED}; licence snapshot {snapshot(v2).pk} recorded; "
         f"internal approval {internal(v2).pk} recorded; published, superseding "
         f"release {v1.pk}.",
+        INSTANCES_CREATED,
         loaded(v2),
     )
     assert (v1.status, v2.status) == (SUPERSEDED, PUBLISHED)
@@ -2168,6 +2203,314 @@ def test_files_changed_under_a_published_version_are_refused(
     )
     assert error.lines == (FOUND, f"{named(v1)}: stopped at registration.")
     assert natural_rows() == rows
+
+
+# ── The browser instances ───────────────────────────────────────────────────
+
+
+def fields_of(row) -> dict:
+    return {
+        name: getattr(row, name)
+        for name in (
+            "kind",
+            "status",
+            "visibility",
+            "title",
+            "short_title",
+            "summary",
+            "description",
+            "methods_text",
+            "external_url",
+            "is_synthetic",
+            "primary_taxon_id",
+            "tags",
+            "presentation",
+            "allow_external_services",
+            "display_order",
+            "updated_by_id",
+            "updated_by_username",
+        )
+    }
+
+
+def facets_of(row) -> list:
+    return [
+        sorted(getattr(row, name).values_list("pk", flat=True))
+        for name in ("taxa", "relationship_types", "entity_types", "assays")
+    ]
+
+
+def browser_rows() -> dict:
+    return {
+        table: rows
+        for table, rows in natural_rows().items()
+        if table.startswith("browsers_")
+    }
+
+
+def test_a_load_records_the_two_browser_instances(alice):
+    load_demo(loaded_by=alice)
+    demonstration = BrowserInstance.objects.get(slug=DEMO_SLUG)
+    assert fields_of(demonstration) == {
+        "kind": "typed",
+        "status": "available",
+        "visibility": "staff",
+        "title": "Synthetic regulation example",
+        "short_title": "Synthetic regulation",
+        "summary": (
+            "Invented regulation and protein interactions for trying the typed "
+            "graph. They describe no real gene or protein."
+        ),
+        "description": "",
+        "methods_text": "",
+        "external_url": "",
+        "is_synthetic": True,
+        "primary_taxon_id": 32630,
+        "tags": ["gene_regulation", "protein_interaction"],
+        "presentation": {},
+        "allow_external_services": False,
+        "display_order": 0,
+        "updated_by_id": alice.pk,
+        "updated_by_username": "alice",
+    }
+    assert facets_of(demonstration) == [[32630], [], [], []]
+    assert list(demonstration.selection.values_list("release__version", "role")) == [
+        ("v2", "primary")
+    ]
+    papers = demonstration.citations.select_related("publication")
+    assert [
+        (cited.publication.local_key, cited.role, cited.order) for cited in papers
+    ] == [("syn-paper-1", "primary", 0), ("syn-paper-2", "primary", 1)]
+    assert {cited.publication.year for cited in papers} == {2026}
+    entry = BrowserInstance.objects.get(slug=PORTAL_PPI_SLUG)
+    assert fields_of(entry) == {
+        "kind": "portal_ppi",
+        "status": "available",
+        "visibility": "staff",
+        "title": "Protein interactions on this portal",
+        "short_title": "Protein interactions",
+        "summary": "The protein interactions this portal's search serves.",
+        "description": "",
+        "methods_text": "",
+        "external_url": "",
+        "is_synthetic": False,
+        "primary_taxon_id": None,
+        "tags": ["protein_interaction"],
+        "presentation": {},
+        "allow_external_services": False,
+        "display_order": 0,
+        "updated_by_id": alice.pk,
+        "updated_by_username": "alice",
+    }
+    assert facets_of(entry) == [[], [], [], []]
+    assert not entry.selection.exists() and not entry.citations.exists()
+
+
+def test_the_papers_the_instance_cites_are_the_manifests():
+    manifest = json.loads((DEMO_DIR / "manifest.json").read_bytes())
+    assert list(DEMO_PAPERS) == list(manifest["publications"])
+
+
+def test_a_rerun_writes_no_browser_instance(alice):
+    load_demo(loaded_by=alice)
+    rows = natural_rows()
+    touched = list(BrowserInstance.objects.values_list("slug", "updated_at"))
+    bob = StaffUserFactory(username="bob")
+    result = load_demo(loaded_by=bob)
+    assert result.wrote is False
+    assert result.lines[-2:] == (INSTANCES_FOUND, LOADED_ALREADY)
+    assert browser_rows() == {
+        table: found for table, found in rows.items() if table.startswith("browsers_")
+    }
+    assert list(BrowserInstance.objects.values_list("slug", "updated_at")) == touched
+
+
+def _demonstration_slug_of_another_kind():
+    instance(kind="metadata_only", slug=DEMO_SLUG)
+    return DEMO_SLUG
+
+
+def _demonstration_slug_selecting_other_data():
+    instance(DatasetReleaseFactory(), slug=DEMO_SLUG, status="planned")
+    return DEMO_SLUG
+
+
+def _entry_slug_of_another_kind():
+    instance(kind="metadata_only", slug=PORTAL_PPI_SLUG)
+    return PORTAL_PPI_SLUG
+
+
+@pytest.mark.parametrize(
+    "taken",
+    [
+        _demonstration_slug_of_another_kind,
+        _demonstration_slug_selecting_other_data,
+        _entry_slug_of_another_kind,
+    ],
+)
+def test_a_browser_slug_that_other_data_hold_refuses_after_the_lines_so_far(
+    alice, taken
+):
+    slug = taken()
+    rows = browser_rows()
+    error = stopped(alice)
+    v1, v2 = release_of("v1"), release_of("v2")
+    assert str(error) == (
+        f"Browser instance {slug}: its slug names data that are not the "
+        "demonstration's."
+    )
+    assert error.lines == (
+        CREATED,
+        loaded_whole(v1, V1_DRY, ALL_CREATED, "published"),
+        loaded_whole(
+            v2, V2_DRY, NONE_CREATED, f"published, superseding release {v1.pk}"
+        ),
+    )
+    # Neither row is written, the other one's included.
+    assert browser_rows() == rows
+    BrowserInstance.objects.filter(slug=slug).delete()
+    result = load_demo(loaded_by=alice)
+    assert result.lines[-2:] == (INSTANCES_CREATED, loaded(v2))
+    assert_loaded()
+
+
+def test_an_operators_edit_of_a_browser_instance_is_kept(alice):
+    load_demo(loaded_by=alice)
+    v1 = release_of("v1")
+    demonstration = BrowserInstance.objects.get(slug=DEMO_SLUG)
+    demonstration.title = "A curator's title"
+    demonstration.visibility = "public"
+    demonstration.tags = ["signaling"]
+    demonstration.is_synthetic = False
+    demonstration.presentation = {"version": 1, "accent": "red"}
+    demonstration.display_order = 7
+    demonstration.save()
+    demonstration.taxa.clear()
+    # Selecting v1, as an operator may: it is the demonstration's dataset.
+    demonstration.selection.update(release=v1, role="context")
+    demonstration.citations.filter(order=1).delete()
+    entry = BrowserInstance.objects.get(slug=PORTAL_PPI_SLUG)
+    entry.status = "retired"
+    entry.save()
+    rows, counted = natural_rows(), counts()
+    result = load_demo(loaded_by=alice)
+    assert result.wrote is False
+    assert result.lines[-2:] == (INSTANCES_FOUND, LOADED_ALREADY)
+    assert (natural_rows(), counts()) == (rows, counted)
+
+
+@pytest.mark.parametrize(
+    "deleted, line",
+    [
+        (
+            DEMO_SLUG,
+            "Browser instances: synthetic-regulation created, protein-interactions "
+            "found.",
+        ),
+        (
+            PORTAL_PPI_SLUG,
+            "Browser instances: synthetic-regulation found, protein-interactions "
+            "created.",
+        ),
+    ],
+)
+def test_a_deleted_browser_instance_is_created_again(alice, deleted, line):
+    load_demo(loaded_by=alice)
+    v2 = release_of("v2")
+    rows = natural_rows()
+    BrowserInstance.objects.filter(slug=deleted).delete()
+    assert natural_rows() != rows
+    result = load_demo(loaded_by=alice)
+    assert result.wrote is True
+    assert result.lines[-2:] == (line, loaded(v2))
+    assert natural_rows() == rows
+
+
+def test_a_portal_loaded_before_browser_instances_gets_both_rows(alice):
+    load_demo(loaded_by=alice)
+    v1, v2 = release_of("v1"), release_of("v2")
+    expected = natural_rows()
+    BrowserInstance.objects.all().delete()
+    assert not any(browser_rows().values())
+    result = load_demo(loaded_by=alice)
+    assert result.wrote is True
+    assert result.lines[1:] == (
+        f"{named(v1)}: registered already; licence snapshot {snapshot(v1).pk} kept; "
+        f"internal approval {internal(v1).pk} kept; superseded by release {v2.pk}.",
+        f"{named(v2)}: registered already; licence snapshot {snapshot(v2).pk} kept; "
+        f"internal approval {internal(v2).pk} kept; published already.",
+        INSTANCES_CREATED,
+        loaded(v2),
+    )
+    assert natural_rows() == expected
+    assert_loaded()
+
+
+def test_an_existing_portal_ppi_entry_under_another_slug_is_kept(alice):
+    local = instance(kind="portal_ppi", slug="local-search", visibility="public")
+    held = fields_of(local)
+    result = load_demo(loaded_by=alice)
+    v2 = release_of("v2")
+    assert result.lines[-2:] == (
+        "Browser instances: synthetic-regulation created, local-search found.",
+        loaded(v2),
+    )
+    local.refresh_from_db()
+    assert fields_of(local) == held
+    assert not BrowserInstance.objects.filter(slug=PORTAL_PPI_SLUG).exists()
+    rows = natural_rows()
+    again = load_demo(loaded_by=alice)
+    assert again.wrote is False
+    assert again.lines[-2:] == (
+        "Browser instances: synthetic-regulation found, local-search found.",
+        LOADED_ALREADY,
+    )
+    assert natural_rows() == rows
+
+
+def test_the_first_portal_ppi_entry_is_the_one_kept(alice):
+    # Only a bare save can leave a second one, and the line names the first.
+    for slug, order in (("z-search", 1), ("b-search", 2), ("a-search", 2)):
+        BrowserInstance.objects.create(
+            slug=slug,
+            title=slug,
+            kind=Kind.PORTAL_PPI,
+            status="available",
+            display_order=order,
+        )
+    result = load_demo(loaded_by=alice)
+    assert result.lines[-2] == (
+        "Browser instances: synthetic-regulation created, z-search found."
+    )
+
+
+@pytest.mark.parametrize(
+    "check", ["full_clean", "validate_facets", "validate_selection"]
+)
+@pytest.mark.parametrize("row", [0, 1], ids=["demonstration", "portal_ppi"])
+def test_a_created_browser_instance_is_checked_before_its_links_are_saved(
+    alice, monkeypatch, check, row
+):
+    # What every write path runs, refused for one row at a time so that neither
+    # row's call can stand in for the other's: the demonstration's comes first.
+    # A refusal rolls back both.
+    problem = ValidationError("Simulated for the test.")
+    owner = BrowserInstance if check == "full_clean" else browsers_demo
+    real = getattr(owner, check)
+    calls = []
+
+    def refuse(*args, **kwargs):
+        calls.append(check)
+        if len(calls) == row + 1:
+            raise problem
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(owner, check, refuse)
+    with pytest.raises(ValidationError) as raised:
+        load_demo(loaded_by=alice)
+    assert raised.value is problem
+    assert len(raised.value.demo_lines) == 3
+    assert not BrowserInstance.objects.exists()
 
 
 # ── The command ─────────────────────────────────────────────────────────────

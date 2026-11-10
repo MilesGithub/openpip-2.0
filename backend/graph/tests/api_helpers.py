@@ -12,6 +12,12 @@ from django.db import connection
 from django.urls import URLResolver, get_resolver
 from django.utils import timezone
 
+from browsers.models import (
+    BrowserInstance,
+    BrowserInstancePublication,
+    BrowserInstanceRelease,
+)
+from browsers.rules import validate_facets, validate_selection
 from graph.models import (
     ApprovalScope,
     AssertionMethod,
@@ -28,6 +34,7 @@ from graph.models import (
     SourceRecord,
 )
 from graph.releases import discard_release, withdraw_release
+from graph.stats import release_stats
 from graph.tests.factories import (
     FAILED_CRITERION,
     AssertionParticipantFactory,
@@ -49,8 +56,20 @@ ENTITY = f"{BASE}entities/{{entity_id}}"
 NETWORK = f"{BASE}network"
 RELATIONSHIP = f"{BASE}relationships/{{relationship_ref}}"
 EVIDENCE = f"{RELATIONSHIP}/evidence"
+BROWSERS = f"{BASE}browsers"
+BROWSER = f"{BASE}browsers/{{slug}}"
 # Every path a test names by hand. typed_routes() finds what is served.
-PATHS = {STATUS, VOCABULARIES, RESOLVE, ENTITY, NETWORK, RELATIONSHIP, EVIDENCE}
+PATHS = {
+    STATUS,
+    VOCABULARIES,
+    RESOLVE,
+    ENTITY,
+    NETWORK,
+    RELATIONSHIP,
+    EVIDENCE,
+    BROWSERS,
+    BROWSER,
+}
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -83,6 +102,16 @@ def evidence_url(relationship, **parameters) -> str:
     """The evidence list of this row."""
     url = f"{BASE}relationships/relationship:{relationship.pk}/evidence"
     return f"{url}?{urlencode(parameters, doseq=True)}" if parameters else url
+
+
+def browsers_url(**parameters) -> str:
+    """The gallery under these filters."""
+    return f"{BROWSERS}?{urlencode(parameters)}" if parameters else BROWSERS
+
+
+def browser_url(slug) -> str:
+    """The page of the instance this slug names, as given."""
+    return f"{BASE}browsers/{slug}"
 
 
 # Each served path, with the requests that reach it: a builder takes the
@@ -123,6 +152,15 @@ SAMPLES = {
         lambda world: evidence_url(world.hidden_edges[0]),
         lambda world: evidence_url(world.hidden_edges[1]),
         lambda world: evidence_url(world.both_state),
+    ],
+    BROWSERS: [
+        lambda world: BROWSERS,
+        lambda world: browsers_url(availability="metadata_only"),
+        lambda world: browsers_url(q=world.instance.title),
+    ],
+    BROWSER: [
+        lambda world: browser_url(world.instance.slug),
+        lambda world: browser_url(world.staff_instance.slug),
     ],
 }
 # The query a served path needs to answer at all, so that a test adding one
@@ -407,3 +445,63 @@ def public_release(*entities):
         state(ev, RelationshipFactory(subject=subject, object=object_))
     advance(ev.release, PUBLISHED)
     return ev.release
+
+
+def with_stats(release):
+    """The release with its stats recounted from its rows, as a commit writes
+    them. They change only while it is a draft or staged."""
+    release.stats = release_stats(release)
+    release.save()
+    return release
+
+
+# ── Browser instances ───────────────────────────────────────────────────────
+
+# Numbers the instances' slugs and titles, so each is distinct.
+_INSTANCES = itertools.count()
+# The many-to-many fields instance() sets after the row is saved.
+_FACETS = ("taxa", "relationship_types", "entity_types", "assays")
+
+
+def instance(
+    *releases,
+    kind="typed",
+    status="available",
+    visibility="public",
+    slug=None,
+    **fields,
+):
+    """A browser instance selecting these releases, in the order given, each
+    of role primary, checked as every write path checks one: full_clean(),
+    then validate_facets and validate_selection. taxa, relationship_types,
+    entity_types and assays take rows; publications the papers of its header
+    citation, in order. A public, available typed instance unless told
+    otherwise."""
+    number = next(_INSTANCES)
+    facets = {name: list(fields.pop(name, ())) for name in _FACETS}
+    papers = list(fields.pop("publications", ()))
+    fields.setdefault("title", f"Instance {number}")
+    row = BrowserInstance(
+        slug=slug or f"instance-{number}",
+        kind=kind,
+        status=status,
+        visibility=visibility,
+        **fields,
+    )
+    row.full_clean()
+    validate_facets(
+        taxa=facets["taxa"], primary_taxon=row.primary_taxon, assays=facets["assays"]
+    )
+    validate_selection(row, releases)
+    row.save()
+    for name, values in facets.items():
+        getattr(row, name).set(values)
+    BrowserInstanceRelease.objects.bulk_create(
+        BrowserInstanceRelease(instance=row, release=release, order=order)
+        for order, release in enumerate(releases)
+    )
+    BrowserInstancePublication.objects.bulk_create(
+        BrowserInstancePublication(instance=row, publication=paper, order=order)
+        for order, paper in enumerate(papers)
+    )
+    return row

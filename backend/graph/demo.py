@@ -40,15 +40,21 @@ every file of every Version is shipped. Then, in order:
      release's row lock, which record_licence and record_decision take
      too;
    - it is published;
-3. the releases are read again for the result.
+3. the releases are read again for the result;
+4. the demonstration's browser instance, selecting the last Version, and
+   this portal's portal_ppi entry are found or created, in one transaction,
+   for staff only (browsers.demo); a slug that other data hold is refused,
+   after the lines so far, with neither row written.
 
 The operator policy: never override an operator, and never refuse a load
 that overrides nothing. Only internal approvals are recorded, so visitors
 see the demonstration only once an operator records public_view with
-graph_approve. Run again, the loader completes a load that stopped, and
-writes nothing once the demonstration is loaded. It opens no transaction
-around a dry run, a commit or the whole load: a commit that stops marks its
-run failed in a transaction of its own, and the next load resumes it.
+graph_approve. A browser instance found is kept as it stands, and one that
+was deleted is created again. Run again, the loader completes a load that
+stopped, and writes nothing once the demonstration is loaded. It opens no
+transaction around a dry run, a commit or the whole load: a commit that
+stops marks its run failed in a transaction of its own, and the next load
+resumes it.
 
 Every refusal of a service becomes a DemoError with the lines so far, the
 release in progress ending "stopped at" its step; where the refusal
@@ -56,9 +62,6 @@ advises a step that only graph_load_demo should take for the
 demonstration, the loader's own advice follows (_demo_advice). Any other
 exception is raised as it is, with those lines in its demo_lines
 attribute, which graph_load_demo prints first.
-
-B1 extends this loader: the demonstration instance and the portal_ppi entry
-are its steps after v2's publication.
 """
 
 import hashlib
@@ -68,6 +71,8 @@ from pathlib import Path
 
 from django.db import transaction
 from django.utils import timezone
+
+from browsers.demo import DemoInstanceRefused, ensure_demo_instances
 
 from .approvals import (
     INTERNAL,
@@ -139,6 +144,8 @@ VERSIONS = (
     Version("v1", "release_v1.tsv", "manifest.json", "canonical_tsv_v1", None),
     Version("v2", "release_v2.tsv", "manifest.json", "canonical_tsv_v1", "v1"),
 )
+# The manifest's two papers, in the order the browser instance cites them.
+DEMO_PAPERS = ("syn-paper-1", "syn-paper-2")
 
 SOURCE = {
     "kind": DataSourceKind.THIS_PORTAL,
@@ -239,7 +246,7 @@ class DemoResult:
     """What load_demo did."""
 
     # For the operator: one line for the data source and dataset, one per
-    # release, and how the load ended.
+    # release, one for the browser instances, and how the load ended.
     lines: tuple[str, ...]
     # False only when no step wrote.
     wrote: bool
@@ -322,6 +329,7 @@ class _Load:
             for version, pk in releases.items()
         }
         current = releases[VERSIONS[-1].version]
+        self._instances(current)
         if self.wrote:
             self.lines.append(
                 "The synthetic demonstration is loaded: release "
@@ -403,6 +411,21 @@ class _Load:
                 f"{DATASET_SLUG}: {said[dataset_created]}."
             )
         self.lines.append(done)
+
+    def _instances(self, current):
+        """Step 4: the browser instances, once the current release is
+        published."""
+        try:
+            line, wrote = ensure_demo_instances(
+                release=current,
+                dataset=self.dataset,
+                papers=DEMO_PAPERS,
+                actor=self.user,
+            )
+        except DemoInstanceRefused as error:
+            self._stop(str(error))
+        self.wrote |= wrote
+        self.lines.append(line)
 
     def _load(self, version, *, last) -> DatasetRelease:
         """Step 2, for one version; the release as it stands after."""

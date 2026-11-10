@@ -26,11 +26,18 @@ python manage.py graph_load_demo --as USERNAME
 The loader (graph/demo.py) registers both releases as synthetic, v2
 superseding v1; dry-runs and commits each with --create-entities; records an
 MIT licence snapshot and an internal approval for each; and publishes v1, then
-v2. Staff see the demonstration; visitors see nothing until an operator
-records a public_view approval with graph_approve. Run again, the loader
-completes a load that stopped, and writes nothing once the demonstration is
-loaded. The operator guide's page on releases describes it
-(docs/operator-guide/typed-releases.md).
+v2. It then records two browser instances, each only if it is not there
+already: `synthetic-regulation`, which selects v2 and cites the two papers, and
+this portal's `portal_ppi` entry, `protein-interactions` unless the portal has
+one. Staff see the demonstration and both instances. Visitors see the
+demonstration's data once an operator records a public_view approval with
+graph_approve. An instance is listed for them once an operator makes it
+public, and they can open an unlisted one by its slug; a typed instance shows
+them data only if they can open it and its release has public_view. Run
+again, the loader completes a load that stopped, and writes nothing once the
+demonstration is loaded. The operator guide's pages on releases and on
+browser instances describe it (docs/operator-guide/typed-releases.md and
+docs/operator-guide/browser-instances.md).
 
 ## The cases
 

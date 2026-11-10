@@ -113,7 +113,9 @@ FEATURES = (
     "exports",
 )
 # The groups this build serves.
-SERVED_FEATURES = frozenset({"resolve", "entities", "network", "relationships"})
+SERVED_FEATURES = frozenset(
+    {"resolve", "entities", "network", "relationships", "browsers"}
+)
 # The throttle scopes of served routes, the ones status publishes.
 PUBLISHED_SCOPES = (
     "graph_read",
@@ -138,6 +140,13 @@ RELEASES_PARAMETER = OpenApiParameter(
     description=(
         "The releases to read, as comma-separated refs (release:3), replacing the "
         "default set. A ref the caller may not see is dropped without a word."
+    ),
+)
+BROWSER_PARAMETER = OpenApiParameter(
+    "browser",
+    str,
+    description=(
+        "A browser instance's slug: read only its releases. Not with releases."
     ),
 )
 
@@ -402,7 +411,7 @@ class ResolveView(TypedGraphView):
     attribution and licence summary.
     """
 
-    allowed_params = ("q", "namespace", "taxon", "entity_type", "releases")
+    allowed_params = ("q", "namespace", "taxon", "entity_type", "releases", "browser")
     throttle_classes = [GraphResolveThrottle, AnonRateThrottle, UserRateThrottle]
     serializer_class = ResolveSerializer
 
@@ -422,6 +431,7 @@ class ResolveView(TypedGraphView):
             OpenApiParameter("taxon", int, description="A taxid."),
             OpenApiParameter("entity_type", str, description="An entity type slug."),
             RELEASES_PARAMETER,
+            BROWSER_PARAMETER,
         ],
         responses={200: ResolveSerializer, 400: ParameterErrorSerializer},
     )
@@ -465,6 +475,7 @@ class ResolveView(TypedGraphView):
                 "taxon": taxon,
                 "entity_type": entity_type,
                 "releases": _pinned_refs(self.params.releases()),
+                "browser": self.browser,
             },
             "results": [results[term] for term in terms],
             "releases": entries,
@@ -547,7 +558,7 @@ class EntityView(TypedGraphView):
     entity's degree, nor on a reference relationship the caller may not see.
     """
 
-    allowed_params = ("releases",)
+    allowed_params = ("releases", "browser")
     serializer_class = EntitySerializer
 
     @extend_schema(
@@ -559,6 +570,7 @@ class EntityView(TypedGraphView):
                 description="The entity's ref, such as entity:12.",
             ),
             RELEASES_PARAMETER,
+            BROWSER_PARAMETER,
         ],
         responses={200: EntitySerializer, 400: ParameterErrorSerializer},
     )
@@ -603,6 +615,7 @@ class EntityView(TypedGraphView):
             "query": {
                 "entity_id": entity_id,
                 "releases": _pinned_refs(self.params.releases()),
+                "browser": self.browser,
             },
             "entity": nodes[row.pk],
             "description": nodes[row.pk]["description"],
@@ -868,6 +881,7 @@ class NetworkView(EvidenceFilters, TypedGraphView):
         "include_partner_edges",
         "max_edges",
         "releases",
+        "browser",
     )
     throttle_classes = [GraphNetworkThrottle, AnonRateThrottle, UserRateThrottle]
     serializer_class = NetworkSerializer
@@ -949,6 +963,7 @@ class NetworkView(EvidenceFilters, TypedGraphView):
                 ),
             ),
             RELEASES_PARAMETER,
+            BROWSER_PARAMETER,
         ],
         responses={200: NetworkSerializer, 400: ParameterErrorSerializer},
     )
@@ -998,6 +1013,7 @@ class NetworkView(EvidenceFilters, TypedGraphView):
                 "include_partner_edges": include_partner_edges,
                 "max_edges": max_edges,
                 "releases": _pinned_refs(params.releases()),
+                "browser": self.browser,
             },
             "nodes": [
                 {**nodes[pk], "is_seed": pk in found.seeds}
@@ -1090,12 +1106,17 @@ class RelationshipView(EvidenceFilters, TypedGraphView):
     relationship's rows.
     """
 
-    allowed_params = (*FILTER_PARAMS, "releases")
+    allowed_params = (*FILTER_PARAMS, "releases", "browser")
     throttle_classes = [GraphNetworkThrottle, AnonRateThrottle, UserRateThrottle]
     serializer_class = RelationshipSerializer
 
     @extend_schema(
-        parameters=[RELATIONSHIP_REF_PARAMETER, *FILTER_PARAMETERS, RELEASES_PARAMETER],
+        parameters=[
+            RELATIONSHIP_REF_PARAMETER,
+            *FILTER_PARAMETERS,
+            RELEASES_PARAMETER,
+            BROWSER_PARAMETER,
+        ],
         responses={200: RelationshipSerializer, 400: ParameterErrorSerializer},
     )
     def get(self, request, relationship_ref):
@@ -1129,6 +1150,7 @@ class RelationshipView(EvidenceFilters, TypedGraphView):
                 "relationship_ref": relationship_ref,
                 **self._filter_echo(values),
                 "releases": _pinned_refs(params.releases()),
+                "browser": self.browser,
             },
             "edge": edge(summary, entries),
             "definition": row.relationship_type.definition,
@@ -1232,7 +1254,7 @@ class EvidenceView(EvidenceFilters, TypedGraphView):
     its last row. The 404 is the relationship page's.
     """
 
-    allowed_params = (*FILTER_PARAMS, "after", "page_size", "releases")
+    allowed_params = (*FILTER_PARAMS, "after", "page_size", "releases", "browser")
     serializer_class = EvidenceSerializer
 
     @extend_schema(
@@ -1256,6 +1278,7 @@ class EvidenceView(EvidenceFilters, TypedGraphView):
                 ),
             ),
             RELEASES_PARAMETER,
+            BROWSER_PARAMETER,
         ],
         responses={200: EvidenceSerializer, 400: ParameterErrorSerializer},
     )
@@ -1315,6 +1338,7 @@ class EvidenceView(EvidenceFilters, TypedGraphView):
                 "after": params.query.get("after") if "after" in params.query else None,
                 "page_size": page_size,
                 "releases": _pinned_refs(params.releases()),
+                "browser": self.browser,
             },
             "evidence": rows,
             "releases": entries,

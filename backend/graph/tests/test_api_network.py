@@ -134,6 +134,7 @@ ALLOWED = [
     "include_partner_edges",
     "max_edges",
     "releases",
+    "browser",
 ]
 # Test-only continuous types, which a non-synthetic release may score with.
 STATS_TYPES = ("stats:test_value", "stats:test_other")
@@ -631,20 +632,17 @@ def test_a_bad_max_edges_is_400(sent, given, switch_on, visitor_client):
     }
 
 
-@pytest.mark.parametrize("name", ["browser", "expand"])
-def test_browser_and_expand_are_unknown_until_their_milestones(
-    name, switch_on, visitor_client
-):
-    assert refused(visitor_client, f"seeds=entity:1&{name}=x") == {
-        "detail": f"Unknown parameter {name!r}. Allowed: {', '.join(ALLOWED)}.",
-        "errors": [problem(name, allowed=ALLOWED)],
+def test_expand_is_unknown_until_its_milestone(switch_on, visitor_client):
+    assert refused(visitor_client, "seeds=entity:1&expand=x") == {
+        "detail": f"Unknown parameter 'expand'. Allowed: {', '.join(ALLOWED)}.",
+        "errors": [problem("expand", allowed=ALLOWED)],
     }
 
 
 def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
     # The query string runs backwards, so the order shown is the route's.
     query = (
-        "releases=bad&max_edges=0&include_partner_edges=yes&taxon=1"
+        "browser=Bad&releases=bad&max_edges=0&include_partner_edges=yes&taxon=1"
         "&context.tissue=&score=x&level=x&method=x&effect=x&evidence_basis=x"
         "&outcome=x&direction=x&layers=x&seeds=bad&foo=1"
     )
@@ -666,6 +664,7 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
         "include_partner_edges",
         "max_edges",
         "releases",
+        "browser",
     ]
 
 
@@ -722,6 +721,7 @@ def test_the_echo_is_the_request_as_read(registry, visitor_client):
         "include_partner_edges": True,
         "max_edges": 5,
         "releases": ["release:3", "release:9"],
+        "browser": None,
     }
     assert list(body["query"]) == list(NetworkQuerySerializer().fields)
 
@@ -761,6 +761,7 @@ def test_with_nothing_given_the_query_is_null(switch_on, visitor_client):
         "include_partner_edges": None,
         "max_edges": None,
         "releases": None,
+        "browser": None,
     }
 
 
