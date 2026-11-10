@@ -140,9 +140,9 @@ see in the selected releases that passes the request's filters: the
 | `is_synthetic` | `true` when any of those releases is synthetic. |
 | `qualifiers` | `{}` until identity qualifiers are recorded. |
 | `shown` | Whether a covered assertion supports listing the edge under the request's filters: always `true` in a network, and `false` on the page of a relationship whose evidence has none of the requested outcomes. |
-| `effect` | `activating`, `inhibiting`, `mixed`, `unknown`, `not_applicable` for a type without effect polarity, or `null` when no covered assertion supports the edge. |
+| `effect` | `not_applicable` for a type without effect polarity, whatever its evidence. Otherwise `activating`, `inhibiting`, `mixed`, `unknown`, or `null` when no covered assertion supports the edge. |
 | `effect_counts` | `{activating, inhibiting, unknown, not_stated}` over the covered supporting assertions. |
-| `genetic_sign` | `negative`, `positive`, `mixed`, `not_stated`, `not_applicable` for a type without sign polarity, or `null` when no covered assertion supports the edge. |
+| `genetic_sign` | `not_applicable` for a type without sign polarity, whatever its evidence. Otherwise `negative`, `positive`, `mixed`, `not_stated`, or `null` when no covered assertion supports the edge. |
 | `sign_counts` | `{negative, positive, not_stated}` over the covered supporting assertions. |
 | `outcome_counts` | `{supported, tested_absent, inconclusive, not_significant}` over the assertions that pass every filter but the outcome filter, so the evidence against the edge is always counted. |
 | `independent_outcome_counts` | The same keys, counting independent evidence per outcome: records of one observation count once. |
@@ -158,7 +158,8 @@ see in the selected releases that passes the request's filters: the
 | `outside_outcome_counts` | The four outcome keys over those. |
 
 An edge listed only because `outcome` names a kind other than `supported` has
-`assertion_count` 0 and `effect` `null`; `outcome_counts` says which kinds its
+`assertion_count` 0, and `effect` and `genetic_sign` `null`, or `not_applicable`
+for a type without that polarity; `outcome_counts` says which kinds its
 evidence has, and `tested_levels` what was tested for.
 
 ## Errors
@@ -200,7 +201,7 @@ unknown parameter or value is never answered with an empty result.
 | `detail` | One sentence per problem, each naming the parameter, and the allowed values or the limit when there is one. |
 | `errors` | One entry per problem, at most 20. Past that, `detail` ends with `and more.` |
 | `errors[].parameter` | The parameter's name. |
-| `errors[].value` | The value refused, as a string, or `null` when no one value is at fault: a name that is unknown or given twice, a list over its cap, a parameter given with nothing in it, or a required one left out. |
+| `errors[].value` | The value refused, as a string, or `null` when no one value is at fault: a name that is unknown or given twice, a list over its cap, or a required one left out. Given with nothing in it, a comma-separated list, `q` or a text `context.*` has `null`; every other parameter has `""`. |
 | `errors[].allowed` | The allowed values, as a list of strings, or `null` when the parameter has no such list. |
 | `errors[].limit` | The cap, as an integer, or `null` when none applies. |
 
@@ -210,7 +211,7 @@ unknown parameter or value is never answered with an empty result.
 | 401 | An invalid or expired token, on every route but `status`. |
 | 404 | `{"detail": "Not found."}`, on every route but `status` while the typed graph is off, and for an entity, relationship or browser instance that does not exist or that you may not see, which read alike. It is never a 403. |
 | 406 | An `Accept` header the API cannot satisfy. |
-| 429 | Over a rate limit. The body says how many seconds to wait, and so does the `Retry-After` header. |
+| 429 | Over a rate limit. The body says how many seconds to wait, and so does the `Retry-After` header, unless the limit cannot tell, when the body says only that the request was throttled and there is no header. |
 | 503 | The request took too long to compute; narrow it before repeating it, and do not retry it unchanged. `network` and the relationship routes can answer it. |
 
 On PostgreSQL each statement that reads relationships or evidence runs under a
@@ -248,7 +249,8 @@ of the anonymous and logged-in limits, and a request they refuse does not
 count against those. `network` also has a site-wide budget, counted from
 everyone combined at twice the per-caller rate and spent only by requests
 that reach the computation: a malformed or refused request spends nothing. A
-request over a limit gets 429 with a `Retry-After` header, and one the budget
+request over a limit gets 429 with a `Retry-After` header when the limit can
+tell how long to wait, and one the budget
 refuses a body that begins with "The portal's network budget is spent for the
 moment." `status` has none of these limits: it reads no token, so it is
 counted per IP address at the logged-in rate.
@@ -1227,7 +1229,8 @@ release. It answers 404 while the typed graph is off.
 A relationship exists for you when a release in the set states any evidence
 for it, whatever its outcome. One whose only visible evidence is tested-absent,
 inconclusive or not significant answers 200: under the default `outcome` its
-`edge` has `shown` `false`, `effect` `null` and its counts in
+`edge` has `shown` `false`, `effect` `null`, or `not_applicable` for a type
+without effect polarity, and its counts in
 `outcome_counts`, and with an `outcome` that covers that evidence `shown` is
 `true`. One with no visible evidence answers 404, exactly as one that does not
 exist.

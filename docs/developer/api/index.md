@@ -83,7 +83,7 @@ Validation errors name the offending fields instead:
 | 401 | No valid login token was sent and the endpoint needs one, or the token sent is invalid or expired. |
 | 403 | You are logged in but not allowed to do this, usually because it is admin-only. |
 | 404 | No such object, or an object you may not see. |
-| 429 | Rate limit exceeded. The body says how many seconds to wait. |
+| 429 | Rate limit exceeded. The body says how many seconds to wait, when the limit can tell. |
 
 The typed graph API ([Typed graph](typed-graph.md)) adds an `errors` list
 naming each parameter and its allowed values, and its `network` and

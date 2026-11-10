@@ -12,6 +12,8 @@ import { filesHandlers } from './files'
 import { rcsbHandlers } from './rcsb'
 import { interactionCategoryHandlers } from './interactionCategories'
 import { sharingHandlers } from './sharing'
+// Typed graph (F1): every /api/graph/v1/ route, served from recorded responses.
+import { typedGraphHandlers } from './typedGraph'
 
 export const handlers = [
   ...settingsHandlers,
@@ -28,4 +30,6 @@ export const handlers = [
   ...rcsbHandlers,
   ...interactionCategoryHandlers,
   ...sharingHandlers,
+  // Typed graph (F1).
+  ...typedGraphHandlers,
 ]

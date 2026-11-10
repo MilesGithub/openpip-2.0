@@ -175,6 +175,10 @@ No version has been tagged yet. Everything below is in development towards
   relationship routes reads only the releases an instance selects. The
   synthetic demonstration's loader also records two instances, for staff
   only. Still behind `TYPED_GRAPH_ENABLED`.
+- The frontend's typed client for `/api/graph/v1/`: types for every documented
+  response, React Query hooks for all nine routes with the `browser` selection,
+  and test fixtures recorded from the API on the synthetic demonstration, which
+  a backend test keeps true. No page uses them yet.
 
 ### Fixed
 
