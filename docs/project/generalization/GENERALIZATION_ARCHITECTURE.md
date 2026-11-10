@@ -3770,8 +3770,96 @@ question left unanswered takes its default (OPEN_QUESTIONS.md, A37 to A54):
   registries, each refusing control characters, with tags as checkboxes and
   a bounded presentation field.
 
-What F2, F3, F4, AD1, X1, S1, RF1b, C1, H1, N1, N2, N3 and P1 take over from
+What F1, F2, F3, F4, AD1, X1, S1, RF1b, C1, H1, N1, N2, N3 and P1 take over from
 B1 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**F1's specification** took these decisions, W1 to W35.
+Those marked ★ are flagged to the owner, and a question left unanswered takes
+its default (OPEN_QUESTIONS.md, A55 to A63):
+
+- W1 ★: F1 covers all nine served routes and `browser=`, and depends on B1
+  (A55);
+- W2 ★: one backend test, `graph/tests/test_api_fixtures.py`, compares each
+  recorded fixture with the API's answer, ids rewritten to first-load ranks,
+  proves each handler's parameter list equals its view's and every served
+  path is mirrored, and regenerates the fixtures (A56);
+- W3 ★: a Vitest test compiles F1's own files with `strict: true` through the
+  compiler API, since the project's `tsconfig.json` has `strict: false` (A57);
+- W4 ★: the GET helper refuses a request line over 4,094 bytes with a
+  classified error before sending; F1 exports a term chunker and X1 sends the
+  chunks (A58);
+- W5 ★: one retry predicate: never for 400, 404, 406, 414, 429, a JSON 503,
+  the 30 s timeout, an HTML 500 or 504, cancellation, the too-long error or a
+  non-axios error; at most once for 401, a dropped connection and a non-JSON
+  502 or 503; a remount or reconnect does not resend a stored 400, JSON 503,
+  406, HTML 400 or 414 or too-long error (A59);
+- W6 ★: every key but `status` and `vocabularies` carries the caller, `staff`,
+  `account` or `visitor`, read from the token the request will carry (A60);
+- W7 ★: `staleTime` 5 minutes for `status`, which is also re-read every 5
+  minutes while the tab is visible; `staleTime` and `gcTime` 1 hour for
+  `vocabularies`; 60 s otherwise; no refetch on focus; a failed refetch of
+  `status` keeps its last 200's `on`, and says `unknown` in place of its `off`
+  (A61);
+- W8 ★: the `vocabularies` fixture is recorded verbatim and exempt from the
+  `SYN-` checks (A62);
+- W9 ★: F1 corrects three statements of the developer page that the code
+  contradicts (A63);
+- W10: `features/graph/types.ts`; `api/graph/` with a GET helper, parameters,
+  errors and one module per route group, no barrel; `mocks/handlers/typedGraph.ts`,
+  `mocks/fixtures/typedGraph/`;
+- W11: only `mocks/handlers/index.ts` changes among existing code files, and no
+  dependency is added;
+- W12: one hook per route, beside a `queryOptions` or `infiniteQueryOptions`
+  factory taking `viewer`; no `select`, and no hook waits on `status`;
+- W13: one params object per hook, named as the wire is; `browser` and
+  `releases` exclude each other in the type;
+- W14: one normalizer per route for key and wire; plain string sort, `resolve`'s
+  `q` keeping order; `undefined` and `null` are absent, as a parameter, a path
+  id or an element of a list, and `[]` disables the hook; defaults are not
+  collapsed;
+- W15: keys under `['graph', …]`, a plain and an infinite query never sharing
+  one;
+- W16: `paramsSerializer: { indexes: null }` per request, lists comma-joined,
+  `score` repeated, paths through `encodeURIComponent`, no trailing slash;
+- W17: `classifyGraphError` returns a discriminated union, reading the body's
+  shape wherever a status is ambiguous (400, 404, 414, 503);
+- W18: `status` is `loading`, `unknown`, `off` or `on`; only a well-formed 200's
+  `false` is `off`;
+- W19: evidence is `useInfiniteQuery`, its end `page.next` being `null`;
+- W20: no `signal`;
+- W21: one `Graph*` interface per shape, `?:` only on map keys, closed unions
+  as literal types, open `string` for registry slugs, warning codes, CURIEs and
+  tags;
+- W22: generated `.ts` files of strict JSON between markers, each body
+  annotated with its response type; hand-written extras apart, unguarded;
+- W23: 32 recorded entries, every mapped README case visible, the reported rows
+  never; only TypeScript computes the lookup key;
+- W24: handlers read the query, look up the recording, answer a name not on
+  the route's list with the API's 400, and answer 501 on a miss, the fixtures
+  loaded lazily;
+- W25: the tests of TEST_PLAN.md 5.15;
+- W26: the documents of its section 12;
+- W27: a recorded request answers as recorded before the unknown-name check,
+  so the page's two-problem 400 is served;
+- W28: a wire builder throws on `[]` rather than send a default;
+- W29: generated JSON is indented ASCII;
+- W30: the visitor set answers `status` and `vocabularies` from staff's
+  recordings, which do not vary by caller;
+- W31: hook options are `enabled`, `retry` and `keepPrevious`, so a staff body
+  cannot be carried across a logout through a typed hook;
+- W32: a proxy's HTML 503 is retried once, as a 502 is; the API's JSON 503 is
+  never;
+- W33: a 2xx that is not a JSON object is an error of kind `bad_body`, not a
+  success holding a string, and evidence, the one data route whose client
+  dereferences the body, also refuses an object with no `page`, or whose
+  `page` is not an object;
+- W34: a route that streams has `"stream": true` in `typedGraphRoutes` and no
+  hook or recording;
+- W35: `useGraphBrowsers` reads one page, and the milestone that gives the
+  gallery a page size makes the hook infinite under a new key.
+
+What F2, F3, F4, X1, C1, AD1, E1, H1 and P1 take over from F1 is in their rows
+of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

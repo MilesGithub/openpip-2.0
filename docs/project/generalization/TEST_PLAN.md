@@ -945,6 +945,33 @@ repository.
   Gene, entry and isoform stay separate nodes. With the toggle off, only the
   gene's own edges appear.
 
+### 5.15 Frontend typed client (F1)
+
+- **Wire form.** The hooks' requests are pinned through MSW by exact search
+  and, on the round-trip rows, exact pathname: lists comma-joined, `score`
+  repeated, no bracketed or indexed name, no empty value, `browser` never with
+  `releases`. A handler answers a name not on its route's list with a 400 in
+  the API's shape, so `releases[]=` fails.
+- **Keys.** Reordered lists hash alike, except `resolve`'s `q`, which keeps its
+  order, every parameter changes the hash, the caller separates staff, a
+  logged-in account and a visitor, and `after` is never in a key.
+- **Errors.** The classifier reads the body's shape wherever a status is
+  ambiguous, so an HTML 400 or 414, a closed connection, a timeout and a 503
+  are told apart; a 400, 404, 429 and JSON 503 are not retried.
+- **Status.** Anything but a well-formed 200 is "features unknown", never off.
+  A failed refetch keeps the last 200's `on`, and says unknown in place of its
+  `off`.
+- **The mirror.** `backend/graph/tests/test_api_fixtures.py` compares every
+  recorded fixture with the API's answer on the demonstration, ids rewritten
+  to first-load ranks, and each handler's parameters with its view's, and it
+  regenerates the fixtures. A change to a typed response fails it until the
+  fixtures are regenerated. The same file compares each type's keys and nulls
+  with its serializer's.
+- **Nullability.** `tsconfig.json` has `strict: false`, so a Vitest test
+  compiles F1's own files with `strict: true` through the compiler API.
+- **README cases.** Every mapped row of the demonstration README's case table
+  is visible in a recorded fixture; no reported row is.
+
 ## 6. Test data
 
 - **Factories.** The existing ones (`proteins/tests/factories.py`,
@@ -956,7 +983,8 @@ repository.
   G1's review verifies (`uniprotkb`, `hgnc`, `ncbigene`, `ensembl_gene`) and
   those each later PR verifies when it adds a namespace.
 - **The synthetic release (G6)** is the shared end-to-end fixture for the
-  backend. Its MSW mirror serves the frontend. It uses `SYN-` labels, the
+  backend. Its MSW mirror serves the frontend, recorded from the API and
+  kept true by a backend test (section 5.15). It uses `SYN-` labels, the
   `synthetic_gene` and `synthetic_protein` namespaces, and no PMID or DOI that
   could resolve to a real record. v2 supersedes v1, and it includes the
   reference chain from a SYN gene to its protein's physical partner. It
