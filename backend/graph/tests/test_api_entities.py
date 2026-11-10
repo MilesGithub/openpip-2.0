@@ -188,16 +188,16 @@ def test_a_404_follows_the_negotiation_while_on(switch_on, visitor_client):
 
 
 def test_every_problem_is_listed_in_order(switch_on, visitor_client):
-    response = visitor_client.get(f"{ENTITIES}12?browser=x&releases=bad")
+    response = visitor_client.get(f"{ENTITIES}12?expand=x&releases=bad")
     assert response.status_code == 400
     assert response.json() == {
         "detail": (
-            "Unknown parameter 'browser'. Allowed: releases. "
+            "Unknown parameter 'expand'. Allowed: releases, browser. "
             "entity_id looks like entity:12. "
             "releases: a release ref looks like release:3."
         ),
         "errors": [
-            problem("browser", allowed=["releases"]),
+            problem("expand", allowed=["releases", "browser"]),
             problem("entity_id", "12"),
             problem("releases", "bad"),
         ],
@@ -251,7 +251,11 @@ def test_the_page_of_syn_tf1(demo, visitor_client):
 
     expected = {
         "api_version": API_VERSION,
-        "query": {"entity_id": f"entity:{tf1.pk}", "releases": None},
+        "query": {
+            "entity_id": f"entity:{tf1.pk}",
+            "releases": None,
+            "browser": None,
+        },
         "entity": {
             "id": f"entity:{tf1.pk}",
             "type": "gene",

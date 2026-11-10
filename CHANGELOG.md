@@ -147,8 +147,10 @@ No version has been tagged yet. Everything below is in development towards
   papers, and rows that a dry run must report and never import. `manage.py
   graph_load_demo` registers, dry-runs, commits and publishes both, with an
   MIT licence snapshot and an internal approval for each, so that only
-  staff see them. Run again, it completes a load that stopped and writes
-  nothing once the demonstration is loaded, and it never overrides an
+  staff see them, and records two browser instances for staff, the
+  demonstration's and a `portal_ppi` entry. Run again, it completes a load
+  that stopped and writes nothing once the demonstration is loaded, and it
+  never overrides an
   operator's decision. Still behind `TYPED_GRAPH_ENABLED`.
 - A read API for the typed graph under `/api/graph/v1/`, described in the
   developer guide's new Typed graph page: `status`, `vocabularies`, `resolve`
@@ -163,6 +165,16 @@ No version has been tagged yet. Everything below is in development towards
   `relationships/{relationship_ref}` and its paginated `evidence`; the entity
   page's reference edges take the shared edge shape. Still behind
   `TYPED_GRAPH_ENABLED`.
+- Browser instances: the gallery's entries, each a view of chosen typed
+  releases, this portal's search, another portal or a citation card, edited
+  in the Django admin as the operator guide's new Browser instances page
+  describes. `/api/graph/v1/browsers` lists those a caller may list, with
+  eight filters, and `browsers/{slug}` serves one; availability is computed
+  for each caller on every request, so a withdrawal shows at once. A new
+  `browser` parameter on `resolve`, `entities/{entity_id}`, `network` and both
+  relationship routes reads only the releases an instance selects. The
+  synthetic demonstration's loader also records two instances, for staff
+  only. Still behind `TYPED_GRAPH_ENABLED`.
 
 ### Fixed
 

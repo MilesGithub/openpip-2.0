@@ -103,8 +103,8 @@ docker run --rm --network "$NET" "${ENVS[@]}" -v "$PWD:/src:ro" "$IMG" sh -c '
 docker run --rm --network "$NET" "${ENVS[@]}" -e TYPED_GRAPH_ENABLED=1 -v "$PWD:/src:ro" "$IMG" sh -c '
   cp -r /src /repo && rm -f /repo/.env && cd /repo/backend \
   && python manage.py migrate && python manage.py graph_sync_registry \
-  && python manage.py graph_sync_registry --check && python manage.py migrate graph zero \
-  && python manage.py migrate'
+  && python manage.py graph_sync_registry --check && python manage.py migrate browsers zero \
+  && python manage.py migrate graph zero && python manage.py migrate'
 
 # Frontend, on a copy so node_modules never lands in the working tree
 docker run --rm -v "$PWD:/src:ro" -e CI=true node:20-alpine sh -c '
@@ -544,8 +544,10 @@ not service-level.
   it writes, `graph_check` clean and legacy row counts unchanged; a rerun
   that writes nothing; each stop it completes (after v1's publication,
   before v2's, a discard, and a commit stopped mid-file and resumed with no
-  second dry run); and each operator state of its policy, which never
-  overrides an operator and never refuses what overrides nothing.
+  second dry run); each operator state of its policy, which never
+  overrides an operator and never refuses what overrides nothing; and the
+  browser instances' rows: created, found, an operator's edit kept, a taken
+  slug refused.
 
 ### 5.5 Licensing and visibility (G2, A1, A2, B1, C1, E1)
 
@@ -625,11 +627,12 @@ or `unknown` with any other release is refused, naming it, while that release
 alone exports with its own licence (C13). G2 tests both rules in
 `bulk_export_refusals`, which E1 calls.
 
-**Browser instances.** A typed instance computes as `live` only while every
-selected release is published or superseded, and visible to the caller, so an
-instance pinned to v1 stays live after v2 is published. Otherwise it computes
-as `metadata_only`, shown as "data unavailable", as soon as a release is
-withdrawn or an approval revoked.
+**Browser instances.** A stored `planned` or `retired` status comes first
+(K1). An available typed instance computes as `live` only while every
+selected release, of either role (K2), is published or superseded, and
+visible to the caller, so an instance pinned to v1 stays live after v2 is
+published. Otherwise it computes as `metadata_only`, shown as "data
+unavailable", as soon as a release is withdrawn or an approval revoked.
 
 **Enrichment (RF1b).** The typed enrichment action is not offered unless the
 instance allows it and every visible release has an effective
@@ -652,8 +655,11 @@ identifiers.
 - **Direction.** A symmetric relationship matches a seed on either endpoint,
   whatever `direction` says. An `outcome` or `effect` filter ranks edges by
   the matching counts.
-- **Gallery filters (B1, F4).** Each filter and the title search narrow
-  `GET browsers`, filters combine, and unknown values give 400.
+- **Gallery filters (B1, F4).** Each filter and the text search of the title,
+  short title and summary (K15) narrow `GET browsers`, filters combine, a
+  malformed value or one outside a closed set gives 400, and a well-formed
+  `q`, `year` or `assay` CURIE that no listable instance has matches nothing
+  (K20).
 - **Resolution statuses (A1).** `resolve` returns `resolved`, `candidate`,
   `ambiguous` or `unmatched`, counted over distinct entities, for visible
   entities only. Each candidate is one entity with all its matches.

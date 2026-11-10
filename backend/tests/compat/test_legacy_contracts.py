@@ -139,7 +139,7 @@ from proteins.tests.factories import (
 )
 
 # The apps whose rows these tests create. Every other table is legacy here.
-TYPED_APPS = {"graph"}
+TYPED_APPS = {"graph", "browsers"}
 
 SEARCH_KEYS = {
     "all_proteins",

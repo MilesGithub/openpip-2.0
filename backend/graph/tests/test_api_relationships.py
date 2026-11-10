@@ -358,8 +358,8 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
     # The query string runs backwards, so the order shown is the route's: the
     # unknown name, the path, then the parameters as the route lists them.
     filters = (
-        "releases=bad&context.tissue=&score=x&level=x&method=x&effect=x"
-        "&evidence_basis=x&outcome=x&foo=1"
+        "browser=Bad&releases=bad&context.tissue=&score=x&level=x&method=x"
+        "&effect=x&evidence_basis=x&outcome=x&foo=1"
     )
     body = refused(visitor_client, f"{BASE}relationships/12?{filters}")
     assert [entry["parameter"] for entry in body["errors"]] == [
@@ -373,6 +373,7 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
         "score",
         "context.tissue",
         "releases",
+        "browser",
     ]
     body = refused(
         visitor_client,
@@ -391,11 +392,13 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
         "after",
         "page_size",
         "releases",
+        "browser",
     ]
-    assert body["errors"][-3:] == [
+    assert body["errors"][-4:] == [
         problem("after", "x"),
         problem("page_size", "0", limit=EVIDENCE_MAX_PAGE_SIZE),
         problem("releases", "bad"),
+        problem("browser", "Bad"),
     ]
 
 
@@ -443,23 +446,22 @@ def test_a_bad_request_reads_only_the_vocabularies_it_names(
             refused(visitor_client, f"{url}?score=a:b:c&context.host_taxon=5")
 
 
-@pytest.mark.parametrize("name", ["browser", "expand"])
 @pytest.mark.parametrize(
     "tail,allowed",
     [
-        ("", [*FILTERS, "releases"]),
-        ("/evidence", [*FILTERS, "after", "page_size", "releases"]),
+        ("", [*FILTERS, "releases", "browser"]),
+        ("/evidence", [*FILTERS, "after", "page_size", "releases", "browser"]),
     ],
 )
-def test_browser_and_expand_are_unknown_until_their_milestones(
-    tail, allowed, name, switch_on, visitor_client
+def test_expand_is_unknown_until_its_milestone(
+    tail, allowed, switch_on, visitor_client
 ):
     # The allowed names in documentation order, which is the order the
     # sentence and the list give them.
-    url = f"{BASE}relationships/relationship:1{tail}?{name}=x"
+    url = f"{BASE}relationships/relationship:1{tail}?expand=x"
     assert refused(visitor_client, url) == {
-        "detail": f"Unknown parameter {name!r}. Allowed: {', '.join(allowed)}.",
-        "errors": [problem(name, allowed=allowed)],
+        "detail": f"Unknown parameter 'expand'. Allowed: {', '.join(allowed)}.",
+        "errors": [problem("expand", allowed=allowed)],
     }
 
 
@@ -526,6 +528,7 @@ def test_the_page_of_syn_tf1_to_syn_g1(demo):
         "relationship_ref": ref("relationship", forward),
         **NO_FILTER,
         "releases": None,
+        "browser": None,
     }
     edge = body["edge"]
     assert list(edge) == list(EdgeSerializer().fields)
@@ -651,6 +654,7 @@ def test_the_evidence_of_syn_tf1_to_syn_g1(demo):
         "after": None,
         "page_size": None,
         "releases": None,
+        "browser": None,
     }
     # By default the list shows v2's corrected row alone.
     [row] = body["evidence"]

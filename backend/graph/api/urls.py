@@ -1,5 +1,7 @@
 from django.urls import path
 
+from browsers.api import BrowsersView, BrowserView
+
 from .views import (
     EntityView,
     EvidenceView,
@@ -28,4 +30,6 @@ urlpatterns = [
         EvidenceView.as_view(),
         name="evidence",
     ),
+    path("browsers", BrowsersView.as_view(), name="browsers"),
+    path("browsers/<str:slug>", BrowserView.as_view(), name="browser"),
 ]

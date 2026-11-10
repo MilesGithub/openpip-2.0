@@ -39,6 +39,8 @@ from graph.api.views import StatusView
 from graph.models import ApprovalScope, EntityStatus
 from graph.tests.api_helpers import (
     BASE,
+    BROWSER,
+    BROWSERS,
     ENTITY,
     EVIDENCE,
     NETWORK,
@@ -238,8 +240,18 @@ def test_a_logged_in_non_staff_user_is_a_visitor(demo, user_auth_client):
 # ── Parameters and errors ───────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("name", ("foo", "browser"))
-@pytest.mark.parametrize("path", sorted(SAMPLES))
+def unknown_names(path) -> tuple:
+    """Two names the route does not take: foo, and browser. The routes that
+    read data take browser, so expand, unknown until its milestone, stands
+    in for it there."""
+    taken = view_of(path).allowed_params
+    return ("foo", "expand" if "browser" in taken else "browser")
+
+
+@pytest.mark.parametrize(
+    "path,name",
+    [(path, name) for path in sorted(SAMPLES) for name in unknown_names(path)],
+)
 def test_an_unknown_parameter_is_400_with_the_allowed_names(
     path, name, switch_on, visitor_client
 ):
@@ -264,7 +276,7 @@ def test_a_400_body_keeps_its_types(switch_on, visitor_client):
     response = visitor_client.get(RESOLVE, {"q": term, "foo": 1})
     assert response.status_code == 400
     body = json.loads(response.content)
-    allowed = ["q", "namespace", "taxon", "entity_type", "releases"]
+    allowed = ["q", "namespace", "taxon", "entity_type", "releases", "browser"]
     assert body == {
         "detail": (
             f"Unknown parameter 'foo'. Allowed: {', '.join(allowed)}. "
@@ -281,7 +293,7 @@ def test_a_400_body_keeps_its_types(switch_on, visitor_client):
 def test_every_problem_is_listed_once(registry, visitor_client):
     response = visitor_client.get(f"{RESOLVE}?q=&entity_type=chemical&foo=1")
     assert response.status_code == 400
-    allowed = ["q", "namespace", "taxon", "entity_type", "releases"]
+    allowed = ["q", "namespace", "taxon", "entity_type", "releases", "browser"]
     types = ["gene", "protein", "protein_isoform"]
     assert response.json() == {
         "detail": (
@@ -436,6 +448,8 @@ def test_a_ref_problem_reads_for_every_kind():
         NETWORK,
         reachable(RELATIONSHIP),
         reachable(EVIDENCE),
+        BROWSERS,
+        reachable(BROWSER),
     ),
 )
 def test_too_many_parameters_is_a_json_400(path, switch_on, visitor_client):
@@ -604,6 +618,8 @@ def test_resolve_has_its_own_scope(switch_on, visitor_client, monkeypatch):
         (f"{NETWORK}?seeds=entity:1", GraphNetworkThrottle, "graph_network", 200),
         (reachable(RELATIONSHIP), GraphNetworkThrottle, "graph_network", 404),
         (reachable(EVIDENCE), GraphReadThrottle, "graph_read", 404),
+        (BROWSERS, GraphReadThrottle, "graph_read", 200),
+        (reachable(BROWSER), GraphReadThrottle, "graph_read", 404),
     ],
 )
 def test_a_logged_in_caller_is_counted_per_account(

@@ -5,11 +5,13 @@
 It registers the demonstration's releases (graph/demo_data/
 synthetic_regulation) as synthetic, v2 superseding v1; dry-runs and commits
 each with --create-entities; records an MIT licence snapshot and an internal
-approval for each; and publishes v1, then v2 (graph.demo.load_demo). One
-account, the one --as names, does every step. Only internal approvals are
-recorded, so visitors see nothing until an operator records a public_view
-approval with graph_approve. Run again, it completes a load that stopped,
-and writes nothing once the demonstration is loaded; it never overrides an
+approval for each; publishes v1, then v2 (graph.demo.load_demo); and records
+two browser instances for staff only, the demonstration's, selecting v2, and
+this portal's portal_ppi entry, unless each is there already. One account,
+the one --as names, does every step. Only internal approvals are recorded,
+so visitors see none of its data until an operator records a public_view
+approval with graph_approve. Run again, it completes a load that stopped, and
+writes nothing once the demonstration is loaded; it never overrides an
 operator's decision. It prints what each step did, and, when it stops, what
 was done before. Nothing is written while TYPED_GRAPH_ENABLED is off.
 """
@@ -23,9 +25,9 @@ from ._typed import require_switch, staff_account
 
 class Command(BaseCommand):
     help = (
-        "Load the synthetic demonstration, two synthetic releases that only staff "
-        "see, or complete a load that stopped: it is safe to run again. Refuses "
-        "while TYPED_GRAPH_ENABLED is off."
+        "Load the synthetic demonstration, two synthetic releases and two browser "
+        "instances that only staff see, or complete a load that stopped: it is "
+        "safe to run again. Refuses while TYPED_GRAPH_ENABLED is off."
     )
 
     def add_arguments(self, parser):
@@ -35,7 +37,7 @@ class Command(BaseCommand):
             required=True,
             help=(
                 "The active staff account that registers, commits, approves and "
-                "publishes the demonstration."
+                "publishes the demonstration, and records its browser instances."
             ),
         )
 

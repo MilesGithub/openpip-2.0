@@ -295,6 +295,7 @@ class ResolveQuerySerializer(serializers.Serializer):
     taxon = serializers.IntegerField(allow_null=True)
     entity_type = serializers.CharField(allow_null=True)
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    browser = serializers.CharField(allow_null=True)
 
 
 class ResolvePageSerializer(serializers.Serializer):
@@ -327,6 +328,7 @@ class IdentifierSerializer(serializers.Serializer):
 class EntityQuerySerializer(serializers.Serializer):
     entity_id = serializers.CharField()
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    browser = serializers.CharField(allow_null=True)
 
 
 class EntitySerializer(serializers.Serializer):
@@ -367,6 +369,7 @@ class NetworkQuerySerializer(serializers.Serializer):
     include_partner_edges = serializers.BooleanField(allow_null=True)
     max_edges = serializers.IntegerField(allow_null=True)
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    browser = serializers.CharField(allow_null=True)
 
 
 class NetworkPageSerializer(serializers.Serializer):
@@ -401,6 +404,7 @@ class RelationshipQuerySerializer(serializers.Serializer):
     score = serializers.ListField(child=serializers.CharField(), allow_null=True)
     context = serializers.DictField(child=serializers.CharField())
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    browser = serializers.CharField(allow_null=True)
 
 
 class ReleaseCountsSerializer(serializers.Serializer):
@@ -432,6 +436,7 @@ class EvidenceQuerySerializer(serializers.Serializer):
     after = serializers.CharField(allow_null=True)
     page_size = serializers.IntegerField(allow_null=True)
     releases = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    browser = serializers.CharField(allow_null=True)
 
 
 class TermRefSerializer(serializers.Serializer):

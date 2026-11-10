@@ -695,29 +695,33 @@ Rules enforced in the service layer, with tests:
 
 | Field | Notes |
 |---|---|
-| `slug` | `/browsers/<slug>`; reserved words are rejected |
+| `slug` | `/browsers/<slug>`; reserved words are rejected; read-only once saved |
 | `title`, `short_title`, `summary`, `description`, `methods_text` | Plain text only, never rendered as HTML |
 | `kind` | `typed` (a scoped view of selected releases), `portal_ppi` (this install's existing `/search`), `external` (an independent portal, link only) or `metadata_only` (a citation card with no data) |
 | `status` | `planned`, `available` or `retired` |
 | `visibility` | `staff`, `unlisted` (reachable by slug) or `public` (listed) |
 | `external_url` | https only; required if and only if `kind` is `external` |
-| `publications` | M2M Publication: the header citation |
-| `releases` | Through `BrowserInstanceRelease` (role `primary` or `context`, order) |
-| `taxa`, `primary_taxon`, `relationship_types`, `entity_types` | M2M and FK to the registries. An empty set means everything present in its releases |
-| `presentation` | JSON validated against schema v1: default layers, default filters, filter panels from a code registry, layout, evidence panels, node-label namespace, accent colour token |
+| `publications` | M2M Publication through `BrowserInstancePublication` (role, order, `PROTECT`): the header citation, in the order an admin gives it (K28) |
+| `is_synthetic` | The admin's statement, for a card with no releases; a response also reads true when a caller-visible selected release is synthetic (K11) |
+| `releases` | Through `BrowserInstanceRelease` (role `primary`, the study's own, or `context`, one that supports it; order; `PROTECT`), at most 50 (K30). Both roles count for availability and are pinned by `browser=` (K2) |
+| `taxa`, `primary_taxon`, `relationship_types`, `entity_types` | M2M and FK to the registries. An empty `taxa` or `relationship_types` means what the selected releases a caller may see declare or hold, non-reference types only (K18). `entity_types` is stated only, never derived, and the API names it `stated_entity_types` (K32) |
+| `presentation` | JSON validated against schema v1 (`browsers/presentation.py`), a closed object of `version`, `default_layers`, `default_filters`, `filter_panels`, `layout`, `evidence_panels`, `node_label_namespace` and `accent`, each a name from a code list or a registry; `{}` means every default |
 | `tags` | Biology-area tags from a controlled list in code |
 | `assays` | M2M Term: the detection methods the instance's studies used, maintained by an admin like `tags`. The gallery's assay filter reads it; its publication-year filter reads `publications` |
-| `allow_external_services` | Default false. Effective only if every visible release has an effective `external_services` approval |
-| `display_order`, `created_at`, `updated_at`, `updated_by` | |
+| `allow_external_services` | Default false. Effective only on a typed instance, while it is `live` for the caller and every selected release has an effective `external_services` approval (K23) |
+| `display_order`, `created_at`, `updated_at`, `updated_by`, `updated_by_username` | The username is kept beside the account, which may be deleted |
 
 Availability (`live`, `planned`, `external`, `metadata_only`, `retired`) is
 **computed on every request** from the kind, the status, the release statuses
-and the approvals, and is never stored. A `typed` instance computes as `live`
-for a caller only while every selected release is published or superseded,
-and visible to that caller (`visible_release_ids`: an effective `public_view`
-approval for visitors, `internal` for staff). An instance pinned to v1
-therefore stays live after v2 supersedes it. Otherwise it computes as
-`metadata_only`, shown as "data unavailable", whatever its stored status. So
+and the approvals, and is never stored. A stored `retired` status comes
+first, then a stored `planned` one; then `external` computes as `external`,
+`portal_ppi` as `live` and the kind `metadata_only` as `metadata_only` (K1).
+An available `typed` instance computes as `live` for a caller only while it
+selects at least one release and every selected release is published or
+superseded, and visible to that caller (`visible_release_ids`: an effective
+`public_view` approval for visitors, `internal` for staff). An instance
+pinned to v1 therefore stays live after v2 supersedes it. Otherwise it
+computes as `metadata_only`, shown as "data unavailable". So
 when a release is withdrawn or an approval revoked, the instance shows "data
 unavailable" at once. An instance can never widen what the release gate allows. Instances follow the
 multi-row admin precedent (`Announcement`, `InteractionCategory`), not the
@@ -1760,7 +1764,10 @@ The same network is mirrored as an MSW fixture for frontend tests. It is
 loaded by `manage.py graph_load_demo --as <username>`, never by a
 migration. It records `internal` approvals only, so on a public hub its
 data are visible to staff alone until an operator records `public_view`
-with `graph_approve`, the explicit recorded decision. The loader commits
+with `graph_approve`, the explicit recorded decision. It also records two
+browser instances, for staff only: the demonstration's,
+`synthetic-regulation`, selecting v2, and a `portal_ppi` entry (K7, K8). The
+loader commits
 with `--create-entities`, so the SYN entities are created as `provisional`
 (section 4.1).
 
@@ -2190,7 +2197,7 @@ This step goes into `docs/operator-guide/migrating.md` with the bridge PR.
 | Switch and gate | Every view subclasses one base view. It raises 404 in `initial()` when the switch is off (except `status`), applies the visibility function, and sets throttles. An architecture test asserts that every `/api/graph/v1/` route uses it |
 | Permissions | Reads are `AllowAny`, declared explicitly because the global default is `IsAuthenticated`. Admin routes are `IsAdminUser` (later, CU1's curator permission) |
 | Throttles | Scoped `EveryCallerRateThrottle` classes (`backend/core/throttling.py:4-18`), on top of the global anon and user limits: `graph_read` 300/min, `graph_resolve` 120/min, `graph_network` 60/min (`network` and the relationship page) and `graph_export` 20/hour per caller. Also a **site-wide** budget for network calls, because per-caller limits cannot protect three sync gunicorn workers (`docker-compose.prod.yml:43`); the `network` handler applies it after validation, so a malformed request, which reads no data, spends none of it. These are initial values, set in `DEFAULT_THROTTLE_RATES` and documented |
-| Pagination | Cursor pagination ordered by id for evidence and lists (default 50, max 200). Network responses are capped and report truncation instead of paginating |
+| Pagination | Cursor pagination ordered by id for evidence and lists (default 50, max 200). Network responses are capped and report truncation instead of paginating. `GET browsers` departs from this: it returns every instance the caller may list, on one page ordered by (`display_order`, `slug`), with `page.next` reserved and `null`, so a page size can come additively (K6) |
 | Hard limits | Initial values, to be confirmed by the benchmark: `q` ≤ 200 characters; ≤ 25 terms per resolve, ≤ 20 candidates each; ≤ 10 seeds; depth 1; ≤ 20 layers; ≤ 50 releases; edges default 250, max 1,000; ≤ 200 per seed; nodes ≤ 500; request body ≤ 64 KB; statement timeout 5 s on PostgreSQL (D8) |
 | Errors | An unknown parameter or value returns 400 with the allowed values, never a confident empty result (the PSICQUIC rule, `backend/psicquic/miql.py:46-59`). Exceeding a cap returns 400; truncating to a cap is reported in `page`. A statement the timeout cancels, or a network past its request deadline, returns 503 with a body that names what to narrow and no `Retry-After` (D8) |
 | Numbers | NaN and infinity are never emitted (unlike the legacy `_safe_float` path, `backend/interactions/search_service.py:39-43`) |
@@ -2212,7 +2219,7 @@ All paths are under `/api/graph/v1/`.
 | `GET network` | Bounded neighbourhood; see 7.3 | 2 |
 | `GET relationships/{relationship_ref}` | The claim's definition, endpoints, qualifiers, summary under the network's evidence-level filters (`outcome`, `evidence_basis`, `effect`, `method`, `level`, `score`, `context.<facet>`), so a panel and the network agree, and per-release counts over the assertions that pass every filter but the outcome filter. Takes `releases` and `browser`. Rationed per caller at `graph_network`'s rate, without the site-wide budget | 2 |
 | `GET relationships/{relationship_ref}/evidence` | Keyset-paginated assertions with full provenance (7.3): `after=evidence:<id>` and `page_size`, under the same filters, every outcome unless `outcome` narrows it. Takes `releases` and `browser` | 2 |
-| `GET browsers`, `GET browsers/{slug}` | Gallery list, filtered by the facets brief §6 lists: `q` (title and summary text), `tag` (biology area), `relationship_type` (interaction type), `taxon` (species), `assay`, `year` (header publication year), `status` and `availability`; filters combine, and an unknown value gives 400. Then one instance's configuration, releases with licence and attribution, and computed availability | 2 |
+| `GET browsers`, `GET browsers/{slug}` | Gallery list, filtered by the facets brief §6 lists: `q` (title, short title and summary text, K15), `tag` (biology area), `relationship_type` (interaction type), `taxon` (species), `assay`, `year` (header publication year), `status` and `availability`; filters combine, and an unknown value (malformed or outside a closed set: K20) gives 400. `{api_version, query, instances, page}`, each instance `slug`, `title`, `short_title`, `summary`, `kind`, `status`, `visibility`, `availability`, `is_synthetic`, `external_url`, `tags`, `taxa`, `primary_taxon`, `relationship_types`, `assays` and `publications`. Then one instance's configuration, with computed availability: `{api_version, query, instance, releases}`, the instance adding `description`, `methods_text`, `stated_entity_types`, `selection`, `presentation`, `allow_external_services` and `external_services_effective`, `releases` being the release entries with licence and attribution | 2 |
 | `GET datasets`, `GET datasets/{slug}`, `GET releases/{release_id}` | Typed catalogue. Releases without `public_view` appear as metadata only, without counts | 4 (C1) |
 | `GET summary` | Hub figures from the stored statistics of visible releases in the default set, never typed in by hand. Totals add only quantities that add up across releases (section 3.6) | 4 (H1) |
 | `GET exports/network` | A streaming zip with `nodes.csv`, `edges.csv`, `evidence.csv` and `manifest.json`. The manifest gives the query, the releases with checksums and adapter and mapping versions, each release's licence, attribution and note of changes, and the approvals relied on. Returns 403, naming the blocked releases, when any lacks `public_bulk`, or when it would combine a ShareAlike release with any other release (section 3.7). CSV cells are guarded against formula injection | 4 (E1) |
@@ -2609,8 +2616,10 @@ All of them refuse to write while the switch is off.
 - `graph_load_demo --as USERNAME` (G6), which registers the fixture's two
   releases as synthetic, v2 superseding v1, dry-runs and commits each with
   `--create-entities`, records an MIT licence snapshot and an `internal`
-  approval for each, and publishes v1 then v2. Run again, it completes a
-  load that stopped and writes nothing once the demonstration is loaded.
+  approval for each, publishes v1 then v2, and records two browser
+  instances for staff, `synthetic-regulation`, selecting v2, and a
+  `portal_ppi` entry. Run again, it completes a load that stopped, keeps an
+  instance it finds, and writes nothing once the demonstration is loaded.
 - `graph_check` (G5) writes nothing and takes no `--as`. It reports, in ten
   sections, problems, which make it exit 1:
   - unknown or deprecated slugs: the registry against the code's JSON, both
@@ -3671,6 +3680,98 @@ A14, A15 and A21 to A36):
 
 What B1, F1, F2, F3, F4, X1, E1, L2, R1, R2, M1, P1 and P8 take over from A2
 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**B1's specification** took these decisions, K1 to K36 as its PR lists
+them, after four independent reviews, whose probes prototyped it on
+PostgreSQL, and three audits. Those marked ★ are flagged to the owner, and a
+question left unanswered takes its default (OPEN_QUESTIONS.md, A37 to A54):
+
+- K1 ★: availability reads the stored status and the kind first: stored
+  `retired`, then `planned`; then `external` computes as `external`,
+  `portal_ppi` as `live`, kind `metadata_only` as `metadata_only`, and
+  `typed` by the release rule, since 3.8 defined only `typed` (A37);
+- K2 ★: both roles of a selected release count for `live` and are pinned by
+  `browser=` (A38);
+- K3 ★: `browser` with `releases` is a 400 (A39);
+- K4 ★: an unknown or unreachable `browser` slug pins nothing, silently, as
+  an unknown release ref does (A40);
+- K5 ★: a reachable typed instance pins all its releases whatever its status
+  and the release gate drops what the caller may not see; other kinds pin
+  nothing (A41);
+- K6 ★: the gallery is unpaginated, ordered by (`display_order`, `slug`),
+  with `page.next` reserved and `null`, so a page size can come additively
+  (7.1; A42);
+- K7 ★: both of the loader's rows are `staff`, since the typed instance's
+  data are visible to staff alone until `public_view` and the loader cannot
+  know whether this portal's `/search` serves any data (A43);
+- K8 ★: the demonstration instance selects the latest version, v2, as
+  `primary` (A44);
+- K9 ★: the tag list is the ten in code (A45);
+- K10 ★: the reserved slugs are the ten in code, and a slug is read-only
+  after creation (A46);
+- K11 ★: the synthetic flag is stored for a card with no releases, or
+  derived from the caller-visible selected releases, so it discloses nothing
+  of a hidden one (A47);
+- K12 ★: B1 adds no creation path for citations, assays and organisms:
+  cards cite only what commits or the registry hold, and AD1 and the later
+  registry versions (RF1b) take the rest (A48);
+- K13 ★: `browser=` scopes releases only, and F4 and X1 pass `taxon=`
+  themselves (D13; A49);
+- K14 ★: F4's scoped network is `browser=`, shown only while the instance is
+  `live` (A50);
+- K15 ★: the gallery's `q` searches the title, short title and summary, a
+  casefolded substring (A51);
+- K16 ★: "accept no HTML" (E8) means markup is stored as typed and shown as
+  text. Control characters and bidirectional embeddings, overrides and
+  isolates are refused. The description and methods text may still hold
+  tabs, line breaks and line and paragraph separators, which the title,
+  short title and summary refuse (A52);
+- K17: visitors list `public` instances and reach `public` and `unlisted`
+  ones; staff list and reach all, with `visibility`;
+- K18: derived facets read the caller-visible selected releases only, and
+  derived types are non-reference only;
+- K19: fields, choice labels and constraints are final in `0001`;
+  single-field rules are function validators named by path, so their bodies
+  grow with no migration; cross-field and type rules are `clean()`,
+  cross-row rules `validate_selection` and `validate_facets`; the models are
+  plain;
+- K20 ★: "an unknown value gives 400" means a malformed or closed-set value,
+  while a well-formed open-domain value (`q`, `year`, an `assay` CURIE)
+  matches nothing, as A1's S4 reads it (7.2; A53);
+- K21: both routes throttle under `graph_read`;
+- K22: the views are in `browsers.api`, the routes in `graph/api/urls.py`,
+  and the operation ids `api_graph_v1_browsers_list` and `_retrieve`;
+- K23: the detail carries the stored `allow_external_services` and the
+  effective `external_services_effective`, true only on a `live` typed
+  instance whose every selected release has an effective `external_services`
+  approval;
+- K24: an instance may be deleted, and the operator page says to retire one
+  instead;
+- K25: the `browser=` lookup is one statement in `release_set()`, after
+  validation;
+- K26 ★: one `portal_ppi` entry per install is a code rule in
+  `validate_selection`, relaxable with no migration (A54);
+- K27: a typed, available instance selects at least one release;
+- K28: the header citation is an explicit through model with role, order and
+  `PROTECT`, shown by (`order`, id);
+- K29: the list's envelope is `{api_version, query, instances, page}`, with
+  no selection and no release entries, which the detail serves;
+- K30: an instance selects at most `MAX_INSTANCE_RELEASES`, which is
+  `limits.MAX_RELEASES`, 50;
+- K31: a slug outside the grammar is a 404 with no statement;
+- K32: entity types are stated only, returned as `stated_entity_types`;
+- K33: `selection` is the detail's only, `{release, role}`, with no stored
+  order, whose gaps would count hidden releases;
+- K34: the admin's text help is in the form, not the model;
+- K35: the empty pin is `frozenset({0})`, so a hidden selection costs what an
+  empty one does;
+- K36: the admin's pickers are autocomplete for taxa, the primary taxon,
+  assays and publications, and `filter_horizontal` for the two small
+  registries, each refusing control characters, with tags as checkboxes and
+  a bounded presentation field.
+
+What F2, F3, F4, AD1, X1, S1, RF1b, C1, H1, N1, N2, N3 and P1 take over from
+B1 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

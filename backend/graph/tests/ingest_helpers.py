@@ -13,6 +13,7 @@ from django.apps import apps
 from django.conf import settings
 from django.db import models
 
+from browsers.models import BrowserInstance
 from graph.ingest.canonical_tsv import ADAPTER, SPEC
 from graph.ingest.commit import commit_release
 from graph.ingest.context import RunContext, load_registry_snapshot
@@ -42,6 +43,7 @@ from graph.tests.factories import (
     approve,
     confirm_diligence,
 )
+from graph.tests.test_isolation import NEW_APPS
 
 ADAPTER_NAME = SPEC.name
 HEADER = [*SPEC.columns, *SPEC.optional_columns]
@@ -215,33 +217,38 @@ def committed(release, *, triggered_by=None, **options):
 
 
 def natural_rows() -> dict:
-    """{table: its rows, as sorted tuples} for every graph table but
-    graph_importrun: each row without its surrogate primary key, its
+    """{table: its rows, as sorted tuples} for every table of every new app
+    but graph_importrun: each row without its surrogate primary key, its
     timestamps or the runs it names, and each foreign key as the natural
     key of the row it names: an entity by its identity key; a relationship
     by its type, its endpoints' keys and its qualifier key; a publication
     by its identifiers, or its dataset's slug and its local key; a source
     record by its release's key and its record key; an assertion by its
     record's key and its assertion key; a release by its dataset's slug and
-    its version; a dataset or a data source by its slug; a file by its
-    release's key, its role and its SHA-256; an account by its username. A
-    term, a taxon and a registry row are their own keys (a CURIE, a taxid,
-    a slug). So rows that a rolled-back commit numbered otherwise compare
-    equal; JSON values compare as JSON."""
+    its version; a dataset or a data source by its slug; a browser instance
+    by its slug; a file by its release's key, its role and its SHA-256; an
+    account by its username. A term, a taxon and a registry row are their
+    own keys (a CURIE, a taxid, a slug). So rows that a rolled-back commit
+    numbered otherwise compare equal; JSON values compare as JSON."""
     keys = _NaturalKeys()
     rows = {}
-    for model in apps.get_app_config("graph").get_models(include_auto_created=True):
-        if model is ImportRun:
-            continue
-        fields = [field for field in model._meta.concrete_fields if _compared(field)]
-        found = model._base_manager.values_list(*(field.attname for field in fields))
-        rows[model._meta.db_table] = sorted(
-            (
-                tuple(keys.of(field, value) for field, value in zip(fields, row))
-                for row in found
-            ),
-            key=repr,
-        )
+    for app in NEW_APPS:
+        for model in apps.get_app_config(app).get_models(include_auto_created=True):
+            if model is ImportRun:
+                continue
+            fields = [
+                field for field in model._meta.concrete_fields if _compared(field)
+            ]
+            found = model._base_manager.values_list(
+                *(field.attname for field in fields)
+            )
+            rows[model._meta.db_table] = sorted(
+                (
+                    tuple(keys.of(field, value) for field, value in zip(fields, row))
+                    for row in found
+                ),
+                key=repr,
+            )
     return rows
 
 
@@ -288,7 +295,7 @@ class _NaturalKeys:
         rows = model._base_manager
         if model is Entity:
             return dict(rows.values_list("pk", "identity_key"))
-        if model in (DataSource, SourceDataset):
+        if model in (DataSource, SourceDataset, BrowserInstance):
             return dict(rows.values_list("pk", "slug"))
         if model is DatasetRelease:
             return {

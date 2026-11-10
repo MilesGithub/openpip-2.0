@@ -316,7 +316,14 @@ def test_the_envelope_and_its_exact_keys(test_namespaces, visitor_client):
     body = ask(visitor_client, "dl")
     assert list(body) == ENVELOPE
     assert body["api_version"] == "graph/v1"
-    assert list(body["query"]) == ["q", "namespace", "taxon", "entity_type", "releases"]
+    assert list(body["query"]) == [
+        "q",
+        "namespace",
+        "taxon",
+        "entity_type",
+        "releases",
+        "browser",
+    ]
     [result] = body["results"]
     assert list(result) == ["term", "status", "truncated", "candidates"]
     [candidate] = result["candidates"]
@@ -392,6 +399,7 @@ def test_the_query_echoes_the_request_not_what_the_service_kept(
         "taxon": 9606,
         "entity_type": "protein",
         "releases": [f"release:{unapproved.pk}", f"release:{visible.pk}"],
+        "browser": None,
     }
     assert [result["term"] for result in body["results"]] == [
         "uniprotkb:P04637",
@@ -407,6 +415,7 @@ def test_with_nothing_given_the_query_is_null(switch_on, visitor_client):
         "taxon": None,
         "entity_type": None,
         "releases": None,
+        "browser": None,
     }
 
 

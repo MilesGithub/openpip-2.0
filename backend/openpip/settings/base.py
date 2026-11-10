@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "psicquic",
     "sharing",
     "graph",
+    "browsers",
 ]
 
 MIDDLEWARE = [

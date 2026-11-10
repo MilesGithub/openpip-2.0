@@ -15,6 +15,14 @@ from urllib.parse import quote
 
 import pytest
 
+from browsers.presentation import KEYS
+from browsers.serializers import (
+    BrowserQuerySerializer,
+    BrowsersPageSerializer,
+    BrowsersQuerySerializer,
+    InstanceItemSerializer,
+    InstanceSerializer,
+)
 from graph.api import limits
 from graph.api.params import MAX_PROBLEMS
 from graph.api.serializers import (
@@ -55,6 +63,8 @@ from graph.resolution import AMBIGUOUS, CANDIDATE, MATCH_KINDS, RESOLVED, UNMATC
 from graph.tests import test_operator_guide as guide
 from graph.tests.api_helpers import (
     BASE,
+    BROWSER,
+    BROWSERS,
     ENTITY,
     EVIDENCE,
     NETWORK,
@@ -62,12 +72,17 @@ from graph.tests.api_helpers import (
     RESOLVE,
     STATUS,
     VOCABULARIES,
+    browser_url,
     entity_url,
     evidence_url,
     network_url,
     relationship_url,
     typed_routes,
     without_ids,
+)
+from graph.tests.test_operator_browsers import (
+    PRESENTATION_LISTS,
+    assert_availability_tables,
 )
 
 PAGE = guide.PAGE.parent.parent / "developer" / "api" / "typed-graph.md"
@@ -111,6 +126,10 @@ HEADINGS = [
     "## Relationships",
     f"### GET {RELATIONSHIP}",
     f"### GET {EVIDENCE}",
+    "## Browser instances",
+    "### Browser instance items",
+    f"### GET {BROWSERS}",
+    f"### GET {BROWSER}",
 ]
 # The examples' requests, as the page states them.
 RESOLVE_EXAMPLE = f"{RESOLVE}?q=SYN-TF1,SYN-SHARED"
@@ -260,6 +279,7 @@ def test_each_routes_key_table_lists_its_keys(method, path, view):
         ("### Entity nodes", ["Key", "Contents"], EntityNodeSerializer),
         ("### Release entries", ["Key", "Contents"], ReleaseEntrySerializer),
         ("### Edges", ["Key", "Contents"], EdgeSerializer),
+        ("### Browser instance items", ["Key", "Contents"], InstanceItemSerializer),
         (f"### GET {STATUS}", ["`features` key", "Covers"], FeaturesSerializer),
         (f"### GET {STATUS}", ["`limits` key", "Contents"], LimitsSerializer),
         (f"### GET {NETWORK}", ["`nodes[]` key", "Contents"], NetworkNodeSerializer),
@@ -267,6 +287,13 @@ def test_each_routes_key_table_lists_its_keys(method, path, view):
 )
 def test_a_shared_shapes_table_lists_its_keys(heading, header, serializer):
     assert set(table(heading, header)) == set(serializer().fields)
+
+
+def test_the_instance_pages_added_keys_are_the_serializers():
+    found = table(f"### GET {BROWSER}", ["Added `instance` key", "Contents"])
+    assert set(found) == set(InstanceSerializer().fields) - set(
+        InstanceItemSerializer().fields
+    )
 
 
 @pytest.mark.parametrize(
@@ -284,6 +311,12 @@ def test_a_shared_shapes_table_lists_its_keys(heading, header, serializer):
             "",
             EdgeSerializer,
             {"effect", "genetic_sign", "level", "level_assigned"},
+        ),
+        (
+            "### Browser instance items",
+            "",
+            InstanceItemSerializer,
+            {"external_url", "primary_taxon"},
         ),
         ("## Errors", "errors[].", ProblemSerializer, {"value", "allowed", "limit"}),
         (f"### GET {ENTITY}", "", EntitySerializer, {"created_by_release"}),
@@ -359,6 +392,9 @@ def test_a_table_says_which_values_may_be_null(heading, prefix, serializer, null
         (f"### GET {RELATIONSHIP}", "query", RelationshipQuerySerializer),
         (f"### GET {EVIDENCE}", "query", EvidenceQuerySerializer),
         (f"### GET {EVIDENCE}", "page", EvidencePageSerializer),
+        (f"### GET {BROWSERS}", "query", BrowsersQuerySerializer),
+        (f"### GET {BROWSERS}", "page", BrowsersPageSerializer),
+        (f"### GET {BROWSER}", "query", BrowserQuerySerializer),
     ),
 )
 def test_a_row_says_which_of_its_keys_may_be_null(heading, key, serializer):
@@ -396,10 +432,22 @@ def test_the_enumerations_are_the_codes():
     assert re.findall(r"`(\w+)`", entry) == ApprovalScope.values
 
 
+def test_the_presentation_table_is_the_schema():
+    found = table(f"### GET {BROWSER}", ["`presentation` key", "Domain"])
+    assert list(found) == list(KEYS)
+    for key, names in PRESENTATION_LISTS.items():
+        assert re.findall(r"`([^`]+)`", found[key]) == list(names), key
+
+
+def test_the_availability_tables_are_compute():
+    assert_availability_tables(guide.rows(section("## Browser instances")))
+
+
 def test_the_caps_are_the_limits():
     text = " ".join(PAGE.read_text(encoding="utf-8").split())
     for stated in (
         f"or more than {limits.MAX_RELEASES} distinct refs",
+        f"`q` is at most {limits.Q_MAX_CHARS} characters, and holds no control",
         f"at most {limits.RESOLVE_MAX_TERMS} in all, "
         f"each at most {limits.Q_MAX_CHARS} characters",
         f"more than {limits.RESOLVE_MAX_TERMS} terms",
@@ -485,9 +533,7 @@ def test_no_shipped_setting_moves_the_limits_on_the_page():
 
 def test_the_page_describes_only_what_is_served():
     # A scope or route lands on the page with the code that uses it.
-    text = PAGE.read_text(encoding="utf-8")
-    for word in ("graph_export", "browser="):
-        assert word not in text
+    assert "graph_export" not in PAGE.read_text(encoding="utf-8")
 
 
 # ── The examples ────────────────────────────────────────────────────────────
@@ -545,13 +591,26 @@ def test_the_evidence_example_is_the_response(demo):
 
 
 def test_the_vocabulary_example_is_the_encodes_entry(registry, visitor_client):
-    block = json.loads(guide.json_block("relationship_types", page=PAGE))
+    block = json.loads(guide.json_block("outcomes", page=PAGE))
     body = visitor_client.get(VOCABULARIES).json()
     assert set(block) == {"relationship_types", "outcomes"}
     [encodes] = block["relationship_types"]
     assert encodes["slug"] == "encodes"
     assert encodes in body["relationship_types"]
     assert block["outcomes"] == body["outcomes"]
+
+
+def test_the_gallery_example_is_the_response(demo):
+    assert f"`GET {BROWSERS}`" in section(f"### GET {BROWSERS}")
+    block = json.loads(guide.json_block("instances", page=PAGE))
+    assert up_to_ids(block) == up_to_ids(demo.staff.get(BROWSERS).json())
+
+
+def test_the_instance_example_is_the_response(demo):
+    block = json.loads(guide.json_block("instance", page=PAGE))
+    slug = block["query"]["slug"]
+    assert f"`GET {BASE}browsers/{slug}`" in section(f"### GET {BROWSER}")
+    assert up_to_ids(block) == up_to_ids(demo.staff.get(browser_url(slug)).json())
 
 
 def test_the_error_example_is_a_400_body(registry, visitor_client):

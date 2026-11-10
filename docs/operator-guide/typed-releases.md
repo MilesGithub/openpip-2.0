@@ -658,7 +658,7 @@ python manage.py graph_load_demo --as USERNAME
 
 | Option | Meaning |
 |---|---|
-| `--as USERNAME` | The active staff account that registers, commits, approves and publishes the demonstration. Required. |
+| `--as USERNAME` | The active staff account that registers, commits, approves and publishes the demonstration, and records its browser instances. Required. |
 
 On a production server, the backend image already holds the files, so no
 folder needs mounting:
@@ -678,9 +678,13 @@ licence snapshot and its `internal` approval, and publishes it. v1's commit
 creates the demonstration's 13 entities, which are `provisional`, its 14
 relationships, its two papers and, unless openPIP holds them already, the
 two interaction types; v2's creates none, and publishing v2 supersedes v1.
+Last it records two browser instances, for staff only: `synthetic-regulation`,
+which selects v2 and cites the two papers, and, unless this portal has a
+`portal_ppi` entry already, `protein-interactions`
+([The demonstration's rows](browser-instances.md#the-demonstrations-rows)).
 It prints one line for the data source and dataset, one line per release
-with what each step did, and a last line naming the current release and
-who may see it.
+with what each step did, one line for the browser instances, and a last line
+naming the current release and who may see it.
 
 Each release's licence snapshot records the repository's MIT License, with
 its grant and condition quoted from `LICENSE`, as read on the day of the
@@ -689,21 +693,27 @@ so the demonstration is for staff. On a public hub, every staff member's
 default view through `/api/graph/v1/` shows it once the loader has run, and
 visitors see it only after a `public_view` approval is recorded with
 `graph_approve`
-([Approving a release](#approving-a-release)).
+([Approving a release](#approving-a-release)). Both browser instances are
+`staff` too, so neither is listed for visitors until an operator makes it
+`public`.
 
 ### Running it again
 
-`graph_load_demo` is safe to run again. Once the demonstration is loaded,
-it writes nothing and says so. A load that stopped is completed from where
-it stopped: a commit that stopped is resumed, with no second dry run; a
+`graph_load_demo` is safe to run again. Once the demonstration and its two
+browser instances are loaded, it writes nothing and says so. A portal
+loaded before the browser instances existed gets them on its next run, and
+one that was deleted is created again. A load that stopped is completed
+from where it stopped: a commit that stopped is resumed, with no second dry
+run; a
 staged release is published once its commit is found to have had
 `--create-entities` and no resolution file; a release discarded back to
 draft is dry-run and committed again, and keeps its licence snapshot and
 approval; and a licence snapshot or an `internal` approval that was never
 recorded is recorded.
 
-It never overrides an operator. A release that is published or superseded
-is left as it is, and its line reports what an operator did to it: an
+It never overrides an operator. A browser instance that exists is kept as
+it stands. A release that is published or superseded is left as it is, and
+its line reports what an operator did to it: an
 `internal` approval revoked, or a denial; a latest licence snapshot that
 records no terms; or an approval that relies on an older snapshot than the
 latest (refresh it with `graph_approve --replace` once the latest snapshot
@@ -731,6 +741,11 @@ before, then the refusal, which says what to do before running it again:
   final;
 - its data source or dataset slug names other data than the
   demonstration's;
+- the slug `synthetic-regulation` names a browser instance of another kind,
+  or one selecting a release outside the demonstration's dataset; or this
+  portal has no `portal_ppi` entry and the slug `protein-interactions` names
+  an instance of another kind. The releases are loaded by then, and neither
+  browser instance is written;
 - its files differ from those a release past draft was registered with,
   or a draft whose commit stopped was registered under an older version
   of `canonical_tsv_v1` (see below);
@@ -765,10 +780,15 @@ them again. To remove it for good, withdraw v2, then v1, with
 current data out of the default view at once). This is final:
 `graph_load_demo` then refuses on this portal, since the demonstration ships
 as v1 and v2 only. Either way the evidence leaves every view and the 13
-entities stay `provisional`. `graph_check` does not list them, because the
-withdrawn or unapproved releases' assertions still name them, and the
-portal's resolver still finds them at service level, but the API's `resolve`
-answers only for the entities a caller may see.
+entities stay `provisional`, and the browser instances stay, selecting the
+hidden releases. To keep one out of a visitor's gallery, leave its
+`visibility` at `staff`; retiring it (`status` `retired`) keeps it listed, as
+`retired`. After revoking, a run recreates one that is deleted; after
+withdrawing, the run is refused before it reaches them. `graph_check` does
+not list the entities, because the withdrawn or unapproved releases'
+assertions still name them, and the portal's resolver still finds them at
+service level, but the API's `resolve` answers only for the entities a caller
+may see.
 
 Both ways assume that the load finished, with v2 published. After a load
 that stopped earlier, v2 may be missing, or a draft or staged release with
@@ -797,8 +817,9 @@ The loader then refuses, with nothing written for v2.
 - **Running two at once.** A dry run, commit or discard of a release while
   another runs ([One commit at a time](#one-commit-at-a-time)).
 - **Loading the synthetic demonstration** over an operator's decision, over
-  data that are not the demonstration's, from files that changed under a
-  release past draft, or once a withdrawal has made it final
+  data or a browser instance that are not the demonstration's, from files
+  that changed under a release past draft, or once a withdrawal has made it
+  final
   ([Running it again](#running-it-again)).
 - **Every command** while `TYPED_GRAPH_ENABLED` is off, and every command
   that writes without `--as` naming an active staff account.
