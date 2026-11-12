@@ -778,18 +778,20 @@ identifiers.
   Predicted edges are dotted.
 - **Multigraphs.** A→B and B→A are two curved edges, and self-loops render.
 - **Ids.** String ids (`entity:12`, `ppi-interaction:42`) tap correctly.
-- **Layout** re-runs only when the element id set changes, checked with a
-  spy.
+- **Layout** re-runs only when the element id set or the layout name
+  changes, checked with a spy.
 - **Physical edges** take their label from the strongest stored level that
   the API returns (A2). Edges with only association-level (MI:0914) evidence
   are labelled "association (co-purification)", never binding, and those
   with no stated level "physical interaction, level not stated".
 - **Reference links** are drawn thin, grey and directed, each with a text
-  label giving its type and the release that states it. Derived seeds carry
-  a "via encodes" or "via isoform of" badge. The legend explains that
-  `encodes` links come from a mapping release and `isoform_of` links from a
-  UniProt release, and that gene, protein entry and isoform are separate
-  records (X1).
+  label giving its type and the release that states it, or only its type
+  when another release in view reports the link without supporting it.
+  Derived seeds carry a "via encodes" or "via isoform of" badge. The legend
+  explains that `encodes` links come from a mapping release and `isoform_of`
+  links from a UniProt release, and that gene, protein entry and isoform are
+  separate records (F2 draws and labels them; X1 adds the derived-seed
+  badges).
 - **Legend.** It lists only the channels present, in words, and colour is
   never the only channel.
 - **Keyboard.** The edges table is fully usable from the keyboard, and opens
@@ -972,6 +974,61 @@ repository.
 - **README cases.** Every mapped row of the demonstration README's case table
   is visible in a recorded fixture; no reported row is.
 
+### 5.16 Typed network, stylesheet and legend (F2)
+
+- **Channels.** `frontend/src/features/graph/network/channels.test.ts` runs the
+  pure channel functions over the recorded networks and hand-written edges:
+  triangle, tee, diamond and hollow vee for the four effect summaries and a
+  circle marker for a role-ordered non-causal type (§5.9, arrowheads), a
+  chevron for a reference link and no marker for a symmetric or non-support
+  edge. Each edge's line, width and classes, every word drawn or described, the
+  status and error words, the presentation defaults and the layout options
+  follow their tables, and no word prints "undefined".
+- **Elements.** `network/typedElements.test.ts`: A→B and B→A are two elements
+  (§5.9, multigraphs), each id the API's ref verbatim; element data hold only
+  strings and numbers, and the layout key changes with the element ids or the
+  layout's name, never with the data.
+- **Stylesheet.** `network/typedStyles.test.ts` reads the computed styles of a
+  headless Cytoscape instance with F2's stylesheet: the four effect arrowheads
+  and the circle marker (§5.9, arrowheads), a dashed tested-absent edge that is
+  not displayed when non-support edges are hidden, a dotted predicted edge
+  (§5.9, line styles), and bezier curves for parallel edges and self-loops
+  (§5.9, multigraphs). The line colours, the node fill and the selection colour
+  have a contrast of at least 3:1 with both page backgrounds, no family takes
+  the selection's colour, and each drawn width equals the channel table's.
+- **Canvas.** `network/TypedNetwork.test.tsx` mounts the network through the
+  headless seam, `frontend/src/test/headlessCytoscape.ts`. The layout runs once
+  at mount, and not again on a tap, a selection, a visibility toggle or an
+  equal refetch (§5.9, layout); taps on string ids such as `entity:7` and
+  `ppi-interaction:42` resolve (§5.9, ids); the default request draws no
+  tested-absent edge, a request for all outcomes draws it, and hiding
+  non-support edges hides it with no new layout (§5.9, line styles). An unmount
+  or a layout change during a run throws nothing, also when a route change or
+  new data unmounts the canvas and React runs the effects' cleanup a frame
+  later, and no node moves after its run is stopped.
+- **Hook.** `network/useTypedNetwork.test.tsx`, through MSW with fake timers:
+  the network's state follows F1's query results; rapid parameter changes send
+  one request, a disabled key shows no graph although the cache keeps its body,
+  a 503 under a new key shows the error and no graph, and a tap or an equal new
+  parameter object sends no request.
+- **Legend and notice.** `legend/legend.test.tsx`: the legend lists only the
+  channels drawn on visible elements, each in a full sentence beside a swatch
+  hidden from screen readers (§5.9, legend), and a tested-absent line only when
+  one is drawn (§5.9, line styles); no text prints "undefined". The notice
+  words truncation, cut lookups and hidden or undrawn relationships with exact
+  counts, in a live region present before the first response.
+- **Presentation lists.** A backend test reads the frontend's presentation
+  lists from its source and fails unless they equal `browsers.presentation`'s,
+  in order, so neither side changes alone
+  (`backend/browsers/tests/test_presentation_frontend.py`).
+- **Not proved in jsdom.** Drawn arrowheads, the outline of hollow shapes and
+  the middle squares; the two curves of A→B and B→A; self-loop geometry;
+  pointer hit-testing; CSS; contrast as drawn; drawn dash patterns;
+  screen-reader announcements; keyboard access, which the canvas has none of by
+  design; frame rate and main-thread time in a browser; that a stopped layout
+  run writes nothing in a browser, proved only headless; and whether cose is
+  deterministic, since no layout is seeded. No browser test runs.
+
 ## 6. Test data
 
 - **Factories.** The existing ones (`proteins/tests/factories.py`,
@@ -991,7 +1048,9 @@ repository.
   stores no aliases; alias cases use factory rows (G1) and RF1a's reference
   fixtures. It states no detection method or ECO term: method cases use
   X1's, F3's and B1's own rows. D12's undeclared-namespace row, which a
-  synthetic release refuses whole, is asserted on a test-only file.
+  synthetic release refuses whole, is asserted on a test-only file. F2's
+  hand-written shapes in `extras.ts`, with `SYN-` labels, are only cases the
+  demonstration cannot produce (section 5.16).
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.

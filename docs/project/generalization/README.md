@@ -15,8 +15,9 @@ G6 adds the synthetic demonstration release and its loader; A1 adds the
 read API's foundation; A2 adds the network, relationship and evidence
 routes; B1 adds browser instances, their two routes and the `browser`
 parameter; F1 adds the frontend's typed client, its types and the MSW
-fixtures that mirror the demonstration; nothing else described here as
-proposed has been implemented yet.
+fixtures that mirror the demonstration; F2 adds the typed network, its
+stylesheet, legend and notice, which no page uses yet; nothing else described
+here as proposed has been implemented yet.
 
 | File | Contents |
 |---|---|

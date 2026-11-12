@@ -179,6 +179,11 @@ No version has been tagged yet. Everything below is in development towards
   response, React Query hooks for all nine routes with the `browser` selection,
   and test fixtures recorded from the API on the synthetic demonstration, which
   a backend test keeps true. No page uses them yet.
+- The frontend's typed network for `/api/graph/v1/network`: a Cytoscape canvas
+  whose arrowheads, line styles, widths and labels follow each edge's
+  summaries, a legend that lists in words only what is drawn, and a live notice
+  for truncated and hidden relationships, with a test helper that renders it in
+  jsdom. No page uses them yet.
 
 ### Fixed
 
