@@ -2991,8 +2991,8 @@ today's behaviour when its new input is absent, and has a test for that:
     `synthetic`.
 - Taps resolve through an id-to-record map, so string ids work. The legacy
   handlers `parseInt` their ids (`CytoscapeNetwork.tsx:128-164`).
-- The layout re-runs only when the set of element ids changes. The legacy page
-  re-lays out on every store change.
+- The layout re-runs only when the set of element ids or the layout's name
+  changes. The legacy page re-lays out on every store change.
 - Arrowheads show effect: triangle for activating, tee for inhibiting,
   diamond for mixed, hollow vee for unknown.
   - Role-ordered, non-causal types get a circle marker, never a causal arrow:
@@ -3113,6 +3113,7 @@ The brief invites trade-offs where the repository suggests a better approach
 | Three approval decisions (§7) | Those three plus `external_services` | Third-party disclosure (g:Profiler) is its own decision (D9) |
 | "v2 entity/relationship search endpoints" (§11, issue 7) | `/api/graph/v1/` | Keeps "v2" free and unambiguous (D16) |
 | `Dataset`, `BiologicalEntity`, `BiologicalRelationship` (§4) | `SourceDataset`, `Entity`, `Relationship` | Avoids a second `Dataset` class beside `datasets.Dataset`; the shorter names are unambiguous inside the `graph` app |
+| Effect colours and line patterns (§6, item 5) | Effect by arrowhead, family by colour, outcome and basis by line style | Colour is never the only channel (§9) |
 
 ## 13. Main risks
 
@@ -3860,6 +3861,112 @@ its default (OPEN_QUESTIONS.md, A55 to A63):
 
 What F2, F3, F4, X1, C1, AD1, E1, H1 and P1 take over from F1 is in their rows
 of IMPLEMENTATION_PLAN.md.
+
+**F2's specification** took these decisions, Y1 to Y48.
+Those marked ★ are flagged to the owner, and a question left unanswered takes
+its default (OPEN_QUESTIONS.md, B2 and A64 to A70):
+
+- Y1 ★: mixed effect: one edge, a filled diamond (B2);
+- Y2 ★: reference links: thin (1 px), grey, solid, a grey filled `chevron` at
+  the target, no effect marker, an edge label "{type label} · {release title}
+  {version}" (" (superseded)" when so), for a link with covered support, naming
+  a release only when every release listed for the link states it (A64);
+- Y3 ★: the role-ordered circle: `target-arrow-shape: circle`, filled, at the
+  object end, in the family colour (A64);
+- Y4 ★: diamond fill: filled, so "hollow" means only "unknown" (A64);
+- Y5 ★: direction only: a directed type without effect polarity gets a filled
+  `square` at the target, in the family colour: the chevron keeps one meaning
+  (A64);
+- Y6 ★: no covered support: no end marker (§4.3) (A64);
+- Y7 ★: not significant and inconclusive: hidden by the API unless requested;
+  not-significant and inconclusive lines are solid with a middle square, never
+  dashed (A65);
+- Y8 ★: predicted: dotted when `by_basis` has a key and every key is
+  `computational_prediction` (A65);
+- Y9 ★: contradicting counts: every other non-zero outcome count is worded in
+  the description; F3's panel highlights the contradiction (A65);
+- Y10 ★: palette: Okabe-Ito blue `#0072B2` (regulation) and bluish green
+  `#009E73` (physical); grey `#6B7280` for reference, non-support and every
+  family without a colour (A66);
+- Y11 ★: dark mode: one palette for both themes; the container's background is
+  `var(--bg)`; light labels on a dark outline (A66);
+- Y12 ★: genetic sign: the `gsign-*` classes and their words now; no sign
+  colours until N1, which picks them under Y10's rule (A66);
+- Y13 ★: width: `mapData(publications, 1, 5, 1.5, 5.5)`; reference and
+  non-support lines stay 1 px (tested-absent 1.5) (A67);
+- Y14 ★: node shapes: gene `bottom-round-rectangle`, protein `ellipse`,
+  protein_isoform `round-diamond`, any other `round-triangle` (A67);
+- Y15 ★: seed and selection: a seed gets a two-tone ring: a 3 px dark border
+  and a 2 px light outline (A67);
+- Y16 ★: entity status: not drawn; F3's panel and table give it in words (A67);
+- Y17 ★: synthetic and superseded: the `synthetic` class with no canvas style,
+  and a legend line when a drawn edge or a release is synthetic: "Synthetic
+  demonstration data: made up to demonstrate openPIP; it describes no real
+  biology" (A68);
+- Y18 ★: physical level words: D20's four strings verbatim; B14's "(AP-MS)" is
+  left out (A68);
+- Y19 ★: `protein_interaction_unspecified`: its own type label; the legend's
+  level line lists only the strings actually drawn (A68);
+- Y20 ★: accent: colours nothing in F2 (A69);
+- Y21 ★: `display_token`: ignored (A69);
+- Y22 ★: `node_label_namespace`: `nodeLabel` honours it for the primary
+  identifier's namespace only (A69);
+- Y23 ★: agreement test: a backend test reads F2's `presentation.ts`; N1 to N3
+  change both files in one PR (A70);
+- Y24 ★: legend text: constants in `legend/legendText.ts`, not `TEXT_GROUPS`,
+  so `legendEntries` stays a pure function of the graph (A70);
+- Y25 ★: no browser check: jsdom only; the PR lists what is unverified (A70);
+- Y26 ★: typings: no dependency and no `declare module` shim; components stay
+  outside the strict test, their logic in strict `.ts` modules (A70);
+- Y27 ★: no image export and no tooltip (A70);
+- Y28 ★: saved layout: S1 saves the layout name only (A70);
+- Y29 ★: TEST_PLAN 5.9 lines F2 owns: the seven acceptance lines, the
+  stylesheet rules of §9, reduced motion, the D20 labels and the truncation
+  notice (A70);
+- Y30 ★: legacy defects: recorded, changed nowhere (A70);
+- Y31: files: as its section 1;
+- Y32: hiding: `showNonSupporting` defaults to whether the request asked for
+  any outcome but `supported`, so the canvas draws what was asked; an explicit
+  `false` hides every edge with `assertion_count` 0 by a class, with the nodes
+  reached only through them, never a seed;
+- Y33: the notice: `TypedNetworkNotice` takes `graph | null`, always renders
+  its live region, and words truncation, lookups, hidden counts, client-hidden
+  and dropped elements with whole phrases;
+- Y34: the non-support predicate: `assertion_count === 0`; the line follows the
+  first requested non-support outcome with a non-zero count;
+- Y35: layout trigger:
+  `layoutKey = JSON.stringify([layoutName, sortedNodeIds, sortedEdgeIds])` over
+  kept elements, hidden ones included;
+- Y36: selection: controlled; drawn through the builder's classes; F3 clears a
+  selection that leaves the visible graph;
+- Y37: hook and states: `useTypedNetwork` and `networkView` ship;
+- Y38: layout and motion: no seeding;
+- Y39: marker and line classes: one exclusive `mk-*` and one `ln-*` class per
+  edge, from the pure channel functions; `site-specific` and `legacy` are not
+  emitted, and `out-not-significant`, `out-inconclusive`, `mk-*`, `ln-*`,
+  `sh-*`, `seed`, `hidden` and `is-selected` are added to §9's classes;
+- Y40: presentation: `layout`, `node_label_namespace`, and `presentationParams`
+  for F4's instance page;
+- Y41: fixtures: five recordings (`network-p1-reference`,
+  `network-tf1-tested-absent`, `network-p2-tested-absent`, `network-truncated`,
+  `network-p2-inconclusive`) and hand-written shapes in `extras.ts`, all
+  checked for synthetic labels;
+- Y42: numbering: Y1 to Y48; OQ B2 and A64 to A70; TEST_PLAN 5.16;
+- Y43: no extension slots;
+- Y44: documents: as its section 15;
+- Y45: canvas structure: `TypedNetwork` always renders one status line, then an
+  internal `NetworkCanvas` only when there is something to draw; the instance,
+  layout and taps live and die with `NetworkCanvas`;
+- Y46: test seam: `frontend/src/test/headlessCytoscape.ts` gives every page
+  test the headless wrapper and a per-instance run log;
+- Y47: `edgeDescription` stays in F2: it is the one source of each edge's
+  words, which Y1, Y6 and Y9 promise and F3 renders; moving it would leave
+  those promises without code;
+- Y48: styling: inline `style` with CSS variables only, no `className`, so
+  Tailwind's scan adds no utility; the PR diffs the built CSS.
+
+What F3, F4, X1, S1, N1, N2, N3, P2, P3, P6, L2, R2, E1 and P1 take over from
+F2 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

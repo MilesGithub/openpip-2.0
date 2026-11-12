@@ -2639,3 +2639,922 @@ export const offNotFound: RecordedEntry<GraphDetail> =
   }
 }
 // >>> off-not-found
+
+export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p1-reference
+{
+  "name": "network-p1-reference",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:10"
+    ],
+    [
+      "layers",
+      "family:reference,family:physical"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:10"
+      ],
+      "layers": [
+        "family:reference",
+        "family:physical"
+      ],
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": false
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": true
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": false
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": []
+  }
+}
+// >>> network-p1-reference
+
+export const networkTf1TestedAbsent: RecordedEntry<GraphNetworkResponse> =
+// <<< network-tf1-tested-absent
+{
+  "name": "network-tf1-tested-absent",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:7"
+    ],
+    [
+      "outcome",
+      "tested_absent"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:7"
+      ],
+      "layers": null,
+      "direction": null,
+      "outcome": [
+        "tested_absent"
+      ],
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:2",
+        "type": "gene",
+        "label": "SYN-G2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G2"
+        },
+        "is_seed": false
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:7",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:2",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": null,
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 0
+        },
+        "outcome_counts": {
+          "supported": 0,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 0,
+        "evidence_count": 0,
+        "distinct": {
+          "publications": 0,
+          "releases": 0,
+          "datasets": 0
+        },
+        "by_basis": {},
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 3,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "supported_hidden",
+        "detail": "3 hidden relationships have supported evidence; outcome=supported or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-tf1-tested-absent
+
+export const networkP2TestedAbsent: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p2-tested-absent
+{
+  "name": "network-p2-tested-absent",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:12"
+    ],
+    [
+      "outcome",
+      "tested_absent"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:12"
+      ],
+      "layers": null,
+      "direction": null,
+      "outcome": [
+        "tested_absent"
+      ],
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": true
+      },
+      {
+        "id": "entity:13",
+        "type": "protein",
+        "label": "SYN-SHARED",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P3"
+        },
+        "is_seed": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:4",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:12",
+        "target": "entity:13",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 0
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 0,
+        "evidence_count": 0,
+        "distinct": {
+          "publications": 0,
+          "releases": 0,
+          "datasets": 0
+        },
+        "by_basis": {},
+        "level": null,
+        "level_counts": {
+          "direct_interaction": 0,
+          "physical_association": 0,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": null,
+        "tested_levels": {
+          "tested_absent": [
+            "direct_interaction"
+          ]
+        },
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "supported_hidden",
+        "detail": "1 hidden relationships have supported evidence; outcome=supported or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-p2-tested-absent
+
+export const networkTruncated: RecordedEntry<GraphNetworkResponse> =
+// <<< network-truncated
+{
+  "name": "network-truncated",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:9"
+    ],
+    [
+      "max_edges",
+      "1"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:9"
+      ],
+      "layers": null,
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": 1,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:6",
+        "type": "gene",
+        "label": "SYN-SHARED",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G6"
+        },
+        "is_seed": false
+      },
+      {
+        "id": "entity:9",
+        "type": "gene",
+        "label": "SYN-TF3",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF3"
+        },
+        "is_seed": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:14",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:9",
+        "target": "entity:6",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "activating",
+        "effect_counts": {
+          "activating": 2,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 2,
+        "distinct": {
+          "publications": 2,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": true,
+      "max_edges": 1,
+      "omitted": {
+        "edges": 3
+      },
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "edges_truncated",
+        "detail": "3 ranked edges omitted: max_edges is 1."
+      }
+    ]
+  }
+}
+// >>> network-truncated
+
+export const networkP2Inconclusive: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p2-inconclusive
+{
+  "name": "network-p2-inconclusive",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:12"
+    ],
+    [
+      "outcome",
+      "inconclusive"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:12"
+      ],
+      "layers": null,
+      "direction": null,
+      "outcome": [
+        "inconclusive"
+      ],
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": true
+      }
+    ],
+    "edges": [],
+    "releases": [],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 2,
+        "tested_absent": 1,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "supported_hidden",
+        "detail": "2 hidden relationships have supported evidence; outcome=supported or outcome=all shows them."
+      },
+      {
+        "code": "tested_absent_hidden",
+        "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-p2-inconclusive
