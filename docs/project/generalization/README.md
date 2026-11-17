@@ -16,8 +16,9 @@ read API's foundation; A2 adds the network, relationship and evidence
 routes; B1 adds browser instances, their two routes and the `browser`
 parameter; F1 adds the frontend's typed client, its types and the MSW
 fixtures that mirror the demonstration; F2 adds the typed network, its
-stylesheet, legend and notice, which no page uses yet; nothing else described
-here as proposed has been implemented yet.
+stylesheet, legend and notice; F3 adds the relationship and entity panels, the
+evidence list and the edges table; no page uses F2's or F3's components yet;
+nothing else described here as proposed has been implemented yet.
 
 | File | Contents |
 |---|---|

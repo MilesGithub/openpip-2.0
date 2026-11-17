@@ -13,7 +13,7 @@ import { nodeLabel } from './presentation'
 // A deploy can bring a value before this code knows it. Such a value is worded from the
 // vocabularies, then from its slug, so nothing prints "undefined" or a prototype member's source.
 
-function slugWords(slug: string): string { return slug.split('_').join(' ') }
+export function slugWords(slug: string): string { return slug.split('_').join(' ') }
 
 /** Architecture decision D20's four strings, verbatim. */
 export const LEVEL_WORDS: Readonly<Record<string, string>> = {
@@ -48,13 +48,13 @@ type StatedEffect = 'activating' | 'inhibiting' | 'mixed' | 'unknown'
  * Whole phrases, so each count's verb agrees with it. A result counted as not stated leaves
  * the effect unsaid, which is not a reported absence of effect.
  */
-const EFFECT_COUNT_WORDS: readonly (readonly [GraphEffectKey, string, string])[] = [
+export const EFFECT_COUNT_WORDS: readonly (readonly [GraphEffectKey, string, string])[] = [
   ['activating', '1 states activation', '{n} state activation'],
   ['inhibiting', '1 states inhibition', '{n} state inhibition'],
   ['unknown', '1 states an unknown effect', '{n} state an unknown effect'],
   ['not_stated', '1 does not state an effect', '{n} do not state an effect'],
 ]
-const ALSO_WORDS: Readonly<Record<GraphOutcome, readonly [string, string]>> = {
+export const ALSO_WORDS: Readonly<Record<GraphOutcome, readonly [string, string]>> = {
   supported: [
     'also 1 supporting result, not among the requested outcomes',
     'also {n} supporting results, not among the requested outcomes',
@@ -146,6 +146,8 @@ export function edgeLabel(edge: GraphEdge, graph: TypedGraph, vocabularies?: Gra
   const outcome = nonSupport ? nonSupportOutcome(edge, graph.requestedOutcomes) : null
   if (outcome !== null) {
     const words = own(OUTCOME_LINE_WORDS, outcome) ?? slugWords(outcome)
+    // A type that claims no physical contact names no level it was tested for (Y19).
+    if (edge.type === 'protein_interaction_unspecified') return words
     const levels = edge.tested_levels[outcome]
     return Array.isArray(levels) && levels.length > 0
       ? `${words}; tested for: ${levels.map((level) => levelWords(level, vocabularies)).join(', ')}`

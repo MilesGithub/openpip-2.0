@@ -867,7 +867,10 @@ relationship with SYN-G2, tested and not found, is not counted.
 |---|---|
 | 301 | The entity was merged into another, and you may see both. The body is empty, and `Location` names the survivor's page, with your query string kept. |
 | 400 | A malformed `entity_id`, an unknown parameter, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
+| 401 | An invalid or expired token. |
 | 404 | `{"detail": "Not found."}`: no such entity, or one you may not see, a merged entity whose survivor you may not see included. |
+| 406 | An `Accept` header the API cannot satisfy. |
+| 429 | Over the limit that `vocabularies`, this page, the evidence list, `browsers` and `browsers/{slug}` share ([Rate limits](#rate-limits)). |
 
 ## Networks
 
@@ -1414,8 +1417,10 @@ delivered, alone.
 columns, for a staff account or when the row's release has an effective
 `public_view` approval, and `null` otherwise, or when the release stores no raw
 rows. Term labels show when the portal's own vocabulary gives them, or when
-you may read the release that labelled the term, whatever the request
-selects; otherwise they are `null`. The CURIE is always given.
+you may read the release that labelled the term and that release is not
+synthetic, whatever the request selects; otherwise they are `null`, since a
+synthetic release never labels a term that real evidence may name. The CURIE
+is always given.
 
 `GET /api/graph/v1/relationships/relationship:9/evidence` on the
 demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
@@ -1640,19 +1645,19 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 | `evidence[].assertion_method` | An assertion method, from `vocabularies`. |
 | `evidence[].eco_term` | `{curie, label}` of the ECO term, or `null`. |
 | `evidence[].eco_term.curie` | The term's CURIE. |
-| `evidence[].eco_term.label` | The term's label, when you may read the release that labelled it; otherwise `null`. |
+| `evidence[].eco_term.label` | The term's label, when the portal's own vocabulary gives it, or when you may read the release that labelled it and that release is not synthetic; otherwise `null`. |
 | `evidence[].effect` | `activating`, `inhibiting`, `unknown`, or `null` when the row states none. |
 | `evidence[].effect_as_stated` | The source's words for the effect, possibly `""`. |
 | `evidence[].genetic_sign` | `negative`, `positive`, or `null`. |
 | `evidence[].interaction_type` | `{curie, label}` of the PSI-MI interaction type, or `null`. |
 | `evidence[].interaction_type.curie` | The term's CURIE. |
-| `evidence[].interaction_type.label` | Its label, when you may read the release that labelled it; otherwise `null`. |
+| `evidence[].interaction_type.label` | Its label, when the portal's own vocabulary gives it, or when you may read the release that labelled it and that release is not synthetic; otherwise `null`. |
 | `evidence[].interaction_level` | An interaction level, from `vocabularies`, or `null` outside the physical family. |
 | `evidence[].relationship_as_stated` | The source's words for the relationship, possibly `""`. |
 | `evidence[].methods` | The row's method terms, in id order, each as below. `[]` when none. |
 | `evidence[].methods[].role` | `detection`, `participant_identification` or `evidence_code`. |
 | `evidence[].methods[].curie` | The term's CURIE. |
-| `evidence[].methods[].label` | Its label, when you may read the release that labelled it; otherwise `null`. |
+| `evidence[].methods[].label` | Its label, when the portal's own vocabulary gives it, or when you may read the release that labelled it and that release is not synthetic; otherwise `null`. |
 | `evidence[].scores` | The row's scores, in id order, each as below. `[]` when none. |
 | `evidence[].scores[].type` | The score type's slug, from `vocabularies`. |
 | `evidence[].scores[].label` | The score type's label. |
@@ -1665,7 +1670,7 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 | `evidence[].contexts[].facet` | A context facet, from `vocabularies`. |
 | `evidence[].contexts[].term` | `{curie, label}` of the term the context names, or `null`. |
 | `evidence[].contexts[].term.curie` | The term's CURIE. |
-| `evidence[].contexts[].term.label` | Its label, when you may read the release that labelled it; otherwise `null`. |
+| `evidence[].contexts[].term.label` | Its label, when the portal's own vocabulary gives it, or when you may read the release that labelled it and that release is not synthetic; otherwise `null`. |
 | `evidence[].contexts[].taxon` | An NCBI taxid, for `host_taxon`, or `null`. |
 | `evidence[].contexts[].label` | The source's label for the context, possibly `""`. |
 | `evidence[].contexts[].raw_value` | The value as the source wrote it. |
@@ -1675,7 +1680,7 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 | `evidence[].participants[].stated_entity` | The ref of the isoform the source named, when the row's entity is its protein entry and you may see the isoform; otherwise `null`. |
 | `evidence[].participants[].identifier_as_stated` | The identifier as the source wrote it. |
 | `evidence[].participants[].resolution_basis` | How the identifier resolved: `primary`, `xref_unique`, `alias_unique`, `isoform_entry`, `source_local` or `curated`. |
-| `evidence[].qualifiers` | The stored object: `{}`, or the `threshold` a not-significant result failed. |
+| `evidence[].qualifiers` | The stored object: `{}`, the `threshold` a not-significant result failed, and the text of each `qualifier:<key>` column of the source's record, under its key. |
 | `evidence[].evidence_group` | The group of rows the source states as one observation, possibly `""`. |
 | `evidence[].publications` | The row's publications, in id order, each as below. `[]` when none. |
 | `evidence[].publications[].role` | `reported_in`, `method_reference` or `cited`. |

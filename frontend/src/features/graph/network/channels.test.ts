@@ -6,7 +6,7 @@ import {
   directionOnlyEdge, inconclusiveEdge, levelAssignedEdge, ligandReceptorType, makeGraphEdge, makeGraphNode,
   makeNetworkNode, makeNetworkResponse, mixedReferenceEdge, mixedSignEdge, negativeSignEdge, notSignificantEdge,
   positiveSignEdge, presentationAllKeys, roleOrderedEdge, testedAbsentReferenceEdge, testedAbsentRelease,
-  unknownChannelsEdge, unknownLevelEdge, unresolvedReferenceEdge, unspecifiedEdge,
+  unknownChannelsEdge, unknownLevelEdge, unresolvedReferenceEdge, unspecifiedEdge, unspecifiedTestedAbsentEdge,
 } from '../../../mocks/fixtures/typedGraph/extras'
 import { recordedEntries } from '../../../mocks/fixtures/typedGraph/index'
 import { recorded } from '../../../test/graphHooks'
@@ -634,6 +634,13 @@ describe('edgeLabel', () => {
       null,
       'protein interaction unspecified',
     ],
+    [
+      'protein_interaction_unspecified tested and not detected, by its outcome alone (U13)',
+      unspecifiedTestedAbsentEdge,
+      handGraph([unspecifiedTestedAbsentEdge], ['tested_absent']),
+      vocabularies(),
+      'tested, not detected',
+    ],
     ['relationship:3, a stated level', edgeIn(network('network-all-edges'), 'relationship:3'), network('network-all-edges'), null, 'direct interaction'],
     [
       'relationship:4, its level not stated',
@@ -707,6 +714,22 @@ describe('edgeDescription', () => {
     expect(edgeDescription(unspecifiedEdge, handGraph([unspecifiedEdge]), null, vocabularies())).toBe(
       'Protein interaction, type not stated between SYN-N0 and SYN-N1; 1 distinct publication; synthetic demonstration data.',
     )
+  })
+
+  it('names no level a tested-and-not-detected protein_interaction_unspecified edge was tested for (U13)', () => {
+    const graph = graphOfNetwork(makeNetworkResponse({
+      edges: [unspecifiedTestedAbsentEdge],
+      query: { ...makeNetworkResponse().query, outcome: ['tested_absent'] },
+    }))
+    const text = edgeDescription(unspecifiedTestedAbsentEdge, graph, null, vocabularies())
+    expect(text).toBe(
+      'Protein interaction, type not stated between SYN-N901 and SYN-N902; no supporting evidence in view; tested, not detected; '
+      + '0 distinct publications; synthetic demonstration data.',
+    )
+    expect(text).not.toContain('physical interaction')
+    // The type's branch alone changed: another edge still names the level it was tested for.
+    const p2 = network('network-p2-tested-absent')
+    expect(edgeLabel(edgeIn(p2, 'relationship:4'), p2, null)).toBe('tested, not detected; tested for: direct interaction')
   })
 
   it('words a reference pair listed only for a tested-absent result as that result, naming no release as stating it', () => {

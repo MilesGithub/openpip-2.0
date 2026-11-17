@@ -345,7 +345,8 @@ fields. A literature-curated experimental result is `experimental` plus
     depths, until V1;
   - evidence without a publication is never merged across datasets, and a
     restatement in a later release of the same dataset does not count again;
-  - one evidence group, scoped to its release, counts once;
+  - one evidence group, scoped to its release, counts once within each
+    outcome;
   - the stated limit holds: a record with an observation key and a record of
     the same experiment without one count twice (M1);
   - the panel always shows the assertion count beside the independent count
@@ -1029,6 +1030,72 @@ repository.
   run writes nothing in a browser, proved only headless; and whether cose is
   deterministic, since no layout is seeded. No browser test runs.
 
+### 5.17 Panels, evidence list and edges table (F3)
+
+- **Parameters and words.** In `frontend/src/features/graph/panels/`,
+  `panelParams.test.ts` and `panelWords.test.ts` run the pure modules: the
+  conversion of every recorded network's query into the relationship,
+  evidence and entity parameters, a recorded relationship page whose edge
+  equals the network's under the same query, the words for every error of the
+  three panels, the counting definition and its three limits, and every
+  closed-set value and an unknown one; no word prints "undefined" or a
+  response's `detail`.
+- **Selection.** `panels/useTypedSelection.test.tsx`: a selection made from the
+  graph clears when its element leaves the visible graph and stays cleared, a
+  selection restored from a URL is kept while no graph is loaded and cleared
+  when the loaded graph hides it, and a selection made in a panel of an
+  element outside the graph is kept until closed, with no state set in an
+  effect.
+- **Relationship panel.** `panels/RelationshipPanel.test.tsx` renders recorded
+  pages: a physical edge shows its strongest stated level, an assigned level
+  says that openPIP assigned it, and a type that states no level never reads
+  as physical (§5.9, physical edges); the independent evidence count sits
+  beside the assertion count with the stated counting limits, and no line of
+  F3's own says "no support" of supporting results the request left out,
+  though F2's sentence for the edge still does (OPEN_QUESTIONS.md A72);
+  supporting beside tested-and-not-detected results and a mixed effect are
+  highlighted in words; a 503 offers "Try again" and is not sent again by a
+  reopening, while a stored 404 or 429 is, as F1 allows; a page whose re-read
+  fails keeps the page and states the failure, with "Try again" where the
+  failure offers one; a 404 never says the relationship does not exist; a body
+  that throws is caught, and the rest of the page stays.
+- **Evidence list.** `panels/EvidenceList.test.tsx`: each row shows its
+  release, publications, methods, basis, assertion method, outcome, effect as
+  stated and as mapped, and typed scores; pages are followed until `page.next`
+  is null, a short or empty page with a next is not the end, a failed later
+  page is retried with its own cursor by the one paging button, which is busy
+  while any fetch of the list runs, a repeated cursor is not followed, and each
+  release is listed once; the source record's columns show only when asked for.
+  Markup in every source field renders as literal text, and only an http(s)
+  address is a link (§5.9, text).
+- **Entity panel.** `panels/EntityPanel.test.tsx`: the status in words, a
+  merge's survivor named (stubbed, since MSW cannot follow a 301), the
+  relationship counts worded as default-filter counts, a reference relationship
+  opened with the entity page's selection, and a failed re-read stated over the
+  loaded page, as the relationship panel states it.
+- **Edges table.** `tables/edgeRows.test.ts` and
+  `tables/TypedEdgesTable.test.tsx`: the rows are the canvas's visible edges,
+  sorted on a copy; Tab reaches the sort buttons, then the row buttons; Enter
+  and Space sort, with `aria-sort` on the sorted column only, and open the
+  row's relationship; the selected row is marked by more than colour; every
+  entity in view is listed as a button that opens its entity panel (§5.9,
+  keyboard).
+- **Composition.** `tables/composition.test.tsx` mounts the network through
+  the headless seam beside the table and the panel: a tap on the canvas and
+  Enter on the table give the same selection and open the same panel (§5.9,
+  keyboard); three activations within the debounce send one request; the
+  panel sends the network's filters and releases, the evidence list all of
+  them but `outcome`; and a network that turns null leaves an open panel as
+  it was, sending nothing.
+- **Source scan.** `panels/sourceScan.test.ts` walks the syntax of every
+  non-test source in `panels/` and `tables/` and fails on a fixed list of
+  names that reach an HTML sink, on any JSX spread and on elements such as
+  `script` and `iframe`; sixteen samples prove that it can fail (§5.9, text).
+- **Not proved in jsdom.** Focus rings, screen-reader announcements, narrow
+  screens, the CSS as drawn, and a browser's own Space handling. The
+  synthetic badge of §5.9's text line is F4's and X1's; F3's panels state
+  synthetic data in words. No browser test runs.
+
 ## 6. Test data
 
 - **Factories.** The existing ones (`proteins/tests/factories.py`,
@@ -1048,9 +1115,10 @@ repository.
   stores no aliases; alias cases use factory rows (G1) and RF1a's reference
   fixtures. It states no detection method or ECO term: method cases use
   X1's, F3's and B1's own rows. D12's undeclared-namespace row, which a
-  synthetic release refuses whole, is asserted on a test-only file. F2's
-  hand-written shapes in `extras.ts`, with `SYN-` labels, are only cases the
-  demonstration cannot produce (section 5.16).
+  synthetic release refuses whole, is asserted on a test-only file. F2's and
+  F3's hand-written shapes in `extras.ts`, with `SYN-` labels, are only cases
+  the demonstration cannot produce (sections 5.16 and 5.17); F3's include one
+  release that is not synthetic, so that term labels show.
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.
