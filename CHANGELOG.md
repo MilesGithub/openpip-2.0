@@ -184,6 +184,10 @@ No version has been tagged yet. Everything below is in development towards
   summaries, a legend that lists in words only what is drawn, and a live notice
   for truncated and hidden relationships, with a test helper that renders it in
   jsdom. No page uses them yet.
+- The frontend's typed panels for `/api/graph/v1/`: a relationship panel with
+  its counts, counting limits and evidence read page by page, an entity panel,
+  and an edges table, usable from the keyboard, that opens the same panels as
+  the network. No page uses them yet.
 
 ### Fixed
 

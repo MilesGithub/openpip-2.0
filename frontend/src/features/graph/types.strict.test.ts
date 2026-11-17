@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 const ROOT = ts.sys.getCurrentDirectory() // frontend/, where vitest runs
 const SINGLE_FILES = ['src/features/graph/types.ts', 'src/mocks/handlers/typedGraph.ts']
 const DIRECTORIES = ['src/api/graph', 'src/mocks/fixtures/typedGraph', 'src/features/graph/network', 'src/features/graph/legend']
+const TSX_DIRECTORIES = ['src/features/graph/panels', 'src/features/graph/tables']
 const PROBE = `${ROOT}/src/features/graph/__strict_probe__.ts`
 const PROBE_TEXT = `
 import type { GraphEvidenceRow, GraphNode } from './types'
@@ -16,8 +17,11 @@ export function key(row: GraphEvidenceRow): string {
 `
 
 function typedGraphFiles(): string[] {
-  const inDirectories = DIRECTORIES.flatMap((directory) => ts.sys.readDirectory(`${ROOT}/${directory}`, ['.ts']))
-  return [...SINGLE_FILES.map((file) => `${ROOT}/${file}`), ...inDirectories.filter((file) => !file.endsWith('.test.ts'))]
+  const inDirectories = [
+    ...DIRECTORIES.flatMap((directory) => ts.sys.readDirectory(`${ROOT}/${directory}`, ['.ts'])),
+    ...TSX_DIRECTORIES.flatMap((directory) => ts.sys.readDirectory(`${ROOT}/${directory}`, ['.ts', '.tsx'])),
+  ]
+  return [...SINGLE_FILES.map((file) => `${ROOT}/${file}`), ...inDirectories.filter((file) => !/\.test\.tsx?$/.test(file))]
 }
 
 function strictProgram(rootNames: string[]): ts.Program {
@@ -49,7 +53,7 @@ describe("the typed graph's files under strict", () => {
     expect(ts.sys.fileExists(`${ROOT}/tsconfig.json`)).toBe(true)
     const files = typedGraphFiles()
     expect(files.length).toBeGreaterThan(20)
-    expect(DIRECTORIES.filter((directory) => !files.some((file) => file.startsWith(`${ROOT}/${directory}/`)))).toEqual([])
+    expect([...DIRECTORIES, ...TSX_DIRECTORIES].filter((directory) => !files.some((file) => file.startsWith(`${ROOT}/${directory}/`)))).toEqual([])
     const program = strictProgram([...files, PROBE])
     expect(files.flatMap((file) => problems(program, file))).toEqual([])
     const probe = problems(program, PROBE)

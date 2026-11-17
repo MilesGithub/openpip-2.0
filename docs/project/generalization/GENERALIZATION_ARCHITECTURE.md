@@ -1102,7 +1102,8 @@ These rules are tested on the synthetic release.
      where M1 puts `observation_key` first), so records linked through
      others are one observation too.
 
-  Assertions in one evidence group, (release, `evidence_group`), count once.
+  Assertions of one outcome in one evidence group, (release,
+  `evidence_group`), count once.
   One experiment reported by two aggregators therefore counts once, and both
   records survive. That is how "cross-dataset overlap does not duplicate
   evidence" (brief §8, Phase 4) is met without deleting provenance. Three
@@ -1977,8 +1978,9 @@ assertion's stored `interaction_level` (section 3.6):
 - "association (co-purification)" when only MI:0914-level evidence exists;
 - "physical association" for MI:0915;
 - "direct interaction" for MI:0407;
-- "physical interaction, level not stated" when no visible assertion of the
-  type carries a PSI-MI term.
+- "physical interaction, level not stated" when every covered supporting
+  assertion of the type is at `not_stated`: none states a PSI-MI interaction
+  type, and openPIP assigned none (B14).
 
 Each adapter maps the interaction types it accepts to these levels through
 an explicit, test-pinned list, checked in review against a named PSI-MI
@@ -3967,6 +3969,152 @@ its default (OPEN_QUESTIONS.md, B2 and A64 to A70):
 
 What F3, F4, X1, S1, N1, N2, N3, P2, P3, P6, L2, R2, E1 and P1 take over from
 F2 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**F3's specification** took these decisions, U1 to U42.
+Those marked ★ are flagged to the owner, and a question left unanswered takes
+its default (OPEN_QUESTIONS.md, B15 and A71 to A75):
+
+- U1 ★: synthetic data: words only; each panel shows F2's synthetic sentence
+  when a release or a publication it shows, or the edge, is synthetic, never
+  from `edge.is_synthetic` alone; an entity carries no synthetic flag, so the
+  entity panel reads the releases its page lists; the page carries the badge
+  and the panel states synthetic data in words, which departs, for the panels,
+  from §13's "badges on every card and panel" (A71);
+- U2 ★: counting limits: all three of §4.5, in one constant `COUNTING_LIMITS`
+  that M1 and V1 edit, shown whenever the panel's counts show, after a
+  definition, `COUNTING_DEFINITION`, that also states two behaviours no limit
+  names: a record gives one result per reporting paper, and a later release's
+  restatement with the same outcome, the same reporting paper (or none in
+  either) and matching methods counts once; the third limit is true while
+  openPIP reads no shared observation identifier (B15);
+- U3 ★: the evidence list's outcome: the list takes every filter of
+  `graph.query` but `outcome`, so it lists every outcome, and the relationship
+  page takes `outcome` (B15);
+- U4 ★: contradiction highlight: in words, never by colour alone, for supported
+  beside tested-absent results, a `mixed` effect and a `mixed` genetic sign;
+  when the supporting and tested-absent results come from different releases,
+  or a mixed effect's or sign's supporting results from more than one release,
+  it says so, and it names a release among them only when a newer release has
+  corrected it, since a release corrects another only by superseding it (B15);
+- U5 ★: `presentation.evidence_panels`: not read by F3; every section shows
+  (A73);
+- U6 ★: narrow screens: the pages own the collapse; F3's components fill their
+  container and carry no fixed width, media query, stylesheet or `className`
+  (A73);
+- U7 ★: words: constants in strict `.ts` modules, as Y24 decided for the legend
+  (A72);
+- U8 ★: table: a plain semantic `<table>`, no TanStack Table (A73);
+- U9 ★: reaching nodes by keyboard: the relationship panel's ends are buttons,
+  and a list under the table, "Entities in view", names every entity in view as
+  a button that opens its entity panel, so the keyboard reaches any node
+  without spending the network's allowance (A73);
+- U10 ★: the relationship page's allowance: keep A32; F3 opens a panel on
+  activation only, debounces it and never prefetches (A74);
+- U11 ★: A60's `account` cache bucket: F3 changes no query key; A60 stays with
+  F4 (A74);
+- U12 ★: identifiers in hand-written rows: no PMID, DOI, PMCID or IMEx id
+  (A75);
+- U13 ★: editing F2's `network/words.ts`: yes, narrowly: three exports, and a
+  tested-and-not-detected `protein_interaction_unspecified` edge labelled with
+  its outcome alone (A72);
+- U14 ★: entity status: the entity panel always states it in a sentence; the
+  table states it once, in a sentence under the table, when every entity it
+  names has one status other than `active`, and otherwise in one word beside
+  each name that is not `active` (A71);
+- U15 ★: a level openPIP assigned: F2's `LEVEL_ASSIGNED_WORDS` (A71);
+- U16 ★: release provenance: each evidence row names its release, and the panel
+  lists each release once with dataset title, version, status, synthetic flag,
+  licence, attribution and note of changes, in an exported component (A71);
+- U17 ★: words no document gives: the specification's own, its section 8; each
+  score is read within its own type, with its type's own statement that its
+  values are not comparable across datasets, and no cross-dataset rule is
+  claimed; the publications line says "none named as reporting them" when no
+  supporting result names a reporting paper; a score shows its raw value, never
+  its parsed `value`, the one field of §7.3 the panels leave out (A72);
+- U18 ★: the typed-graph page: corrected where the code contradicts it, as F1's
+  W9 did (A75);
+- U19 ★: stale statuses of other rows: not fixed; each PR writes only its own
+  (A75);
+- U20 ★: real-browser check: none, as Y25 decided (A75);
+- U21 ★: HTML-sink rule: no edit to `frontend/eslint.config.js`; F3's own test
+  walks its sources' syntax and fails on a fixed list of names that reach an
+  HTML sink, on any JSX spread and on elements such as `script` and `iframe`,
+  and sixteen samples prove that it can fail (A75);
+- U22 ★: `axe-core`: not added (A75);
+- U23: the converter: pure functions in a strict module turn `graph.query` into
+  F1's params;
+- U24: debounce and mounting: `PANEL_DEBOUNCE_MS = 300`; the querying body
+  mounts after the debounce through a timer, never by toggling `enabled` or
+  re-keying a mounted hook; the panel is keyed by `kind:id` and its body by the
+  params' key; the dispatcher builds the params from the last `graph.query` it
+  has seen, so a failed or disabled network leaves an open panel as it was, and
+  a restored selection's panel sends nothing until the first graph arrives;
+- U25: the summary's edge: the page's `edge` once the page loads, the kept
+  graph's edge until then;
+- U26: the evidence list: no `page_size` in production; one paging button,
+  "Show more", whose words become the evidence's "Try again" after a failed
+  later page whose error offers a retry (its section 8.2), which it retries by
+  `fetchNextPage()`, and which goes after one whose error offers none,
+  departing from the plan's "refetch"; it is only `aria-disabled` while any
+  fetch of the list runs or waits offline, since a press during a re-read of
+  the loaded pages would be lost; rows are deduplicated by id, and a repeated
+  cursor is not followed;
+- U27: table paging: none;
+- U28: focus: opening moves focus to the panel's heading; Close and Escape
+  exist only when the page passes `onClose`; focus returns to the control that
+  opened the panel, else to the table's caption or the entity list's label, and
+  only when focus was inside the panel; no focused control is removed or
+  disabled under the user, except a "Try again" that a fetch it did not start,
+  a reconnect's refetch or a new viewer's first load, replaces with loading
+  words;
+- U29: selection: F3 ships the mechanism, `useTypedSelection`, and the pages
+  apply it; a selection is visible, hidden, absent or unknown, and a restored
+  one that the loaded graph hides is cleared; it lives in the hook's React
+  state, not in §9's per-page store, into which F4 or X1 may move it;
+- U30: panel semantics: a `<section>` named by its heading, with a
+  `headingLevel` prop, default 2;
+- U31: shape guards: a 200 whose body lacks its shape gets the bad-body words;
+  an unexported error boundary, reset with the body, catches a body that passes
+  the guards and lacks a nested key, so the heading, Close and the rest of the
+  page stay;
+- U32: status words: all 14 `GraphErrorInfo` kinds worded for each of the three
+  panels, never printing `detail`; each subject's "Try again" names what it
+  retries; each body's status line is a live region; a page whose re-read fails
+  keeps the page and states the failure, with its "Try again" where the error
+  offers one, so a page re-queried after a withdrawal never reads as fresh; a
+  reopened panel sends a stored 404 or 429 again, as F1 allows, which F3 states
+  and leaves to an F1 follow-up;
+- U33: panels opened from the entity panel: a reference relationship opens with
+  the entity page's selection and no filters;
+- U34: reused F2 strings: imported, never restated;
+- U35: table columns: a caption, sortable columns' buttons with `aria-sort` on
+  the sorted header only, and one button per row; names are unique in every
+  list of buttons, twin edges' panels are named apart, and sort ties fall back
+  to the id;
+- U36: `effect: null`: its three meanings each get their own words;
+- U37: `record.raw` and `record: null`: `raw` sits behind a
+  `<button aria-expanded>` named with the row's record field, which names the
+  row's id, and is rendered only when expanded, at most 200 columns; every
+  source string the panels and the table render is clipped;
+- U38: source text and links: every data string a React text child or plain
+  attribute value, and an `<a>` only for an http(s) address, any other value
+  shown as text; the panel and the table carry `data-selectable`;
+- U39: recordings: eighteen added through
+  `backend/graph/tests/test_api_fixtures.py`'s `ENTRIES`, regenerated on
+  PostgreSQL;
+- U40: tests: pure modules unit-tested, a file per panel and the table, and one
+  composition file through F2's headless seam; any `console.error` or
+  `console.warn` fails a row, and a wait that expects nothing sits inside
+  `act`; STRICT compiles F3's `.ts` and `.tsx` files;
+- U41: documents: as its section 18; §4.5's evidence group counts once within
+  each outcome, a clarification rather than a correction, and D20's "not
+  stated" applies when every covered supporting assertion is at `not_stated`;
+- U42: rollback and not verified: as its sections 19 and 20; rollback also
+  reverts U13's pin in F2's `network/channels.test.ts`, and `Retry-After`,
+  which reaches the client under MSW, is tested, not listed.
+
+What F4, X1, S1, E1, P1, M1, V1, R1, R2, N1, P2, L2, P5, RF1b and AD1 take
+over from F3 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 
