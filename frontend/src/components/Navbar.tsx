@@ -5,6 +5,10 @@ import { useAuthStore } from '../store/authStore'
 import { useDarkMode } from '../store/darkModeStore'
 import { useText } from '../text'
 import { NotificationBell } from './NotificationBell'
+// Typed graph (F4): the Browsers link, shown only while status says the feature is on.
+import { useQuery } from '@tanstack/react-query'
+import { graphFeatureState, graphStatusOptions } from '../api/graph/status'
+import { BROWSERS_NAV_LABEL } from '../features/graph/pages/pageWords'
 
 interface NavbarProps {
   isLoggedIn: boolean
@@ -44,6 +48,8 @@ export function Navbar({ isLoggedIn }: NavbarProps) {
   // closes it without an effect to watch the route.
   const [openOn, setOpenOn] = useState<string | null>(null)
   const open = openOn === location.pathname
+  // Typed graph (F4): status read when the page loads and never polled; the typed pages' gate polls.
+  const browsers = graphFeatureState(useQuery({ ...graphStatusOptions(), refetchInterval: false }), 'browsers')
 
   return (
     <nav
@@ -78,6 +84,12 @@ export function Navbar({ isLoggedIn }: NavbarProps) {
             {t(link.textKey)}
           </NavLink>
         ))}
+        {/* Typed graph (F4): shown only while status reports the feature on. */}
+        {browsers === 'on' && (
+          <NavLink to="/browsers" style={linkStyle}>
+            {BROWSERS_NAV_LABEL}
+          </NavLink>
+        )}
       </div>
 
       <div

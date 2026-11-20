@@ -428,3 +428,398 @@ export const resolveBrowserAndReleases: RecordedEntry<GraphParameterError> =
   }
 }
 // >>> resolve-browser-and-releases
+
+export const resolveBrowserTf1: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-browser-tf1
+{
+  "name": "resolve-browser-tf1",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-TF1"
+    ],
+    [
+      "taxon",
+      "32630"
+    ],
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-TF1"
+      ],
+      "namespace": null,
+      "taxon": 32630,
+      "entity_type": null,
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "results": [
+      {
+        "term": "SYN-TF1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-browser-tf1
+
+export const resolveBrowserTf1Case: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-browser-tf1-case
+{
+  "name": "resolve-browser-tf1-case",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "syn-tf1"
+    ],
+    [
+      "taxon",
+      "32630"
+    ],
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "syn-tf1"
+      ],
+      "namespace": null,
+      "taxon": 32630,
+      "entity_type": null,
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "results": [
+      {
+        "term": "syn-tf1",
+        "status": "candidate",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": false,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF1",
+                "case_exact": false,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-browser-tf1-case
+
+export const resolveBrowserShared: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-browser-shared
+{
+  "name": "resolve-browser-shared",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-SHARED"
+    ],
+    [
+      "taxon",
+      "32630"
+    ],
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-SHARED"
+      ],
+      "namespace": null,
+      "taxon": 32630,
+      "entity_type": null,
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "results": [
+      {
+        "term": "SYN-SHARED",
+        "status": "ambiguous",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:6",
+              "type": "gene",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G6"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          },
+          {
+            "entity": {
+              "id": "entity:13",
+              "type": "protein",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P3"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-browser-shared
+
+export const resolveBrowserNope: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-browser-nope
+{
+  "name": "resolve-browser-nope",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-NOPE"
+    ],
+    [
+      "taxon",
+      "32630"
+    ],
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-NOPE"
+      ],
+      "namespace": null,
+      "taxon": 32630,
+      "entity_type": null,
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "results": [
+      {
+        "term": "SYN-NOPE",
+        "status": "unmatched",
+        "truncated": false,
+        "candidates": []
+      }
+    ],
+    "releases": [],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-browser-nope

@@ -383,3 +383,162 @@ export const entityP1: RecordedEntry<GraphEntityResponse> =
   }
 }
 // >>> entity-p1
+
+export const entity7Browser: RecordedEntry<GraphEntityResponse> =
+// <<< entity-7-browser
+{
+  "name": "entity-7-browser",
+  "caller": "staff",
+  "path": "/api/graph/v1/entities/entity:7",
+  "query": [
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "entity_id": "entity:7",
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "entity": {
+      "id": "entity:7",
+      "type": "gene",
+      "label": "SYN-TF1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_gene",
+        "value": "SYN-TF1"
+      }
+    },
+    "description": "",
+    "created_by_release": null,
+    "identifiers": [
+      {
+        "namespace": "synthetic_gene",
+        "value": "SYN-TF1",
+        "version": null,
+        "role": "primary",
+        "url": null
+      }
+    ],
+    "reference_relationships": [
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        }
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        }
+      }
+    ],
+    "relationship_counts": {
+      "encodes": 1,
+      "transcriptional_regulation": 3
+    },
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ]
+  }
+}
+// >>> entity-7-browser

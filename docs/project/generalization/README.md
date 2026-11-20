@@ -17,8 +17,10 @@ routes; B1 adds browser instances, their two routes and the `browser`
 parameter; F1 adds the frontend's typed client, its types and the MSW
 fixtures that mirror the demonstration; F2 adds the typed network, its
 stylesheet, legend and notice; F3 adds the relationship and entity panels, the
-evidence list and the edges table; no page uses F2's or F3's components yet;
-nothing else described here as proposed has been implemented yet.
+evidence list and the edges table; F4 adds the gallery at `/browsers` and the
+instance pages, which use them, and the Browsers link, shown while the
+feature is on; nothing else described here as proposed has been implemented
+yet.
 
 | File | Contents |
 |---|---|

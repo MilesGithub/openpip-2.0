@@ -1710,9 +1710,9 @@ demonstration, the two rows v2 states for SYN-TF2 → SYN-G2, one per paper:
 
 ## Browser instances
 
-A browser instance is one entry of the portal's gallery, and will have its
-own page at `/browsers/<slug>`. The portal has neither the gallery nor those
-pages yet, so today a client reads an instance through these routes. It is
+A browser instance is one entry of the portal's gallery, at `/browsers`, and
+has its own page at `/browsers/<slug>`, both shown while the `browsers`
+feature is on; those pages read an instance through these routes. It is
 configuration an admin edits: which releases it reads, how to cite them and
 how to show them. Its `kind` says what it is:
 
