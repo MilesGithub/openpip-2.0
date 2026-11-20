@@ -1,9 +1,11 @@
 # Browser instances
 
-A browser instance is one entry of the portal's gallery, and will have its
-own page at `/browsers/<slug>`. The portal has neither the gallery nor those
-pages yet: for now, an admin creates and edits instances in the Django admin
-(**Browser instances**), and the typed graph's API serves them
+A browser instance is one entry of the portal's gallery, at `/browsers`, and
+has its own page at `/browsers/<slug>`; the portal's pages show a Browsers
+link in the navigation bar while `TYPED_GRAPH_ENABLED` is on, though these
+documentation pages do not. An admin creates and edits
+instances in the Django admin (**Browser instances**), and the typed graph's
+API serves them
 ([Browser instances](../developer/api/typed-graph.md#browser-instances)).
 
 An instance holds its own title, text, citation and display settings, and for
@@ -164,8 +166,12 @@ a sentence naming the key and the value.
 `presentation` is a JSON object of schema v1. `{}` means every default, a key
 left out takes its default, and a key not listed is refused. No value is free
 text, a URL, HTML or CSS: each is a name from a list here or from a registry.
-It changes nothing the typed graph's API returns; the API gives it as stored,
-for the instance's pages to read once the portal has them.
+It changes nothing the typed graph's API returns; the API gives it as stored.
+An instance's page reads `default_layers` and `default_filters` for its
+network's and panels' requests, `layout` for the drawing, and
+`node_label_namespace` for the names of entities whose primary identifier is
+in that namespace, any other entity keeping its label; it reads no other key
+yet.
 
 | Key | What it holds |
 |---|---|

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const ROOT = ts.sys.getCurrentDirectory() // frontend/, where vitest runs
 const SINGLE_FILES = ['src/features/graph/types.ts', 'src/mocks/handlers/typedGraph.ts']
 const DIRECTORIES = ['src/api/graph', 'src/mocks/fixtures/typedGraph', 'src/features/graph/network', 'src/features/graph/legend']
-const TSX_DIRECTORIES = ['src/features/graph/panels', 'src/features/graph/tables']
+const TSX_DIRECTORIES = ['src/features/graph/panels', 'src/features/graph/tables', 'src/features/browsers', 'src/features/graph/pages', 'src/features/graph/badge', 'src/features/graph/words', 'src/features/graph/workspace']
 const PROBE = `${ROOT}/src/features/graph/__strict_probe__.ts`
 const PROBE_TEXT = `
 import type { GraphEvidenceRow, GraphNode } from './types'

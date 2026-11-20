@@ -4177,3 +4177,434 @@ export const evidenceEncodes: RecordedEntry<GraphEvidenceResponse> =
   }
 }
 // >>> evidence-encodes
+
+export const relationship6Browser: RecordedEntry<GraphRelationshipResponse> =
+// <<< relationship-6-browser
+{
+  "name": "relationship-6-browser",
+  "caller": "staff",
+  "path": "/api/graph/v1/relationships/relationship:6",
+  "query": [
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "relationship_ref": "relationship:6",
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "edge": {
+      "id": "relationship:6",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:1",
+      "releases": [
+        "release:2"
+      ],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 0,
+        "not_stated": 1
+      },
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {
+        "publications": 0,
+        "releases": 1,
+        "datasets": 1
+      },
+      "by_basis": {
+        "experimental": 1
+      },
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "definition": "The regulator, a gene or a protein as the source states it, controls the transcription of the target gene. Directed: A regulating B and B regulating A are different claims. Each assertion states the effect it reports (activating, inhibiting or unknown), or states none. It does not claim that the regulator binds the target's DNA, a binding motif alone is never evidence for it, and a regulator stated as a gene is never upgraded to its protein. A gene may regulate itself (autoregulation).",
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        }
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        }
+      }
+    ],
+    "by_release": [
+      {
+        "release": "release:2",
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ]
+  }
+}
+// >>> relationship-6-browser
+
+export const relationship6BrowserSupported: RecordedEntry<GraphRelationshipResponse> =
+// <<< relationship-6-browser-supported
+{
+  "name": "relationship-6-browser-supported",
+  "caller": "staff",
+  "path": "/api/graph/v1/relationships/relationship:6",
+  "query": [
+    [
+      "outcome",
+      "supported"
+    ],
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "relationship_ref": "relationship:6",
+      "outcome": [
+        "supported"
+      ],
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "edge": {
+      "id": "relationship:6",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:1",
+      "releases": [
+        "release:2"
+      ],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 0,
+        "not_stated": 1
+      },
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {
+        "publications": 0,
+        "releases": 1,
+        "datasets": 1
+      },
+      "by_basis": {
+        "experimental": 1
+      },
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "definition": "The regulator, a gene or a protein as the source states it, controls the transcription of the target gene. Directed: A regulating B and B regulating A are different claims. Each assertion states the effect it reports (activating, inhibiting or unknown), or states none. It does not claim that the regulator binds the target's DNA, a binding motif alone is never evidence for it, and a regulator stated as a gene is never upgraded to its protein. A gene may regulate itself (autoregulation).",
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        }
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        }
+      }
+    ],
+    "by_release": [
+      {
+        "release": "release:2",
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ]
+  }
+}
+// >>> relationship-6-browser-supported
+
+export const relationship6EvidenceBrowser: RecordedEntry<GraphEvidenceResponse> =
+// <<< relationship-6-evidence-browser
+{
+  "name": "relationship-6-evidence-browser",
+  "caller": "staff",
+  "path": "/api/graph/v1/relationships/relationship:6/evidence",
+  "query": [
+    [
+      "browser",
+      "synthetic-regulation"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "relationship_ref": "relationship:6",
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "after": null,
+      "page_size": null,
+      "releases": null,
+      "browser": "synthetic-regulation"
+    },
+    "evidence": [
+      {
+        "id": "evidence:19",
+        "release": "release:2",
+        "record": {
+          "key": "syn-01",
+          "line_number": 2,
+          "raw": {
+            "effect": "inhibiting",
+            "outcome": "supported",
+            "directed": "",
+            "object_id": "SYN-G1",
+            "record_id": "syn-01",
+            "subject_id": "SYN-TF1",
+            "object_type": "gene",
+            "object_label": "SYN-G1",
+            "object_taxon": "32630",
+            "publications": "",
+            "subject_type": "gene",
+            "subject_label": "SYN-TF1",
+            "subject_taxon": "32630",
+            "evidence_basis": "experimental",
+            "assertion_method": "manual_assertion",
+            "interaction_type": "",
+            "object_namespace": "synthetic_gene",
+            "relationship_type": "transcriptional_regulation",
+            "subject_namespace": "synthetic_gene",
+            "score:synthetic:rank": "",
+            "score:synthetic:confidence": ""
+          }
+        },
+        "outcome": "supported",
+        "evidence_basis": "experimental",
+        "assertion_method": "manual_assertion",
+        "eco_term": null,
+        "effect": "inhibiting",
+        "effect_as_stated": "",
+        "genetic_sign": null,
+        "interaction_type": null,
+        "interaction_level": null,
+        "relationship_as_stated": "",
+        "methods": [],
+        "scores": [],
+        "contexts": [],
+        "participants": [
+          {
+            "side": "subject",
+            "entity": "entity:7",
+            "stated_entity": null,
+            "identifier_as_stated": "SYN-TF1",
+            "resolution_basis": "primary"
+          },
+          {
+            "side": "object",
+            "entity": "entity:1",
+            "stated_entity": null,
+            "identifier_as_stated": "SYN-G1",
+            "resolution_basis": "primary"
+          }
+        ],
+        "qualifiers": {},
+        "evidence_group": "",
+        "publications": []
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "page_size": 50,
+      "next": null
+    }
+  }
+}
+// >>> relationship-6-evidence-browser

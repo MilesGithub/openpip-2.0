@@ -4116,6 +4116,175 @@ its default (OPEN_QUESTIONS.md, B15 and A71 to A75):
 What F4, X1, S1, E1, P1, M1, V1, R1, R2, N1, P2, L2, P5, RF1b and AD1 take
 over from F3 is in their rows of IMPLEMENTATION_PLAN.md.
 
+**F4's specification** took these decisions, J1 to J48.
+Those marked ★ are flagged to the owner, and a question left unanswered takes
+its default (OPEN_QUESTIONS.md, A60 and C9, settled in place, and A76 to
+A84):
+
+- J1 ★: seeds and a seed search: an instance page keeps its seeds in its
+  address as `seeds`, comma-joined `entity:` refs of at most 19 digits, never
+  `entity:0`, distinct, at most `limits.max_seeds`; a one-term search in
+  `features/browsers/` sends `resolve` under `browser=`, with `taxon` only
+  when the instance names exactly one taxid, and refuses a term holding a
+  comma or a control character; a `resolved` term adds its entity, and the
+  line under the box says whether it is chosen, that the limit is reached,
+  or that Search adds it; `candidate` and `ambiguous` list theirs for an
+  explicit choice, never picked automatically; `unmatched` says so, naming
+  the organism when `taxon` was sent, and words A18's prefix case; a seed
+  added by name is listed by that name at once; with no seed no network
+  request goes out, and `network` never gets `taxon` (A76);
+- J2 ★: A60's `account` bucket: F1's keys stay as W6 made them, so the risk
+  A60 states stands, and an instance page also keeps showing such a body if
+  its refetch fails (A60);
+- J3 ★: the nav link: the constant "Browsers", after Contact, a `NavLink`
+  with the Navbar's `linkStyle` and the default `end`; no text-registry key
+  and no `NAV_PAGES` row, so the admin page is unchanged with the switch off
+  (A77);
+- J4 ★: no browser test; one serving probe outside the repository, and the
+  PR lists what stays unverified (A78);
+- J5 ★: presentation: the pages honour `default_layers`, `default_filters`,
+  `layout` and `node_label_namespace`, and read no other key (A79);
+- J6 ★: the `status` request on every page: the Navbar reads it when a
+  page loads and never polls, and the typed pages' gate keeps the only
+  5-minute poll, so a typed page holds one timer and a legacy page none;
+  every page's first JavaScript grows by about 9.8 kB, 4.8 kB gzipped, in two
+  more preloaded files, as measured on a prototype, and the PR states the
+  final figures (A80);
+- J7 ★: F1's MSW handler gains a `try`/`catch` around its lazy fixture load,
+  as U13 edited F2; apart from it, F4 only appends to the strict compile's
+  folder list and the source scan's folder and file lists, to `extras.ts`
+  and to the recordings (A81);
+- J8 ★: no page titles: every page keeps the site title (A82);
+- J9 ★: identifiers as text, only an http(s) `url` linked, and no ShareAlike
+  sentence beyond each selected release's licence in the header and the
+  licence, attribution and note of changes of each release the drawn network
+  names (A83);
+- J10 ★: a router link back to the gallery, carrying the last gallery search
+  from router state; no related-studies feature (A84);
+- J11 ★: no gallery entries for HuRI, YeRI or FlyBi until their maintainers
+  confirm, and no instance row, loader step or fixture that resembles them
+  (C9);
+- J12: route mechanism: `React.lazy` in a keyed `Suspense` behind the gate,
+  in components-only route modules; a `.ts` route table with `Component`
+  and `ErrorBoundary`, spread once into `App.tsx`; never route-level `lazy`;
+- J13: one shared `TypedFeatureGate` and route-state table; data hooks only
+  on `on`; `unknown` offers "Try again", and no state offers it for a failure
+  a repeat cannot change; a `timeout` reads "did not arrive in time", in
+  F3's pattern, but "did not finish in time" in the seed search; a
+  `not_found` from the list, the instance, the seed search or the network
+  rechecks `status` once; a slug outside B1's grammar is never sent; a body
+  that fails its guard reads as a failure with "Try again", and an item of
+  the wrong type in a nested list is skipped; the unreachable-server and
+  throttle words and the button style restate F3's, so that the first-load
+  chunks import no F3 module, the words pinned to F3's by a test, a
+  departure from U34;
+- J14: one feature key, `features.browsers`, for the routes, the link and
+  the data; the instance page's search and network also read `resolve` and
+  `network`;
+- J15: the Navbar edit, each place marked by a `Typed graph (F4)` comment:
+  the imports of `useQuery`, of `graphFeatureState` and `graphStatusOptions`
+  and of the label from `features/graph/pages/pageWords`, one hook line and
+  one gated `NavLink`, checked by code review;
+- J16: the gallery address: B1's eight names; a malformed, repeated or
+  refused value, a string filter over 200 code points or holding a control
+  character among them, shows no list, names its parameter and links to the
+  address without it; a request too long to send or refused by a web server
+  names none and links to the whole gallery; unknown names kept and never
+  sent; one write per event, pushed, but consecutive changes of one select
+  replace one history entry;
+- J17: a submit-based search labelled "Search titles and summaries", whose
+  draft follows history, with a clear button that refocuses the box;
+- J18: seven labelled selects with "Any" options, built from the unfiltered
+  list, the address's value always offered and every option clipped; the
+  status filter reads "Stated status"; "Clear filters" moves focus;
+- J19: the list: one page, a count line mounted empty, the API's order, a
+  sentence for a non-null `page.next`, empty states that never say "not
+  enabled";
+- J20: cards: an `h2` router link, state words, badge, visibility, summary,
+  first cited paper and facts in words, and one action by state;
+- J21: the badge "Synthetic demonstration data" whenever F3's
+  `isSyntheticShown` says so, in `features/graph/badge/`; in the header it
+  is followed by "Made up to demonstrate openPIP; it describes no real
+  biology.", so its words are read once;
+- J22: visibility words "Staff only" and "Unlisted";
+- J23: the header in a fixed order, selectable, description and methods
+  whole;
+- J24: version lines in selection order with role words; "No release of this
+  browser is available to you" for an empty typed selection; organisms with
+  the primary taxon first;
+- J25: citation lines as F3's evidence rows without the role, restated and
+  pinned by an agreement test;
+- J26: the header follows each version line with its release's licence;
+  F3's full release list, with attribution and note of changes, renders only
+  beside the network, whose releases under `browser=` are a subset of the
+  header's, so an instance restricted to one release lists only that one;
+- J27: pages by kind and availability; a 404 reads "This browser is not
+  available to you.";
+- J28: the network section only on `on` for a typed, `live` instance with a
+  seed, keyed by slug, in the order notice, canvas, panel, table, legend,
+  releases, with the panel's heading at level 3; no `taxon` and no network
+  "Try again";
+- J29: narrow screens: inline flex-wrap values, a named scroll region for the
+  table, nothing that hides the panel;
+- J30: after a client-side navigation the page's `h1` takes focus when focus
+  is on `body` or outside the page's `main`, as after the Navbar's link, and
+  a transient state's heading takes none, so a card click moves focus once;
+  an arrival at the gallery or at an instance scrolls to the top;
+- J31: words as constants in strict `.ts` modules; a source value placed
+  inside fixed words by an F4 word function is isolated between U+2068
+  and U+2069 if it is an entity label or name, a release or paper title
+  or a typed search term; the pages show, with no isolates, an instance's
+  external address after "External portal at" and a chosen entity's name
+  before its Remove button; a paper's authors, journal and identifiers
+  and a taxon's name written `{name} (taxid N)` keep F3's forms;
+- J32: inline style with CSS variables; the built CSS unchanged;
+- J33: shared pieces in `features/graph/` `pages/`, `badge/`, `workspace/`
+  and `words/`; the pages and the one-term seed search in
+  `features/browsers/`;
+- J34: 27 recordings and hand-written instance shapes that follow
+  `compute()`, but for one that carries codes a deploy can bring early; no
+  demonstration row;
+- J35: an inline snapshot of the Navbar's links under the switch-off
+  handlers, logged out and logged in;
+- J36: F4's folders join the strict compile and the source scan;
+- J37: three readings of its plan row, below;
+- J38: a route `ErrorBoundary` that offers "Reload";
+- J39: unmatched paths keep React Router's default page;
+- J40: the instance address is `/browsers/<slug>` plus `seeds`;
+- J41: documents: the plan, this record, the open questions, the test plan,
+  the README, the changelog and four published pages;
+- J42: every word map keeps a slug-words fallback;
+- J43: one `h1` per page state, the loading fallback's included; card titles
+  `h2` in a list;
+- J44: no debounce beyond F2's and F3's;
+- J45: tests: a route helper, exact requests, no answer left to MSW's miss,
+  the console rule, its waits, timeouts and seams;
+- J46: own checks: lint, the strict compile, the build's chunks and CSS name,
+  no F2 or F3 code and no page word among the files every page loads, the
+  backend suite and a serving probe that also checks the asset paths and
+  records the cache headers;
+- J47: rollback is one revert; the PR lists what jsdom cannot prove;
+- J48: its status sentence and From F4 clauses.
+
+F4 departs from four texts. D15's "legacy pages load no new code"
+(ARCH:1877-1878): the Navbar imports the status client, and the gate, the
+route states and their words load with every page (J6, J12). §9's text
+groups and `lib/navPages.ts` (ARCH:2961, 2971): every F4 word is a constant,
+as F2 and F3 did, the nav label among them, and no `NAV_PAGES` row is added,
+so the admin page is unchanged with the switch off (J3, J31). §9's per-page
+store (ARCH:2958, 3043-3047): the selection stays in `useTypedSelection`'s
+state, as U29 decided. §9's view-state form (ARCH:3046-3047): F4's
+addresses carry no `v` (J16, J40). F4 reads three clauses of its plan row:
+the scoped network uses `browser=`, as K14 decided, not the A2 clause's
+`releases=`; the gallery reads one page, as W35 decided, where the B1 clause
+says to follow `page.next`; and the From F2 clause's "only" contrasts the
+network with the legend, while the table and the panel take `presentation`
+too (J37). It reads a fourth: "mount `TypedNetworkNotice` unconditionally"
+as "with the network section, before its first response" (J28).
+
+What X1, S1, C1, AD1, E1, H1, RF1b, P1, N1, N2, N3, R1, R2 and SEC1 take over
+from F4 is in their rows of IMPLEMENTATION_PLAN.md.
+
 ## 15. Owner decisions of 2026-10-29
 
 The first seven rows were decided with the Phase 0 review; the last five

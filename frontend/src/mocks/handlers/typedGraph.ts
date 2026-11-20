@@ -103,7 +103,14 @@ function answer(route: TypedGraphRoute, caller: RecordedCaller) {
     const url = new URL(request.url)
     const pairs: Pairs = Array.from(url.searchParams.entries())
     const path = decodeURIComponent(url.pathname)
-    const { entries } = await loadTables()
+    // Typed graph (F4): a test file that ends before the fixtures load is answered, not left to throw at teardown.
+    let loaded: Tables
+    try {
+      loaded = await loadTables()
+    } catch {
+      return miss(`${request.method} ${url.pathname}`)
+    }
+    const { entries } = loaded
     const key = canonicalKey(path, pairs)
     const entry = entries[caller].get(key) ?? (CALLER_FREE.has(path) ? entries.staff.get(key) : undefined)
     if (entry) return respond(entry)
@@ -131,5 +138,12 @@ export const typedGraphVisitorHandlers: HttpHandler[] = routeHandlers('visitor')
 /** For `server.use`: TYPED_GRAPH_ENABLED off. `status` answers, every other route is the JSON 404 before anything runs. */
 export const typedGraphOffHandlers: HttpHandler[] = [
   http.get(`${BASE}/status`, answer(typedGraphRoutes[0], 'off')),
-  http.all(`${BASE}/*`, async () => respond((await loadTables()).offNotFound)),
+  // Typed graph (F4): the same guard as answer()'s.
+  http.all(`${BASE}/*`, async ({ request }) => {
+    try {
+      return respond((await loadTables()).offNotFound)
+    } catch {
+      return miss(`${request.method} ${new URL(request.url).pathname}`)
+    }
+  }),
 ]

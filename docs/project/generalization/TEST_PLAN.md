@@ -141,7 +141,7 @@ guard is written once and then runs in every later PR's default suite.
 | `migrate_legacy.py --reset` itself, which cannot load seven tables into today's schema; checked on a scratch database (architecture §6.3) | none | Against a scratch database only: a reset run from a small dump in the legacy schema loads every table, and a forced failure leaves every table as it was. A test fails when a table the script loads gains a NOT NULL column with no database default that its map does not fill (ML1, not started without approval) |
 | Pre-existing tables are never modified or deleted | none | From G1, three checks. Every operation in a new app's migration is on the strict allow-list (`CreateModel`, `AddField`, `AddIndex`, `AddConstraint`) and none is on the deny-list, checked over `NEW_APPS` (B1 adds `browsers`, O1 `portal_profile`). A schema snapshot of every pre-existing table (columns, types, nullability, defaults, constraints, indexes) is identical before the new apps migrate forward, after they migrate back to zero, and after they migrate forward again; so are the row counts of the pre-existing apps' tables, while Django's bookkeeping tables change only by the new apps' rows. The round trip covers every app in `NEW_APPS`, in reverse dependency order. The pre-existing apps' migrations equal a pinned manifest |
 | Migrations | `makemigrations --check` | New apps are schema-only and reversible: the suite migrates to zero and forward again, and a CI step on every push runs `migrate`, the registry sync, `graph_sync_registry --check` (which fails if the tables and the JSON differ), `migrate <app> zero` for each new app and `migrate` (G1 onward). There is no migration in `admin_panel` or any other shared app on the fork (O1). CI runs `makemigrations --check` after every upstream merge (T1) |
-| With the switch off, nothing new is reachable | none | Every `/api/graph/v1/` route except `status` returns 404, parametrized over the URL resolver (A1). Typed commands refuse to write (G1 onward). Navbar and home page are unchanged by snapshot (F4, H1) |
+| With the switch off, nothing new is reachable | none | Every `/api/graph/v1/` route except `status` returns 404, parametrized over the URL resolver (A1). Typed commands refuse to write (G1 onward). Navbar and home page are unchanged by snapshot (F4, H1): F4's is an inline snapshot of the Navbar's link names and addresses under the switch-off handlers, logged out and logged in, and with the switch on the Browsers link follows Contact |
 | Legacy frontend: search page, network, panels, tables, admin, sharing | The existing Vitest suites | They run unchanged in every frontend PR. New pages are lazy routes. Legacy components change only where an issue names the change: the navigation links (F4, X1, C1), the new `adminNav.ts` items (AD1), the home-page hub section (H1), the `kind` check in the saved, shared and public view pages (S1), and the organism-specific links and enrichment request (O1). Each keeps today's behaviour with the switch off, the settings unset or a state without `kind`, checked by the snapshot and fixture tests named in the rows above and in §5.13 |
 
 ## 5. Tests for the new behaviour
@@ -799,11 +799,15 @@ identifiers.
   the same panel.
 - **Motion and layout.** `aria-live` announces truncation,
   `prefers-reduced-motion` disables layout animation, and the side panel
-  collapses on narrow screens.
+  collapses on narrow screens: on F4's instance page it wraps below the
+  canvas through inline flex values, which jsdom reads and only a browser
+  shows.
 - **Text.** Source text with markup renders as literal text, and the
-  synthetic badge appears wherever demo data are shown.
+  synthetic badge appears wherever demo data are shown: on F4's cards and
+  instance header, and on X1's explorer.
 - **Gallery.** Its filters are kept in the URL, and a shared URL reproduces
-  the filtered gallery (F4).
+  the filtered gallery (F4) for the same caller: an address a staff member
+  shares can list fewer browsers, or none, for a visitor.
 
 ### 5.10 Saved and shared views (S1)
 
@@ -1096,6 +1100,58 @@ repository.
   synthetic badge of §5.9's text line is F4's and X1's; F3's panels state
   synthetic data in words. No browser test runs.
 
+### 5.18 Gallery and instance pages (F4)
+
+- **Addresses and words.** In `frontend/src/features/browsers/`,
+  `views.test.ts` runs the pure modules: the gallery address, each malformed
+  or repeated value named and never sent, and a value the API refuses named
+  from its `errors`, never its `detail`; the instance's `seeds`, never sent
+  when malformed, repeated or over the limit; the filter options from the
+  unfiltered list, the address's value always offered; the words for every
+  kind and availability pair the API computes, all distinct, and for an
+  unknown code; the card and header views, an item of the wrong type
+  skipped; the citation lines, F3's evidence rows without the role, with
+  the title isolated from bidirectional controls; and no word that says
+  "not enabled" but the switch-off sentence.
+- **Routes.** `routes.test.tsx` renders the route table under a data router:
+  no page chunk loads while the switch is off, `loading` or `unknown`; with
+  the switch off both routes and a filtered address say "not enabled on this
+  portal" and send only `status`; `loading` and `unknown` never say not
+  found; a reload repeats the same requests; focus and scroll follow a
+  client-side navigation, a link outside the page included.
+  `routeError.test.tsx` shows the "Reload" boundary for a failed chunk, and
+  `frontend/src/mocks/handlers/typedGraphGuard.test.ts`, beside the handler,
+  its guard. Every file but the guard's fails on a request that MSW answers
+  with its 501 for want of a recording.
+- **Navbar.** `navbar.test.tsx` holds an inline snapshot of the links under
+  the switch-off handlers, logged out and logged in, the Browsers link right
+  after Contact with the switch on, and none while `loading` or `unknown`
+  (section 4, switch-off row).
+- **Gallery.** `GalleryPage.test.tsx`: each filter and the search narrow the
+  gallery against a recorded answer, filters combine with AND, a shared
+  address reproduces the gallery, and a malformed one names its parameter
+  (§5.9, gallery); planned, external, metadata-only, retired and synthetic
+  cards differ in words, and external links use `rel="noopener noreferrer"`.
+- **Instance page.** `InstancePage.test.tsx`: the header for every kind and
+  availability, the badge, organisms, versions and their licences, a 404 that
+  never says "does not exist", source text with markup shown literally, and
+  the seed search's four outcomes under `browser=`; a switch turned off under
+  an open page reads as off after the next search.
+  `composition.test.tsx` mounts the network through the headless seam: its
+  request under `browser=`, the notice before the first response, the
+  panels' requests under `browser=`, the network's release list, which on an
+  instance restricted to one release holds only that release, and the inline
+  values that let the panel wrap on narrow screens (§5.9, layout); a switch
+  turned off under an open page reads as off after the next seed change.
+- **Not proved in jsdom.** A real reload through nginx and a real chunk
+  fetch, a stale chunk after a deploy, focus and scroll as drawn, focus under
+  the sticky header and as the small-screen menu hides its link, focus rings
+  and contrast under an admin's brand colour, reflow at 320 px and the
+  panel's wrap, the canvas capturing wheel and touch, the table wrapper's
+  keyboard scrolling, a name holding bidirectional controls as drawn, a
+  select's `change` on each arrow key, screen-reader speech, and the nav
+  row's width with one more link. No browser test runs.
+
 ## 6. Test data
 
 - **Factories.** The existing ones (`proteins/tests/factories.py`,
@@ -1115,10 +1171,13 @@ repository.
   stores no aliases; alias cases use factory rows (G1) and RF1a's reference
   fixtures. It states no detection method or ECO term: method cases use
   X1's, F3's and B1's own rows. D12's undeclared-namespace row, which a
-  synthetic release refuses whole, is asserted on a test-only file. F2's and
-  F3's hand-written shapes in `extras.ts`, with `SYN-` labels, are only cases
-  the demonstration cannot produce (sections 5.16 and 5.17); F3's include one
-  release that is not synthetic, so that term labels show.
+  synthetic release refuses whole, is asserted on a test-only file. F2's,
+  F3's and F4's hand-written shapes in `extras.ts`, F2's and F3's with `SYN-`
+  labels and F4's with `SYN` titles or markup a row shows as text, are only
+  cases the demonstration cannot produce (sections 5.16 to 5.18); F3's
+  include one release that is not synthetic, so that term labels show, and
+  F4's instances follow the API's availability rules, but for one that
+  carries codes a deploy can bring early.
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.

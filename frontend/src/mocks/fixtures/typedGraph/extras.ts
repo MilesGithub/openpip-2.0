@@ -1,4 +1,7 @@
 import type {
+  GraphAvailability,
+  GraphBrowserResponse,
+  GraphBrowsersResponse,
   GraphEdge,
   GraphEdgeEffect,
   GraphEntityResponse,
@@ -7,6 +10,11 @@ import type {
   GraphEvidenceResponse,
   GraphEvidenceRow,
   GraphFamily,
+  GraphInstance,
+  GraphInstanceItem,
+  GraphInstanceKind,
+  GraphInstanceStatus,
+  GraphInstanceVisibility,
   GraphLevel,
   GraphNetworkNode,
   GraphNetworkResponse,
@@ -18,6 +26,7 @@ import type {
   GraphRelationshipTypeEntry,
   GraphRelease,
   GraphScoreTypeEntry,
+  GraphSelectionRole,
 } from '../../../features/graph/types'
 
 /**
@@ -828,4 +837,173 @@ export const hostileEntityPage = makeEntityResponse({
   ],
   // An encodes relationship's object is a protein entry.
   nodes: [hostileEntity, makeGraphNode({ id: 'entity:902', type: 'protein', label: `SYN-${hostile('nodes[1].label')}`, primary_identifier: null })],
+})
+
+// F4: browser instances the demonstration cannot produce (gallery and instance pages). Each follows
+// browsers.availability.compute() but unknownCodesInstance, which carries a deploy's early codes.
+
+/** The extras dataset's earlier version, superseded: an instance pinned to it stays live (PAGE:1740-1742). */
+export const supersededRelease: GraphRelease = makeGraphRelease({
+  id: 'release:906', version: 'x0', status: 'superseded', superseded: true,
+})
+
+/** What a selection can name, in id order, as browsers/{slug} lists its releases (TYPES:840-841); hostileRelease is F3's. */
+const INSTANCE_RELEASES: readonly GraphRelease[] = [makeGraphRelease(), stagedRelease, labelledRelease, hostileRelease, supersededRelease]
+
+const instancePaper = paper({ local_key: 'extras-instance-paper', title: 'SYN instance paper (synthetic: not a real publication)', year: 2026 })
+
+/** A typed, available, public instance that selects release:901, live for every caller: browser-typed's keys. */
+export function makeInstance(overrides: Partial<GraphInstance> = {}): GraphInstance {
+  return {
+    slug: 'syn-extra',
+    title: 'SYN extra browser',
+    short_title: 'SYN extra',
+    summary: 'A hand-written test instance.',
+    kind: 'typed',
+    status: 'available',
+    visibility: 'public',
+    availability: 'live',
+    is_synthetic: true,
+    external_url: null,
+    tags: ['gene_regulation'],
+    taxa: [32630],
+    primary_taxon: 32630,
+    relationship_types: ['transcriptional_regulation'],
+    assays: [],
+    publications: [],
+    description: '',
+    methods_text: '',
+    stated_entity_types: [],
+    selection: [{ release: 'release:901', role: 'primary' }],
+    presentation: {},
+    allow_external_services: false,
+    external_services_effective: false,
+    ...overrides,
+  }
+}
+
+/** The gallery's keys of an instance, in the serializer's order (backend/browsers/api.py:294-319). */
+export function instanceItem(instance: GraphInstance): GraphInstanceItem {
+  return {
+    slug: instance.slug, title: instance.title, short_title: instance.short_title, summary: instance.summary,
+    kind: instance.kind, status: instance.status, visibility: instance.visibility, availability: instance.availability,
+    is_synthetic: instance.is_synthetic, external_url: instance.external_url, tags: instance.tags, taxa: instance.taxa,
+    primary_taxon: instance.primary_taxon, relationship_types: instance.relationship_types, assays: instance.assays,
+    publications: instance.publications,
+  }
+}
+
+/** browsers/{slug}'s answer: the releases the selection names, in id order. */
+export function makeBrowserResponse(instance: GraphInstance): GraphBrowserResponse {
+  const chosen = new Set(instance.selection.map((entry) => entry.release))
+  return {
+    api_version: 'graph/v1',
+    query: { slug: instance.slug },
+    instance,
+    releases: INSTANCE_RELEASES.filter((release) => chosen.has(release.id)),
+  }
+}
+
+/** The gallery's answer with every filter unset; a non-null `next` is a page v1 never sends (W35). */
+export function makeBrowsersResponse(instances: readonly GraphInstance[], next: string | null = null): GraphBrowsersResponse {
+  return {
+    api_version: 'graph/v1',
+    query: { q: null, tag: null, relationship_type: null, taxon: null, assay: null, year: null, status: null, availability: null },
+    instances: instances.map(instanceItem),
+    page: { next },
+  }
+}
+
+export const plannedInstance = makeInstance({
+  slug: 'syn-planned', title: 'SYN planned browser', status: 'planned', availability: 'planned', publications: [instancePaper],
+})
+export const plannedPlainInstance = makeInstance({
+  slug: 'syn-planned-plain', title: 'SYN planned plain browser', status: 'planned', availability: 'planned', is_synthetic: false,
+  selection: [],
+})
+export const retiredInstance = makeInstance({ slug: 'syn-retired', title: 'SYN retired browser', status: 'retired', availability: 'retired' })
+export const externalInstance = makeInstance({
+  slug: 'syn-external', title: 'SYN external portal', kind: 'external', availability: 'external', is_synthetic: false,
+  external_url: 'https://portal.example/browse', tags: ['genetic_interaction'], taxa: [7227, 9606], primary_taxon: 7227,
+  relationship_types: [], selection: [],
+})
+export const citationCardInstance = makeInstance({
+  slug: 'syn-card', title: 'SYN citation card', kind: 'metadata_only', availability: 'metadata_only', relationship_types: [],
+  publications: [instancePaper], selection: [],
+})
+/** Available and typed, selecting nothing: "data unavailable" (PAGE:1760). */
+export const unavailableInstance = makeInstance({
+  slug: 'syn-unavailable', title: 'SYN unavailable browser', availability: 'metadata_only', is_synthetic: false, selection: [],
+})
+export const plannedPortalInstance = makeInstance({
+  slug: 'syn-portal-planned', title: 'SYN planned portal search', kind: 'portal_ppi', status: 'planned', availability: 'planned',
+  is_synthetic: false, tags: ['protein_interaction'], taxa: [], primary_taxon: null, relationship_types: [], selection: [],
+})
+export const retiredPortalInstance = makeInstance({
+  ...plannedPortalInstance, slug: 'syn-portal-retired', title: 'SYN retired portal search', status: 'retired', availability: 'retired',
+})
+export const unlistedInstance = makeInstance({ slug: 'syn-unlisted', title: 'SYN unlisted browser', visibility: 'unlisted' })
+/** A staged selected release keeps the instance metadata_only for staff too (PAGE:1762-1764). */
+export const stagedInstance = makeInstance({
+  slug: 'syn-staged', title: 'SYN staged browser', visibility: 'staff', availability: 'metadata_only',
+  selection: [{ release: 'release:903', role: 'primary' }],
+})
+/** Selection order differs from id order; the context release is not synthetic, the primary one superseded. */
+export const twoReleaseInstance = makeInstance({
+  slug: 'syn-two', title: 'SYN two-release browser',
+  selection: [{ release: 'release:906', role: 'primary' }, { release: 'release:904', role: 'context' }],
+})
+export const papersInstance = makeInstance({
+  slug: 'syn-papers', title: 'SYN papers browser',
+  publications: [EXTRAS_PUBLICATIONS[0].publication, paper({ local_key: 'extras-untitled', title: '', year: null })],
+})
+/** Not flagged, its release not synthetic, its paper synthetic: the badge must still show (E4). */
+export const syntheticPaperInstance = makeInstance({
+  slug: 'syn-paper-only', title: 'SYN synthetic-paper browser', is_synthetic: false, publications: [instancePaper],
+  selection: [{ release: 'release:904', role: 'primary' }],
+})
+export const plainInstance = makeInstance({
+  slug: 'syn-plain', title: 'SYN plain browser', is_synthetic: false, selection: [{ release: 'release:904', role: 'primary' }],
+})
+export const crossTaxonInstance = makeInstance({ slug: 'syn-cross', title: 'SYN cross-taxon browser', taxa: [7227, 9606], primary_taxon: 7227 })
+/** Its 2019 paper beside the 2026 ones lets a wrong year order fail (AD-6). */
+export const primaryOutsideInstance = makeInstance({
+  slug: 'syn-primary-outside', title: 'SYN primary-outside browser', taxa: [32630], primary_taxon: 9606,
+  publications: [paper({ local_key: 'extras-older-paper', title: 'SYN older paper (synthetic: not a real publication)', year: 2019 })],
+})
+export const unknownTaxonInstance = makeInstance({
+  slug: 'syn-unknown-taxon', title: 'SYN unknown-taxon browser', taxa: [424242], primary_taxon: null,
+})
+/** One string per field, named by its path, and addresses that must never reach href. */
+export const hostileInstance = makeInstance({
+  slug: 'syn-hostile', title: hostile('title'), short_title: hostile('short_title'), summary: hostile('summary'),
+  description: `${hostile('description')}\nSecond line of the description.`, methods_text: hostile('methods_text'),
+  kind: 'external', availability: 'external', external_url: 'javascript:alert(1)',
+  tags: [hostile('tags[0]')], relationship_types: [hostile('relationship_types[0]')],
+  assays: [{ curie: 'MI:0018', label: hostile('assays[0].label') }],
+  publications: [paper({
+    pmid: hostile('pmid'), doi: hostile('doi'), pmcid: hostile('pmcid'), imex_id: hostile('imex_id'), local_key: hostile('local_key'),
+    title: hostile('publications[0].title'), authors: hostile('publications[0].authors'),
+    journal: hostile('publications[0].journal'), url: 'data:text/html,<b data-hostile="url">x</b>',
+  })],
+  selection: [],
+})
+/** Typed and live, selecting F3's hostile release, with paper addresses that isHttpUrl refuses and React writes as given. */
+export const hostileTypedInstance = makeInstance({
+  slug: 'syn-hostile-typed', title: 'SYN hostile typed browser', selection: [{ release: 'release:905', role: 'primary' }],
+  publications: [
+    paper({ local_key: 'extras-spaced-url', title: 'SYN spaced-address paper (synthetic: not a real publication)', url: ' https://example.org/x' }),
+    paper({ local_key: 'extras-relative-url', title: 'SYN protocol-relative paper (synthetic: not a real publication)', url: '//example.org/x' }),
+    paper({ local_key: 'extras-handler-url', title: 'SYN protocol-handler paper (synthetic: not a real publication)', url: 'ms-msdt:/id x' }),
+  ],
+})
+/** Codes a deploy can bring before the frontend knows them (TYPES:15-16). */
+export const unknownCodesInstance = makeInstance({
+  slug: 'syn-unknown-codes', title: 'SYN unknown-codes browser',
+  kind: 'syn_kind' as string as GraphInstanceKind,
+  status: 'syn_status' as string as GraphInstanceStatus,
+  visibility: 'syn_visibility' as string as GraphInstanceVisibility,
+  availability: 'syn_availability' as string as GraphAvailability,
+  tags: ['syn_tag'],
+  selection: [{ release: 'release:901', role: 'syn_role' as string as GraphSelectionRole }],
 })

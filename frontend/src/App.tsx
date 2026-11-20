@@ -29,6 +29,8 @@ import { FAQPage } from './features/static/FAQPage'
 import { ContactPage } from './features/static/ContactPage'
 import { DocumentationRedirect } from './features/static/DocumentationRedirect'
 import { ApiPage } from './features/static/ApiPage'
+// Typed graph (F4): the typed pages' routes, each lazy behind its feature gate.
+import { TYPED_ROUTES } from './features/graph/pages/typedRoutes'
 
 const queryClient = new QueryClient()
 
@@ -89,6 +91,8 @@ const router = createBrowserRouter(
           { path: 'files', element: <AdminFilePage /> },
         ],
       },
+      // Typed graph (F4)
+      ...TYPED_ROUTES,
     ],
   },
   ],

@@ -178,16 +178,23 @@ No version has been tagged yet. Everything below is in development towards
 - The frontend's typed client for `/api/graph/v1/`: types for every documented
   response, React Query hooks for all nine routes with the `browser` selection,
   and test fixtures recorded from the API on the synthetic demonstration, which
-  a backend test keeps true. No page uses them yet.
+  a backend test keeps true.
 - The frontend's typed network for `/api/graph/v1/network`: a Cytoscape canvas
   whose arrowheads, line styles, widths and labels follow each edge's
   summaries, a legend that lists in words only what is drawn, and a live notice
   for truncated and hidden relationships, with a test helper that renders it in
-  jsdom. No page uses them yet.
+  jsdom.
 - The frontend's typed panels for `/api/graph/v1/`: a relationship panel with
   its counts, counting limits and evidence read page by page, an entity panel,
   and an edges table, usable from the keyboard, that opens the same panels as
-  the network. No page uses them yet.
+  the network.
+- The gallery of browser instances at `/browsers` and each instance's page at
+  `/browsers/<slug>`, with a Browsers link in the navigation bar, all shown
+  while `TYPED_GRAPH_ENABLED` is on: a search box and filters kept in the
+  address, cards that state each entry's kind, availability and synthetic
+  data in words, and, on a typed instance that is live, a search for
+  entities and the network, its table and its panels, scoped to the
+  instance's releases. Still behind `TYPED_GRAPH_ENABLED`.
 
 ### Fixed
 
@@ -261,6 +268,11 @@ From the documentation review (October 2026):
 - The user and admin guides are laid out as help pages: a tab per page and a
   card per section that opens on click. Every documentation page uses the
   portal's own navigation bar and colours.
+- Every page of the portal, though not of its documentation, asks
+  `/api/graph/v1/status` whether the typed graph's pages are on, when it loads,
+  whatever `TYPED_GRAPH_ENABLED` says; with it off the answer is no, the
+  navigation bar is unchanged, and `/browsers` and `/browsers/<slug>`, which no
+  route served before, say that browsers are not enabled on this portal.
 
 ### Removed
 
