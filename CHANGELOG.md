@@ -195,6 +195,18 @@ No version has been tagged yet. Everything below is in development towards
   data in words, and, on a typed instance that is live, a search for
   entities and the network, its table and its panels, scoped to the
   instance's releases. Still behind `TYPED_GRAPH_ENABLED`.
+- The unified explorer at `/explore`, with an Explore link in the navigation
+  bar, and each entity's page at `/entities/<id>` and
+  `/entities/<namespace>/<value>`, all shown while `TYPED_GRAPH_ENABLED` is on:
+  a search for many entities at once, which adds the entity of each term that
+  resolves and lists every other match for a choice, layer toggles with counts
+  and filters kept in the address, and a network that follows gene-to-protein
+  links from the chosen entities, on by default, drawing each gene, protein
+  entry and isoform as its own node joined by labelled links. A typed instance's
+  page links to it while the instance is live. The typed graph's `network` route
+  takes `expand=reference`, marks each entity it adds with the path that reached
+  it, and looks up at most 26 entities a request, which `status` publishes.
+  Still behind `TYPED_GRAPH_ENABLED`.
 
 ### Fixed
 
@@ -271,8 +283,9 @@ From the documentation review (October 2026):
 - Every page of the portal, though not of its documentation, asks
   `/api/graph/v1/status` whether the typed graph's pages are on, when it loads,
   whatever `TYPED_GRAPH_ENABLED` says; with it off the answer is no, the
-  navigation bar is unchanged, and `/browsers` and `/browsers/<slug>`, which no
-  route served before, say that browsers are not enabled on this portal.
+  navigation bar is unchanged, and `/browsers`, `/browsers/<slug>`,
+  `/explore`, `/entities/<id>` and `/entities/<namespace>/<value>`, which no
+  route served before, say that their pages are not enabled on this portal.
 
 ### Removed
 

@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode, GraphOutcome } from '../types'
+import { isDerivedSeed } from './graph'
 import type { TypedGraphNode } from './graph'
 
 export type EdgeMarker =
@@ -131,5 +132,7 @@ export function nodeShape(node: GraphNode): 'gene' | 'protein' | 'isoform' | 'ot
 export function nodeClasses(node: TypedGraphNode): string[] {
   const classes = [`et-${classToken(node.type)}`, `sh-${nodeShape(node)}`]
   if (node.is_seed === true) classes.push('seed')
+  // X1's derived seed (Q32): a dashed ring, apart from the seed's.
+  else if (isDerivedSeed(node)) classes.push('derived')
   return classes
 }

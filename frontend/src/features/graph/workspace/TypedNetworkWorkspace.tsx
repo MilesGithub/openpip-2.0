@@ -17,9 +17,10 @@ export interface TypedNetworkWorkspaceProps {
   presentation?: GraphPresentation | null
   vocabularies?: GraphVocabularies | null
   headingLevel?: HeadingLevel            // the panel's and the release list's heading level; default 3
+  maxExpandedSeeds?: number | null       // status.limits.max_expanded_seeds, for the notice's derived-seed line (X1); the instance page passes none
 }
 export function TypedNetworkWorkspace(props: TypedNetworkWorkspaceProps) {
-  const { workspace, presentation, vocabularies, headingLevel = 3 } = props
+  const { workspace, presentation, vocabularies, headingLevel = 3, maxExpandedSeeds } = props
   const { graph, state, error, show, selected, select } = workspace
   const Heading = `h${headingLevel}` as const
   const releases = graph === null ? [] : graph.releases
@@ -33,7 +34,7 @@ export function TypedNetworkWorkspace(props: TypedNetworkWorkspaceProps) {
     <>
       <div style={WORKSPACE_ROW_STYLE}>
         <div style={MAIN_COLUMN_STYLE}>
-          <TypedNetworkNotice graph={graph} showNonSupporting={show} />
+          <TypedNetworkNotice graph={graph} showNonSupporting={show} maxExpandedSeeds={maxExpandedSeeds} />
           <TypedNetwork graph={graph} state={state} error={error} vocabularies={vocabularies} presentation={presentation}
             selected={selected} onSelect={select} showNonSupporting={show} />
         </div>

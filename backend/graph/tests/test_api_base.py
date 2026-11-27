@@ -242,10 +242,10 @@ def test_a_logged_in_non_staff_user_is_a_visitor(demo, user_auth_client):
 
 def unknown_names(path) -> tuple:
     """Two names the route does not take: foo, and browser. The routes that
-    read data take browser, so expand, unknown until its milestone, stands
-    in for it there."""
+    read data take browser, and network takes expand, so sort, which no route
+    takes or plans, stands in for it there."""
     taken = view_of(path).allowed_params
-    return ("foo", "expand" if "browser" in taken else "browser")
+    return ("foo", "sort" if "browser" in taken else "browser")
 
 
 @pytest.mark.parametrize(

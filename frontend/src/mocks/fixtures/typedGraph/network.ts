@@ -24,6 +24,7 @@ export const networkTf1: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -49,7 +50,8 @@ export const networkTf1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -61,7 +63,8 @@ export const networkTf1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -73,7 +76,8 @@ export const networkTf1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -326,6 +330,7 @@ export const networkTf1OutcomeAll: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": [
         "all"
@@ -353,7 +358,8 @@ export const networkTf1OutcomeAll: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:2",
@@ -365,7 +371,8 @@ export const networkTf1OutcomeAll: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -377,7 +384,8 @@ export const networkTf1OutcomeAll: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -389,7 +397,8 @@ export const networkTf1OutcomeAll: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -695,6 +704,7 @@ export const networkTf1V1: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -722,7 +732,8 @@ export const networkTf1V1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -734,7 +745,8 @@ export const networkTf1V1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -746,7 +758,8 @@ export const networkTf1V1: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -999,6 +1012,7 @@ export const networkTf1BothReleases: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -1027,7 +1041,8 @@ export const networkTf1BothReleases: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -1039,7 +1054,8 @@ export const networkTf1BothReleases: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -1051,7 +1067,8 @@ export const networkTf1BothReleases: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -1331,6 +1348,7 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
         "entity:12"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": [
         "all"
@@ -1358,7 +1376,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:2",
@@ -1370,7 +1389,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:3",
@@ -1382,7 +1402,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G3"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -1394,7 +1415,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:5",
@@ -1406,7 +1428,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G5"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:6",
@@ -1418,7 +1441,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G6"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -1430,7 +1454,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:8",
@@ -1442,7 +1467,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF2"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:9",
@@ -1454,7 +1480,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF3"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:10",
@@ -1466,7 +1493,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:12",
@@ -1478,7 +1506,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:13",
@@ -1490,7 +1519,8 @@ export const networkAllEdges: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P3"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -2290,6 +2320,7 @@ export const networkTf1Browser: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -2315,7 +2346,8 @@ export const networkTf1Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -2327,7 +2359,8 @@ export const networkTf1Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -2339,7 +2372,8 @@ export const networkTf1Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -2588,6 +2622,7 @@ export const networkTf1Visitor: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -2667,6 +2702,7 @@ export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
         "family:reference",
         "family:physical"
       ],
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -2692,7 +2728,8 @@ export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:10",
@@ -2704,7 +2741,8 @@ export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:11",
@@ -2716,7 +2754,8 @@ export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P1-1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:12",
@@ -2728,7 +2767,8 @@ export const networkP1Reference: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -2981,6 +3021,7 @@ export const networkTf1TestedAbsent: RecordedEntry<GraphNetworkResponse> =
         "entity:7"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": [
         "tested_absent"
@@ -3008,7 +3049,8 @@ export const networkTf1TestedAbsent: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -3020,7 +3062,8 @@ export const networkTf1TestedAbsent: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -3151,6 +3194,7 @@ export const networkP2TestedAbsent: RecordedEntry<GraphNetworkResponse> =
         "entity:12"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": [
         "tested_absent"
@@ -3178,7 +3222,8 @@ export const networkP2TestedAbsent: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:13",
@@ -3190,7 +3235,8 @@ export const networkP2TestedAbsent: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P3"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -3330,6 +3376,7 @@ export const networkTruncated: RecordedEntry<GraphNetworkResponse> =
         "entity:9"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -3355,7 +3402,8 @@ export const networkTruncated: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G6"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:9",
@@ -3367,7 +3415,8 @@ export const networkTruncated: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF3"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -3502,6 +3551,7 @@ export const networkP2Inconclusive: RecordedEntry<GraphNetworkResponse> =
         "entity:12"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": [
         "inconclusive"
@@ -3529,7 +3579,8 @@ export const networkP2Inconclusive: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [],
@@ -3583,6 +3634,7 @@ export const networkP3Browser: RecordedEntry<GraphNetworkResponse> =
         "entity:13"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -3608,7 +3660,8 @@ export const networkP3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:13",
@@ -3620,7 +3673,8 @@ export const networkP3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P3"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -3758,6 +3812,7 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
         "entity:13"
       ],
       "layers": null,
+      "expand": null,
       "direction": null,
       "outcome": null,
       "evidence_basis": null,
@@ -3783,7 +3838,8 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -3795,7 +3851,8 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -3807,7 +3864,8 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       },
       {
         "id": "entity:12",
@@ -3819,7 +3877,8 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P2"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:13",
@@ -3831,7 +3890,8 @@ export const networkTf1P3Browser: RecordedEntry<GraphNetworkResponse> =
           "namespace": "synthetic_protein",
           "value": "SYN-P3"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -4167,6 +4227,7 @@ export const networkTf1BrowserPresentation: RecordedEntry<GraphNetworkResponse> 
       "layers": [
         "transcriptional_regulation"
       ],
+      "expand": null,
       "direction": "both",
       "outcome": [
         "supported"
@@ -4194,7 +4255,8 @@ export const networkTf1BrowserPresentation: RecordedEntry<GraphNetworkResponse> 
           "namespace": "synthetic_gene",
           "value": "SYN-G1"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:4",
@@ -4206,7 +4268,8 @@ export const networkTf1BrowserPresentation: RecordedEntry<GraphNetworkResponse> 
           "namespace": "synthetic_gene",
           "value": "SYN-G4"
         },
-        "is_seed": false
+        "is_seed": false,
+        "derived_from": []
       },
       {
         "id": "entity:7",
@@ -4218,7 +4281,8 @@ export const networkTf1BrowserPresentation: RecordedEntry<GraphNetworkResponse> 
           "namespace": "synthetic_gene",
           "value": "SYN-TF1"
         },
-        "is_seed": true
+        "is_seed": true,
+        "derived_from": []
       }
     ],
     "edges": [
@@ -4446,3 +4510,3118 @@ export const networkTf1BrowserPresentation: RecordedEntry<GraphNetworkResponse> 
   }
 }
 // >>> network-tf1-browser-presentation
+
+export const networkTf1Expand: RecordedEntry<GraphNetworkResponse> =
+// <<< network-tf1-expand
+{
+  "name": "network-tf1-expand",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:7"
+    ],
+    [
+      "expand",
+      "reference"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:7"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:4",
+        "type": "gene",
+        "label": "SYN-G4",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G4"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1",
+              "relationship:2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:5",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:1",
+        "target": "entity:7",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:6",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:1",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:8",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:4",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "unknown",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 1,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 1,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "tested_absent_hidden",
+        "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-tf1-expand
+
+export const networkTf1ExpandOutcomeAll: RecordedEntry<GraphNetworkResponse> =
+// <<< network-tf1-expand-outcome-all
+{
+  "name": "network-tf1-expand-outcome-all",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:7"
+    ],
+    [
+      "expand",
+      "reference"
+    ],
+    [
+      "outcome",
+      "all"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:7"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": [
+        "all"
+      ],
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:2",
+        "type": "gene",
+        "label": "SYN-G2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:4",
+        "type": "gene",
+        "label": "SYN-G4",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G4"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1",
+              "relationship:2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:5",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:1",
+        "target": "entity:7",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:6",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:1",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:7",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:2",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": null,
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 0
+        },
+        "outcome_counts": {
+          "supported": 0,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 0,
+        "evidence_count": 0,
+        "distinct": {
+          "publications": 0,
+          "releases": 0,
+          "datasets": 0
+        },
+        "by_basis": {},
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:8",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:4",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "unknown",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 1,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": []
+  }
+}
+// >>> network-tf1-expand-outcome-all
+
+export const networkTf1ExpandV1: RecordedEntry<GraphNetworkResponse> =
+// <<< network-tf1-expand-v1
+{
+  "name": "network-tf1-expand-v1",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:7"
+    ],
+    [
+      "expand",
+      "reference"
+    ],
+    [
+      "releases",
+      "release:1"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:7"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": [
+        "release:1"
+      ],
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:4",
+        "type": "gene",
+        "label": "SYN-G4",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G4"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:7",
+            "via": [
+              "relationship:1",
+              "relationship:2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:5",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:1",
+        "target": "entity:7",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:6",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:1",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "activating",
+        "effect_counts": {
+          "activating": 1,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:8",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:4",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "unknown",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 1,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:1"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:1",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v1",
+        "status": "superseded",
+        "superseded": true,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 1,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "tested_absent_hidden",
+        "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-tf1-expand-v1
+
+export const networkP1Expand: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p1-expand
+{
+  "name": "network-p1-expand",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:10"
+    ],
+    [
+      "expand",
+      "reference"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:10"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:4",
+        "type": "gene",
+        "label": "SYN-G4",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G4"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:10",
+            "via": [
+              "relationship:1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:10",
+            "via": [
+              "relationship:2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:5",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:1",
+        "target": "entity:7",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:6",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:1",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:8",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:4",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "unknown",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 1,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 1,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "tested_absent_hidden",
+        "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-p1-expand
+
+export const networkP1IsoformExpand: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p1-isoform-expand
+{
+  "name": "network-p1-isoform-expand",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:11"
+    ],
+    [
+      "expand",
+      "reference"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:11"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:1",
+        "type": "gene",
+        "label": "SYN-G1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:4",
+        "type": "gene",
+        "label": "SYN-G4",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-G4"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:7",
+        "type": "gene",
+        "label": "SYN-TF1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_gene",
+          "value": "SYN-TF1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:11",
+            "via": [
+              "relationship:2",
+              "relationship:1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": false,
+        "derived_from": [
+          {
+            "seed": "entity:11",
+            "via": [
+              "relationship:2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:5",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:1",
+        "target": "entity:7",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:6",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:1",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "inhibiting",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 1,
+          "unknown": 0,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:8",
+        "type": "transcriptional_regulation",
+        "family": "regulation",
+        "orientation": "directed",
+        "source": "entity:7",
+        "target": "entity:4",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "unknown",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 1,
+          "not_stated": 0
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:1",
+        "type": "encodes",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:7",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:2",
+        "type": "isoform_of",
+        "family": "reference",
+        "orientation": "role_ordered",
+        "source": "entity:11",
+        "target": "entity:10",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "unknown": 1
+        },
+        "level": null,
+        "level_counts": {},
+        "level_assigned": null,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 1,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": [
+      {
+        "code": "tested_absent_hidden",
+        "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+      }
+    ]
+  }
+}
+// >>> network-p1-isoform-expand
+
+export const networkP2Expand: RecordedEntry<GraphNetworkResponse> =
+// <<< network-p2-expand
+{
+  "name": "network-p2-expand",
+  "caller": "staff",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:12"
+    ],
+    [
+      "expand",
+      "reference"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:12"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        },
+        "is_seed": false,
+        "derived_from": []
+      },
+      {
+        "id": "entity:12",
+        "type": "protein",
+        "label": "SYN-P2",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P2"
+        },
+        "is_seed": true,
+        "derived_from": []
+      },
+      {
+        "id": "entity:13",
+        "type": "protein",
+        "label": "SYN-SHARED",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P3"
+        },
+        "is_seed": false,
+        "derived_from": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "relationship:3",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:10",
+        "target": "entity:12",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 2
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 2
+        },
+        "outcome_counts": {
+          "supported": 2,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 2,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 2
+        },
+        "level": "direct_interaction",
+        "level_counts": {
+          "direct_interaction": 1,
+          "physical_association": 1,
+          "association": 0,
+          "not_stated": 0
+        },
+        "level_assigned": false,
+        "tested_levels": {},
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      },
+      {
+        "id": "relationship:4",
+        "type": "physical_interaction",
+        "family": "physical",
+        "orientation": "symmetric",
+        "source": "entity:12",
+        "target": "entity:13",
+        "releases": [
+          "release:2"
+        ],
+        "is_synthetic": true,
+        "qualifiers": {},
+        "shown": true,
+        "effect": "not_applicable",
+        "effect_counts": {
+          "activating": 0,
+          "inhibiting": 0,
+          "unknown": 0,
+          "not_stated": 1
+        },
+        "genetic_sign": "not_applicable",
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "not_stated": 1
+        },
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "independent_outcome_counts": {
+          "supported": 1,
+          "tested_absent": 1,
+          "inconclusive": 0,
+          "not_significant": 0
+        },
+        "assertion_count": 1,
+        "evidence_count": 1,
+        "distinct": {
+          "publications": 0,
+          "releases": 1,
+          "datasets": 1
+        },
+        "by_basis": {
+          "experimental": 1
+        },
+        "level": "not_stated",
+        "level_counts": {
+          "direct_interaction": 0,
+          "physical_association": 0,
+          "association": 0,
+          "not_stated": 1
+        },
+        "level_assigned": false,
+        "tested_levels": {
+          "tested_absent": [
+            "direct_interaction"
+          ]
+        },
+        "outside_filters": 0,
+        "outside_outcome_counts": {
+          "supported": 0,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": []
+  }
+}
+// >>> network-p2-expand
+
+export const networkTf1ExpandVisitor: RecordedEntry<GraphNetworkResponse> =
+// <<< network-tf1-expand-visitor
+{
+  "name": "network-tf1-expand-visitor",
+  "caller": "visitor",
+  "path": "/api/graph/v1/network",
+  "query": [
+    [
+      "seeds",
+      "entity:7"
+    ],
+    [
+      "expand",
+      "reference"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "seeds": [
+        "entity:7"
+      ],
+      "layers": null,
+      "expand": "reference",
+      "direction": null,
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "taxon": null,
+      "include_partner_edges": null,
+      "max_edges": null,
+      "releases": null,
+      "browser": null
+    },
+    "nodes": [],
+    "edges": [],
+    "releases": [],
+    "page": {
+      "truncated": false,
+      "max_edges": 250,
+      "omitted": {},
+      "hidden": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "warnings": []
+  }
+}
+// >>> network-tf1-expand-visitor

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { normalizeRelationshipParams } from '../../../api/graph/params'
 import type { GraphEvidenceParams, GraphRelationshipParams, GraphSelection } from '../../../api/graph/params'
 import type {
-  GraphFiltersEcho, GraphNode, GraphOutcome, GraphRelationshipResponse, GraphSelectionEcho,
+  GraphEdge, GraphFiltersEcho, GraphNetworkQuery, GraphNode, GraphOutcome, GraphRelationshipResponse, GraphSelectionEcho,
 } from '../types'
 import { EMPTY_GRAPH, requestedOutcomes } from '../network/graph'
 import type { TypedGraph } from '../network/graph'
@@ -52,6 +52,16 @@ export function relationshipParamsOf(echo: (GraphFiltersEcho & GraphSelectionEch
   const context = echo.context
   if (typeof context === 'object' && context !== null && Object.keys(context).length > 0) params.context = { ...context }
   return params
+}
+
+/**
+ * A reference link an expanded network joined is summarised under the default filter, so its panel takes the network's
+ * releases and no filter, as U33's panels do (X1, Q36). With expand, layers name no reference type (Q17), so every
+ * reference link of such an answer is a join; null for any other edge or echo.
+ */
+export function joinParamsOf(edge: GraphEdge | null | undefined, echo: GraphNetworkQuery | null | undefined): GraphRelationshipParams | null {
+  if (edge === null || edge === undefined || echo === null || echo === undefined) return null
+  return echo.expand === 'reference' && edge.family === 'reference' ? selectionOf(echo) : null
 }
 
 /**

@@ -187,19 +187,33 @@ def visible_identifiers(entity, releases) -> list:
     )
 
 
+def visible_reference_q(releases) -> Q:
+    """The reference relationships shown under `releases`, as a predicate on
+    Relationship: a reference type, and an assertion of the set covers it
+    under the default filter, whatever a request's filters, so the count of
+    queries is blind to a hidden reference link. The one rule of which
+    reference links a caller sees: visible_reference_relationships and
+    graph.reference_closure both read it, so RF1a changes both here."""
+    releases = issued_release_set(releases)
+    if not typed_graph_enabled():
+        return Q(pk__in=[])
+    covered = covered_assertions(releases=releases)
+    return Q(relationship_type__is_reference=True) & Q(
+        Exists(covered.filter(relationship_id=OuterRef("pk")))
+    )
+
+
 def visible_reference_relationships(entity, releases) -> list[EdgeSummary]:
     """The summaries, by relationship id, of the reference relationships
     touching the entity that are shown under `releases`. One query filters
-    them first, so the count of queries is blind to a hidden reference link;
-    then summarize's three."""
+    them first, through visible_reference_q, so the count of queries is blind
+    to a hidden reference link; then summarize's three."""
     releases = issued_release_set(releases)
     if not typed_graph_enabled():
         return []
-    covered = covered_assertions(releases=releases)
     ids = (
-        Relationship.objects.filter(relationship_type__is_reference=True)
+        Relationship.objects.filter(visible_reference_q(releases))
         .filter(Q(subject_id=entity.pk) | Q(object_id=entity.pk))
-        .filter(Exists(covered.filter(relationship_id=OuterRef("pk"))))
         .values_list("pk", flat=True)
     )
     summaries = summarize(list(ids), releases=releases).values()

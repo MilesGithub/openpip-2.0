@@ -14,7 +14,7 @@ saved with the save bar; see [Saving settings](index.md#saving-settings).
   in the top bar. Upload and removal take effect immediately.
 - **Footer HTML**: the footer shown on every page.
 - **Navigation & chrome text**: the top bar's link labels.
-  The Browsers link, shown while the typed graph is on, keeps its own label, and the gallery and instance pages take the site's default navbar style, since **Per-page navbar** does not list them.
+  The Browsers and Explore links, shown while the typed graph is on, keep their own labels, and the gallery, instance, explorer and entity pages take the site's default navbar style, since **Per-page navbar** does not list them.
 
 ## Appearance { data-desc="Themes, the top bar's style, and button, protein and interaction colours." }
 

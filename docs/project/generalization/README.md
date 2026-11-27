@@ -19,8 +19,11 @@ fixtures that mirror the demonstration; F2 adds the typed network, its
 stylesheet, legend and notice; F3 adds the relationship and entity panels, the
 evidence list and the edges table; F4 adds the gallery at `/browsers` and the
 instance pages, which use them, and the Browsers link, shown while the
-feature is on; nothing else described here as proposed has been implemented
-yet.
+feature is on; X1, the last item of the brief's MVP, adds the unified
+explorer at `/explore`, which follows gene-to-protein links through the
+network route's `expand=reference`, the entity pages at `/entities/`, and
+the Explore link, shown while its feature is on; nothing else described
+here as proposed has been implemented yet.
 
 | File | Contents |
 |---|---|

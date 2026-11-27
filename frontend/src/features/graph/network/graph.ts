@@ -1,9 +1,10 @@
 import type {
   GraphEdge, GraphFiltersEcho, GraphNetworkPage, GraphNetworkQuery, GraphNetworkResponse,
-  GraphNode, GraphOutcome, GraphRelease, GraphWarning,
+  GraphNode, GraphNodeDerivation, GraphOutcome, GraphRelease, GraphWarning,
 } from '../types'
 
-export type TypedGraphNode = GraphNode & { is_seed?: boolean }
+/** `derived_from` lists the paths that made a node a derived seed (X1); a hand-built node may carry neither key. */
+export type TypedGraphNode = GraphNode & { is_seed?: boolean; derived_from?: readonly GraphNodeDerivation[] }
 
 export interface TypedGraph {
   nodes: readonly TypedGraphNode[]
@@ -96,4 +97,23 @@ export function keptGraph(graph: TypedGraph): KeptGraph {
 /** Object.prototype.hasOwnProperty, since Object.hasOwn is past ES2020: a value such as `constructor` never reads a prototype's member. */
 export function own<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
   return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined
+}
+
+function isDerivation(value: unknown): value is GraphNodeDerivation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const item = value as { seed?: unknown; via?: unknown }
+  return typeof item.seed === 'string' && Array.isArray(item.via) && item.via.length > 0
+    && item.via.every((ref: unknown) => typeof ref === 'string')
+}
+
+/** A node's well-formed paths: F2 reads the response's own arrays unchecked, and a body can lack the key or bend it. */
+export function nodeDerivations(node: TypedGraphNode | null | undefined): GraphNodeDerivation[] {
+  if (node === null || node === undefined) return []
+  const items: readonly unknown[] = Array.isArray(node.derived_from) ? node.derived_from : []
+  return items.filter(isDerivation)
+}
+
+/** A derived seed has a path and is no seed the caller named: a named seed is never one (Q14), and reads as a seed. */
+export function isDerivedSeed(node: TypedGraphNode): boolean {
+  return node.is_seed !== true && nodeDerivations(node).length > 0
 }

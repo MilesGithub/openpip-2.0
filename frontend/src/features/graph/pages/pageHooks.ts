@@ -49,13 +49,14 @@ export function isArrival(locationKey: string): boolean {
   return locationKey !== 'default'
 }
 
-export function useArrivalScroll(): void {
+export function useArrivalScroll(enabled = true): void {
   // Read through an effect event, so the effect runs once, on mount: a change of the filters, the search or
   // the seeds keeps the page mounted and does not scroll, and a first location keyed 'default' stays where the
-  // browser put it.
+  // browser put it. `enabled`, read the same way, is false where a page mounts a panel that takes focus at once
+  // (X1's explorer restoring a selection), so the arrival leaves the viewport where that focus put it.
   const arrived = isArrival(useLocation().key)
   const scroll = useEffectEvent(() => {
-    if (arrived) window.scrollTo(0, 0)
+    if (arrived && enabled) window.scrollTo(0, 0)
   })
   useEffect(() => {
     scroll()

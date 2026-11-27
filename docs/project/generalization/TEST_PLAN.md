@@ -141,7 +141,7 @@ guard is written once and then runs in every later PR's default suite.
 | `migrate_legacy.py --reset` itself, which cannot load seven tables into today's schema; checked on a scratch database (architecture §6.3) | none | Against a scratch database only: a reset run from a small dump in the legacy schema loads every table, and a forced failure leaves every table as it was. A test fails when a table the script loads gains a NOT NULL column with no database default that its map does not fill (ML1, not started without approval) |
 | Pre-existing tables are never modified or deleted | none | From G1, three checks. Every operation in a new app's migration is on the strict allow-list (`CreateModel`, `AddField`, `AddIndex`, `AddConstraint`) and none is on the deny-list, checked over `NEW_APPS` (B1 adds `browsers`, O1 `portal_profile`). A schema snapshot of every pre-existing table (columns, types, nullability, defaults, constraints, indexes) is identical before the new apps migrate forward, after they migrate back to zero, and after they migrate forward again; so are the row counts of the pre-existing apps' tables, while Django's bookkeeping tables change only by the new apps' rows. The round trip covers every app in `NEW_APPS`, in reverse dependency order. The pre-existing apps' migrations equal a pinned manifest |
 | Migrations | `makemigrations --check` | New apps are schema-only and reversible: the suite migrates to zero and forward again, and a CI step on every push runs `migrate`, the registry sync, `graph_sync_registry --check` (which fails if the tables and the JSON differ), `migrate <app> zero` for each new app and `migrate` (G1 onward). There is no migration in `admin_panel` or any other shared app on the fork (O1). CI runs `makemigrations --check` after every upstream merge (T1) |
-| With the switch off, nothing new is reachable | none | Every `/api/graph/v1/` route except `status` returns 404, parametrized over the URL resolver (A1). Typed commands refuse to write (G1 onward). Navbar and home page are unchanged by snapshot (F4, H1): F4's is an inline snapshot of the Navbar's link names and addresses under the switch-off handlers, logged out and logged in, and with the switch on the Browsers link follows Contact |
+| With the switch off, nothing new is reachable | none | Every `/api/graph/v1/` route except `status` returns 404, parametrized over the URL resolver (A1). Typed commands refuse to write (G1 onward). Navbar and home page are unchanged by snapshot (F4, H1): F4's is an inline snapshot of the Navbar's link names and addresses under the switch-off handlers, logged out and logged in, and with the switch on the Browsers link follows Contact and, while `network` is on, the Explore link follows Browsers (X1) |
 | Legacy frontend: search page, network, panels, tables, admin, sharing | The existing Vitest suites | They run unchanged in every frontend PR. New pages are lazy routes. Legacy components change only where an issue names the change: the navigation links (F4, X1, C1), the new `adminNav.ts` items (AD1), the home-page hub section (H1), the `kind` check in the saved, shared and public view pages (S1), and the organism-specific links and enrichment request (O1). Each keeps today's behaviour with the switch off, the settings unset or a state without `kind`, checked by the snapshot and fixture tests named in the rows above and in §5.13 |
 
 ## 5. Tests for the new behaviour
@@ -665,8 +665,9 @@ identifiers.
   `ambiguous` or `unmatched`, counted over distinct entities, for visible
   entities only. Each candidate is one entity with all its matches.
 - **Entity routes (X1).** `/entities/:namespace/:value` redirects only on a
-  `resolved` result. A single alias, label, case or version `candidate` is
-  listed for confirmation, and an `ambiguous` result lists every candidate.
+  `resolved` result. A single alias, symbol, case or version `candidate` is
+  listed for confirmation, and an `ambiguous` result lists every candidate;
+  a namespace searches no labels, so no label `candidate` arises.
 - **Following reference links (X1).** With `expand=reference`, a search for
   the SYN-TF1 gene returns its regulation edges and, through labelled
   `encodes` and `isoform_of` edges, the physical partner of its protein,
@@ -677,7 +678,10 @@ identifiers.
   nothing; a view that pins it keeps the join, flagged. Partners' own
   reference links are not followed. The closure follows typed paths only:
   with one entry encoded by several genes (a factory case like histone H4),
-  a search for one gene never makes the other genes derived seeds.
+  a search for one gene never makes the other genes derived seeds. The
+  closure reads its links under the default filter, whatever the request's
+  evidence filters, `outcome`, `direction`, `taxon` or `layers`, and a layer
+  naming a reference type beside `expand` is a 400.
 - **Query count.** It is bounded whatever the fan-out
   (`django_assert_max_num_queries`).
 - **Statement timeout.** It fires on PostgreSQL (`postgres` marker), inside
@@ -786,13 +790,15 @@ identifiers.
   are labelled "association (co-purification)", never binding, and those
   with no stated level "physical interaction, level not stated".
 - **Reference links** are drawn thin, grey and directed, each with a text
-  label giving its type and the release that states it, or only its type
-  when another release in view reports the link without supporting it.
-  Derived seeds carry a "via encodes" or "via isoform of" badge. The legend
-  explains that `encodes` links come from a mapping release and `isoform_of`
-  links from a UniProt release, and that gene, protein entry and isoform are
-  separate records (F2 draws and labels them; X1 adds the derived-seed
-  badges).
+  label giving its type and the release that states it, named by its
+  dataset's title and version, or only its type when another release in
+  view reports the link without supporting it. A derived seed has a dashed
+  two-tone outline apart from a seed's, and a line under its name giving
+  the type of each link followed, such as "via Encodes, then Isoform of";
+  the edges table and the entity panel name its path, and the panel the
+  releases that state it. The legend names the releases that state the
+  drawn links, and says that gene, protein entry and isoform are separate
+  records (F2 draws and labels the links; X1 adds the derived-seed marks).
 - **Legend.** It lists only the channels present, in words, and colour is
   never the only channel.
 - **Keyboard.** The edges table is fully usable from the keyboard, and opens
@@ -804,7 +810,7 @@ identifiers.
   shows.
 - **Text.** Source text with markup renders as literal text, and the
   synthetic badge appears wherever demo data are shown: on F4's cards and
-  instance header, and on X1's explorer.
+  instance header, and on X1's explorer and entity page.
 - **Gallery.** Its filters are kept in the URL, and a shared URL reproduces
   the filtered gallery (F4) for the same caller: an address a staff member
   shares can list fewer browsers, or none, for a visitor.
@@ -879,8 +885,13 @@ whose dataset id and name both match.
   `(relationship, release)` index, and is deterministic. It may favour an
   observation that several sources repeat (a stated trade-off), but every
   edge shown is still summarized by its independent evidence.
-- **Reference expansion** adds a bounded number of queries per seed, and
-  respects its own cap of 25 entities per seed.
+- **Reference expansion** sends one or two closure statements whatever the
+  number of seeds, then one candidate statement per seed it looks up, at
+  most 26 a request, the named and the derived seeds together
+  (`status.limits.max_expanded_seeds`), so the neighbourhood service sends
+  at most 37 statements beside its transaction's own; what the cap drops is
+  counted in `page.omitted.derived_seeds` (X1). CI counts statements and
+  never times them; X1's measured times are in its PR.
 - **Benchmark targets (P1).** P1 sets p95 targets on realistic data (R1 and
   R2) with production settings, because the development settings log every
   SQL statement. Stored per-relationship statistics, depth 2, `pg_trgm` and
@@ -1152,6 +1163,92 @@ repository.
   select's `change` on each arrow key, screen-reader speech, and the nav
   row's width with one more link. No browser test runs.
 
+### 5.19 Unified explorer and entity pages (X1)
+
+- **Following reference links.**
+  `backend/graph/tests/test_reference_expansion.py` runs
+  `graph.reference_closure` and `neighbourhood(expand="reference")` on
+  factory worlds whose mapping and UniProt-style releases are synthetic
+  releases of kind `reference` (`backend/graph/tests/api_helpers.py`): the
+  six typed paths from a gene, an entry and an isoform; one entry encoded by
+  three genes, from which a gene search never reaches the other genes or
+  their edges (the histone H4 case); a partner's own links never followed; a
+  mapping release of each hidden kind adding no `encodes` join while the
+  `isoform_of` joins stay, and a superseded one adding nothing in the default
+  set and keeping its joins, flagged, when pinned; the order in which the
+  cap keeps derived seeds, the count of those it drops and the closure's row
+  bound; the deadline before each closure statement; and exact statement
+  counts, A2's unchanged when `expand` is not given. No test asserts a time.
+- **The network route.** `backend/graph/tests/test_api_network_expand.py`
+  sends the same cases through `GET network`, with `expand`'s own 400s, the
+  400 for a layer naming a reference type beside it, the echo, each node's
+  `derived_from`, the joins after the ranked edges with their releases,
+  `page.omitted.derived_seeds` and its warning, one unit of the site-wide
+  budget, the 503 past the deadline and the 404 with the switch off, and the
+  demonstration's answers from SYN-TF1, SYN-P1, SYN-P1-1 and SYN-P2, pinned
+  to v1 and as a visitor. The visibility walk (§5.5) asks for `expand` from a
+  visible seed, a hidden seed and several seeds, over every hidden kind.
+- **Recordings.** Nineteen more, all on the demonstration, recorded within
+  the staff's per-minute network allowance with no throttled answer written;
+  every earlier recording changes only by X1's additive keys at their empty
+  values, which a JSON comparison checks.
+- **Addresses and words.** Pure tests of `viewState.ts`, `filters/`,
+  `search/` and `network/derivedWords.ts` in `frontend/src/features/graph/`,
+  and of `features/explore/` and `features/entities/`: the explorer's
+  address, version 1, each name read once, a malformed or repeated value
+  named and never sent, unknown names kept and never sent, an address with
+  no `v` read as F4's seeds-only form, a later version and a `v` that cannot
+  be read each answered with its own sentence; the request each filter
+  sends; the search's splitting, refusals and outcomes; the entity pages'
+  refusals; the derived-seed words; and no word that says "not enabled" but
+  the off sentences.
+- **Routes.** The three routes under a data router: no page chunk loads while
+  the feature is off, `loading` or `unknown`; each route has a row that turns
+  only its own feature off; with the switch off each says "not enabled on
+  this portal" and sends only `status`; a reload repeats the same requests;
+  focus and scroll follow a client-side navigation.
+- **The explorer.** A gene search shows the gene's regulation edges and its
+  protein's physical partner, with gene, entry and isoform as three nodes
+  joined by labelled links; the follow toggle is on by default and, off,
+  sends the plain request; the tested-absent toggle is off by default and,
+  on, sends `outcome=all`; `candidate` and `ambiguous` terms, and a
+  `resolved` one with several candidates, are listed and never added
+  unasked; each filter sends its own request; the closure's drop, the
+  network's truncation and the search's cut are worded; a 503 while the
+  follow toggle is on names the toggle, and a failure a repeat can change
+  offers "Try again"; a pinned superseded release flags its joins; a shared
+  address in a fresh client sends the same requests and draws the same
+  element ids, for the same caller; a shared selection the answer lacks
+  reopens with no filter; a panel in an expanded view never sends `expand`.
+- **Entity pages.** `/entities/:id` checks its ref before sending, shows the
+  entity panel at heading level 1 with no Close, and shows a merged entity's
+  survivor from a stubbed answer; `/entities/:namespace/:value` replaces its
+  address with the entity's only on one `resolved` result holding one
+  candidate, and otherwise lists its candidates for confirmation. On these
+  pages and on the explorer, every link is a router path or an `http(s)`
+  address, even when labels and release titles hold other addresses.
+- **Navbar and instance page.** `navbar.test.tsx` lists the Explore link
+  right after Browsers while `network` is on, and none while it is off,
+  `loading` or `unknown`; `InstancePage.test.tsx` shows one "Explore in the
+  unified network" link, carrying the instance's seeds, on a typed, live
+  instance only.
+- **The legacy search page.** No file under `frontend/src/features/search/`,
+  neither its handler `frontend/src/mocks/handlers/search.ts` nor its
+  fixture `frontend/src/mocks/fixtures/search.ts`, and no legacy test file
+  changes, as `git diff --name-status` of the working tree against the
+  branch's base and `git ls-files --others` show, and its 25 test files keep
+  their 166 tests.
+- **Not proved in jsdom.** The drawn canvas and its marks, with the
+  layout's reduced motion, real history, `popstate` and the back-forward
+  cache, a real reload through nginx and a browser following a 301,
+  gunicorn's HTML 400 and nginx's 414, focus and scroll as drawn, among them
+  a restored panel's heading on a first load and the entity page's heading
+  after a lookup's redirect, narrow screens, the identifiers table at
+  320 px among them, native controls as drawn, a name holding bidirectional
+  controls as drawn, a select's `change` on each arrow key, screen-reader
+  speech, the entity page's badge read once among it, and performance on
+  real data, which is P1's. No browser test runs.
+
 ## 6. Test data
 
 - **Factories.** The existing ones (`proteins/tests/factories.py`,
@@ -1167,17 +1264,20 @@ repository.
   kept true by a backend test (section 5.15). It uses `SYN-` labels, the
   `synthetic_gene` and `synthetic_protein` namespaces, and no PMID or DOI that
   could resolve to a real record. v2 supersedes v1, and it includes the
-  reference chain from a SYN gene to its protein's physical partner. It
+  reference chain from a SYN gene to its protein's physical partner, stated
+  in the same evidence release as its other rows, so X1's separate mapping
+  and UniProt-style releases are factory worlds in
+  `backend/graph/tests/api_helpers.py`, tested in the backend only. It
   stores no aliases; alias cases use factory rows (G1) and RF1a's reference
   fixtures. It states no detection method or ECO term: method cases use
   X1's, F3's and B1's own rows. D12's undeclared-namespace row, which a
   synthetic release refuses whole, is asserted on a test-only file. F2's,
-  F3's and F4's hand-written shapes in `extras.ts`, F2's and F3's with `SYN-`
-  labels and F4's with `SYN` titles or markup a row shows as text, are only
-  cases the demonstration cannot produce (sections 5.16 to 5.18); F3's
-  include one release that is not synthetic, so that term labels show, and
-  F4's instances follow the API's availability rules, but for one that
-  carries codes a deploy can bring early.
+  F3's, F4's and X1's hand-written shapes in `extras.ts`, F2's, F3's and
+  X1's with `SYN-` labels and F4's with `SYN` titles or markup a row shows
+  as text, are only cases the demonstration cannot produce (sections 5.16
+  to 5.19); F3's include one release that is not synthetic, so that term
+  labels show, and F4's instances follow the API's availability rules, but
+  for one that carries codes a deploy can bring early.
 - **Reference fixtures for RF1a's tests** are small files written for the
   repository, shaped like the real releases but with synthetic content. Real
   HGNC or UniProt files never enter the test suite.

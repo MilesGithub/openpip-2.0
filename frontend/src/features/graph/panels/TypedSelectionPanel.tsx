@@ -3,7 +3,7 @@ import type { GraphNetworkQuery, GraphPresentation, GraphVocabularies } from '..
 import { EMPTY_GRAPH, keptGraph } from '../network/graph'
 import type { TypedGraph } from '../network/graph'
 import { EntityPanel } from './EntityPanel'
-import { relationshipParamsOf, selectionFromParams, selectionOf } from './panelParams'
+import { joinParamsOf, relationshipParamsOf, selectionFromParams, selectionOf } from './panelParams'
 import { RelationshipPanel } from './RelationshipPanel'
 import type { PanelSelection } from './selection'
 import type { HeadingLevel } from './text'
@@ -43,8 +43,9 @@ export function TypedSelectionPanel(props: TypedSelectionPanelProps) {
   const shownGraph = graph ?? current?.graph ?? null
   const kept = useMemo(() => keptGraph(shownGraph ?? EMPTY_GRAPH).graph, [shownGraph])
   if (selection.kind === 'edge') {
-    const params = selection.params ?? (current === null ? null : relationshipParamsOf(current.query))
     const edge = 'record' in selection ? selection.record : (kept.edges.find((candidate) => candidate.id === selection.id) ?? null)
+    // A join of an expanded network takes its releases and no filter (X1, Q36); every other edge, the echo's filters.
+    const params = selection.params ?? (current === null ? null : joinParamsOf(edge, current.query) ?? relationshipParamsOf(current.query))
     return (
       <RelationshipPanel
         key={'edge:' + selection.id}
@@ -77,6 +78,7 @@ export function TypedSelectionPanel(props: TypedSelectionPanelProps) {
         onSelect={onSelect}
         onClose={onClose}
         headingLevel={headingLevel}
+        graph={kept}
       />
     )
   }

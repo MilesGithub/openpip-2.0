@@ -14,6 +14,8 @@ export const TEST_SHELL = 'Test shell'
 /** The shell's links: outside `main` and mounted on every route, as the Layout's Navbar is (components/Layout.tsx:23-38). */
 export const SHELL_GALLERY_LINK = 'Shell gallery link'
 export const SHELL_INSTANCE_LINK = 'Shell instance link'
+/** X1's explorer link, outside `main` as the Navbar's Explore link is (spec 12.0). */
+export const SHELL_EXPLORE_LINK = 'Shell explore link'
 
 export interface GraphRouteOptions {
   client?: QueryClient       // default newGraphClient(): retries off
@@ -38,6 +40,7 @@ export function renderGraphRoute(path: string, options: GraphRouteOptions = {}):
       <nav>
         <Link to="/browsers">{SHELL_GALLERY_LINK}</Link>
         <Link to="/browsers/synthetic-regulation">{SHELL_INSTANCE_LINK}</Link>
+        <Link to="/explore">{SHELL_EXPLORE_LINK}</Link>
       </nav>
       <main><Outlet /></main>
     </>

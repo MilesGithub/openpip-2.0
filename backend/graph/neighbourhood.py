@@ -11,18 +11,24 @@ covered assertions. A hidden relationship matches the same predicates but has
 only evidence of other outcomes; it is never ranked, and is counted per
 outcome in one aggregate over every candidate of the request.
 
-Statements, in order: the visible seeds; one per visible seed, its candidates
-the most covered first and ties to the lowest id, cut by a SQL LIMIT; one
-aggregate of the hidden relationships unless every outcome is asked for; one
-for the edges among the partners when asked; summarize's three. A step whose
-input is empty sends nothing. So the count is bounded by the number of seeds
-and independent of any seed's degree.
+Statements, in order: the visible seeds; with expand="reference", the
+reference closure's one or two (graph.reference_closure), then summarize's
+three over the reference relationships of the paths it kept, under the
+default filter; one per looked-up seed, the visible seeds and the derived
+seeds the closure kept, its candidates the most covered first and ties to
+the lowest id, cut by a SQL LIMIT; one aggregate of the hidden
+relationships unless every outcome is asked for; one for the edges among
+the partners when asked; summarize's three. A step whose input is empty
+sends nothing. So the count is bounded by the number of seeds looked up,
+at most MAX_EXPANDED_SEEDS with expand, and independent of any seed's
+degree.
 
 On PostgreSQL every statement runs under a statement timeout, and the service
 sends no further statement once the timeout's span has passed since its first
 (the deadline), so a request ends within about twice the timeout. Both end as
 QueryTimedOut, which the API answers as a 503. The timeout helpers are public:
-the relationship routes, the exports and the reference expansion use them too.
+the relationship routes and the exports use them too; the reference closure
+runs inside neighbourhood()'s timed() block, handed its deadline check.
 
 This module imports nothing from graph.api, which re-exports its constants
 (graph.api.limits), so each number lives once. While the switch is off,
@@ -41,6 +47,7 @@ from django.db.models.functions import Coalesce
 from .entity_visibility import visible_entity_q
 from .models import Entity, Outcome, Relationship
 from .preconditions import storable, typed_graph_enabled
+from .reference_closure import PATH_TYPES, Derivation, reference_closure
 from .summary import (
     ALL_OUTCOMES,
     DEFAULT_FILTER,
@@ -59,9 +66,14 @@ MAX_NODES = 500
 # Edges a network holds unless asked, and the most it may be asked for.
 DEFAULT_MAX_EDGES = 250
 MAX_EDGES = 1000
+# Seeds one network looks up when it follows reference links: the visible
+# named seeds and the derived seeds together (architecture §4.6).
+MAX_EXPANDED_SEEDS = 26
 # Each statement's bound on PostgreSQL, and the span of the request's deadline.
 STATEMENT_TIMEOUT_MS = 5000
 DIRECTIONS = ("out", "in", "both")
+# The values of expand: what a network may follow before its lookups.
+EXPANSIONS = ("reference",)
 # PostgreSQL's SQLSTATE for a statement cancelled by the timeout.
 QUERY_CANCELED = "57014"
 
@@ -70,11 +82,16 @@ QUERY_CANCELED = "57014"
 class Neighbourhood:
     """What the service found. `edges` are the kept summaries in rank order,
     the seeds' edges then the partners'; `nodes` every endpoint of a kept edge
-    plus every visible seed; `hidden` {outcome: hidden relationships}, every
-    outcome a key; `truncated_seeds` the seeds whose lookup the pre-limit cut;
-    `omitted_edges` every ranked candidate a cap refused and
+    plus every looked-up seed; `hidden` {outcome: hidden relationships}, every
+    outcome a key; `truncated_seeds` the looked-up seeds whose lookup the
+    pre-limit cut; `omitted_edges` every ranked candidate a cap refused and
     `omitted_for_nodes` those among them the node cap refused; `stopped_by`
-    "edges", "nodes" or None."""
+    "edges", "nodes" or None. With expand, `derivations` the paths that made
+    each derived seed one, sorted; `joins` the summaries, by relationship id,
+    of the reference relationships on those paths and on the paths between
+    two seeds, read under the default filter; `dropped_derived_seeds` the
+    derived seeds the cap dropped, plus one for each closure statement its
+    row bound cut. `seeds` stays the visible seeds the caller named."""
 
     seeds: tuple[int, ...]
     edges: tuple[EdgeSummary, ...]
@@ -85,6 +102,9 @@ class Neighbourhood:
     omitted_edges: int
     omitted_for_nodes: int
     stopped_by: str | None
+    derivations: tuple[Derivation, ...] = ()
+    joins: tuple[EdgeSummary, ...] = ()
+    dropped_derived_seeds: int = 0
 
 
 class QueryTimedOut(Exception):
@@ -144,6 +164,7 @@ def neighbourhood(
     candidates_per_seed=CANDIDATES_PER_SEED,
     max_nodes=MAX_NODES,
     timeout_ms=None,
+    expand=None,
 ) -> Neighbourhood:
     """The network around `seeds` (entity ids) under `releases`, a ReleaseSet
     visible_release_ids issued, and `filters`, an EvidenceFilter whose values
@@ -153,6 +174,15 @@ def neighbourhood(
     caller may not see, or that names nothing, is dropped without a word. The
     caps and the timeout are the module's unless given; a value below 1 or an
     unknown direction is a caller bug (ValueError).
+
+    `expand` is None, or "reference" to follow the visible seeds' reference
+    links first (graph.reference_closure). The derived seeds it keeps, at
+    most MAX_EXPANDED_SEEDS less the visible seeds, are looked up as the
+    seeds are, are nodes from the start, join the hidden aggregate and are
+    never partners; the reference relationships on their paths, and on the
+    paths between two seeds, are summarized under the default filter as
+    `joins`. Another value, or `layers` naming a type the paths walk, is a
+    caller bug (ValueError).
 
     Ranked candidates are walked most covered first, ties by ascending id: an
     edge is kept while fewer than `max_edges` are kept and it leaves at most
@@ -170,6 +200,15 @@ def neighbourhood(
     if direction not in DIRECTIONS:
         raise ValueError(
             f"direction is one of {', '.join(DIRECTIONS)}; not {direction!r}."
+        )
+    if expand is not None and expand not in EXPANSIONS:
+        raise ValueError(
+            f"expand is None or one of {', '.join(EXPANSIONS)}; not {expand!r}."
+        )
+    if expand is not None and layers is not None and PATH_TYPES.intersection(layers):
+        raise ValueError(
+            f"layers names {', '.join(sorted(PATH_TYPES.intersection(layers)))}, "
+            "which expand follows itself."
         )
     for name, value in (
         ("max_edges", max_edges),
@@ -194,6 +233,10 @@ def neighbourhood(
                 .values_list("pk", flat=True)
             )
         )
+        # The seeds the lookups send: the visible seeds, then, with expand,
+        # the derived seeds too once they are settled. The deadline's line
+        # counts them as they stand when it is written.
+        looked_up = visible
 
         def check_deadline():
             elapsed = time.monotonic() - started
@@ -202,13 +245,43 @@ def neighbourhood(
                     "graph network passed its deadline after %d ms: %d seeds, "
                     "%d layers",
                     elapsed * 1000,
-                    len(visible),
+                    len(looked_up),
                     0 if layers is None else len(layers),
                 )
                 raise QueryTimedOut()
 
+        derivations, joins, dropped = (), (), 0
+        if expand == "reference" and visible:
+            closure = reference_closure(
+                visible,
+                releases=releases,
+                check_deadline=check_deadline,
+                limit=max(0, MAX_EXPANDED_SEEDS - len(visible)),
+            )
+            dropped = closure.dropped
+            paths = (*closure.derivations, *closure.links)
+            linked = {}
+            if paths:
+                check_deadline()
+                linked = summarize(
+                    sorted({pk for path in paths for pk in path.steps}),
+                    releases=releases,
+                    filters=DEFAULT_FILTER,
+                )
+            shown = {pk for pk, summary in linked.items() if summary.shown}
+            derivations = tuple(
+                path for path in closure.derivations if shown.issuperset(path.steps)
+            )
+            links = tuple(
+                path for path in closure.links if shown.issuperset(path.steps)
+            )
+            drawn = {pk for path in (*derivations, *links) for pk in path.steps}
+            joins = tuple(linked[pk] for pk in sorted(drawn))
+            looked_up = tuple(
+                sorted({*visible, *(path.entity_id for path in derivations)})
+            )
         candidates, truncated = {}, []
-        for seed in visible:
+        for seed in looked_up:
             check_deadline()
             rows = _candidate_rows(
                 seed, direction=direction, limit=candidates_per_seed, **lookup
@@ -218,11 +291,11 @@ def neighbourhood(
                 rows = rows[:candidates_per_seed]
             for pk, count, subject, object_ in rows:
                 candidates[pk] = (count, subject, object_)
-        if visible and filters.outcomes != ALL_OUTCOMES:
+        if looked_up and filters.outcomes != ALL_OUTCOMES:
             check_deadline()
-            hidden = _hidden_counts(visible, direction=direction, **lookup)
+            hidden = _hidden_counts(looked_up, direction=direction, **lookup)
         ranked = sorted(candidates.items(), key=lambda item: (-item[1][0], item[0]))
-        nodes, kept = set(visible), []
+        nodes, kept = set(looked_up), []
         omitted = omitted_for_nodes = 0
         edges_full = False
         for index, (pk, (count, subject, object_)) in enumerate(ranked):
@@ -237,7 +310,7 @@ def neighbourhood(
                 continue
             kept.append(pk)
             nodes = grown
-        partners = nodes - set(visible)
+        partners = nodes - set(looked_up)
         partners_truncated = False
         if include_partner_edges and len(kept) < max_edges and partners:
             check_deadline()
@@ -273,6 +346,9 @@ def neighbourhood(
         omitted,
         omitted_for_nodes,
         stopped_by,
+        derivations,
+        joins,
+        dropped,
     )
 
 

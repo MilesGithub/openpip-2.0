@@ -216,6 +216,8 @@ export interface GraphLimits {
   max_edges: number
   candidates_per_seed: number
   max_nodes: number
+  /** The most seeds one network request with `expand=reference` looks up, named and derived together. */
+  max_expanded_seeds: number
   evidence_page_size: number
   evidence_max_page_size: number
   evidence_page_raw_chars: number
@@ -396,7 +398,7 @@ export interface GraphRelease {
 }
 
 export interface GraphWarning {
-  /** Open: resolve's `candidates_truncated`, network's `seed_truncated`, `partner_edges_truncated`, `edges_truncated`, `nodes_truncated`, `<outcome>_hidden`. */
+  /** Open: resolve's `candidates_truncated`, network's `derived_seeds_truncated`, `seed_truncated`, `partner_edges_truncated`, `edges_truncated`, `nodes_truncated`, `<outcome>_hidden`. */
   code: string
   detail: string
 }
@@ -559,10 +561,20 @@ export interface GraphFiltersEcho {
 
 // ── Network ─────────────────────────────────────────────────────────────────
 
-/** A node of a network response, with one key added. Node keys are additive (X1 adds more). */
+/** One path that made a network node a derived seed. PAGE, the `derived_from[]` table. */
+export interface GraphNodeDerivation {
+  /** The ref of the seed the caller named that the path starts from. */
+  seed: GraphEntityRef
+  /** The path's relationships in order from that seed, each listed in `edges`. */
+  via: GraphRelationshipRef[]
+}
+
+/** A node of a network response, with two keys added. Node keys are additive. */
 export interface GraphNetworkNode extends GraphNode {
-  /** True for a seed the caller named and may see. */
+  /** True for a seed the caller named and may see; false for a partner or a derived seed. */
   is_seed: boolean
+  /** With `expand`, each path that made the node a derived seed, by seed and then by path; `[]` on every other node. */
+  derived_from: GraphNodeDerivation[]
 }
 
 export interface GraphNetworkQuery extends GraphFiltersEcho, GraphSelectionEcho {
@@ -570,6 +582,8 @@ export interface GraphNetworkQuery extends GraphFiltersEcho, GraphSelectionEcho 
   seeds: GraphEntityRef[]
   /** Distinct, in order of first appearance. */
   layers: string[] | null
+  /** `reference` when the request follows reference links, else null. */
+  expand: 'reference' | null
   direction: GraphDirection | null
   taxon: number | null
   include_partner_edges: boolean | null
@@ -580,8 +594,8 @@ export interface GraphNetworkPage {
   truncated: boolean
   /** The cap in force. */
   max_edges: number
-  /** `{}`, or `candidates` and/or `edges`, each absent when zero. */
-  omitted: { candidates?: number; edges?: number }
+  /** `{}`, or `derived_seeds`, `candidates` and `edges`, each absent when zero, in that order. */
+  omitted: { derived_seeds?: number; candidates?: number; edges?: number }
   /** Always the four outcome keys. */
   hidden: Record<GraphOutcome, number>
 }
@@ -591,7 +605,7 @@ export interface GraphNetworkResponse {
   query: GraphNetworkQuery
   /** Sorted by numeric id; `[]` when no seed is visible. */
   nodes: GraphNetworkNode[]
-  /** In rank order, every one with `shown` true. */
+  /** In rank order, then, with `expand`, the joins by id; every one with `shown` true. */
   edges: GraphEdge[]
   releases: GraphRelease[]
   page: GraphNetworkPage

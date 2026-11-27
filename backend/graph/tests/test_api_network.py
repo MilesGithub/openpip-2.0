@@ -5,7 +5,8 @@ Its parameters and every 400; the echo; the demonstration contract, row by
 row, for staff; the shapes; who sees what; the throttles and the site-wide
 budget; what a request costs, and the 503 of a cancelled statement or a
 passed deadline. The service is tested in test_neighbourhood, and the walk of
-every route over every hidden release in test_api_visibility.
+every route over every hidden release in test_api_visibility; expand=reference
+in test_api_network_expand and test_reference_expansion.
 
 Evidence is built with api_helpers.state() or fan_out, which write the
 participants that make an endpoint visible.
@@ -111,6 +112,7 @@ MALFORMED_SCORE = (
 ALLOWED = [
     "seeds",
     "layers",
+    "expand",
     "direction",
     "outcome",
     "evidence_basis",
@@ -632,10 +634,30 @@ def test_a_bad_max_edges_is_400(sent, given, switch_on, visitor_client):
     }
 
 
-def test_expand_is_unknown_until_its_milestone(switch_on, visitor_client):
-    assert refused(visitor_client, "seeds=entity:1&expand=x") == {
-        "detail": f"Unknown parameter 'expand'. Allowed: {', '.join(ALLOWED)}.",
-        "errors": [problem("expand", allowed=ALLOWED)],
+@pytest.mark.parametrize(
+    "query,detail,value,allowed",
+    [
+        ("expand=x", "Unknown expand 'x'. Allowed: reference.", "x", ["reference"]),
+        ("expand=", "Unknown expand ''. Allowed: reference.", "", ["reference"]),
+        (
+            "expand=Reference",
+            "Unknown expand 'Reference'. Allowed: reference.",
+            "Reference",
+            ["reference"],
+        ),
+        (
+            "expand=reference,reference",
+            "Unknown expand 'reference,reference'. Allowed: reference.",
+            "reference,reference",
+            ["reference"],
+        ),
+        ("expand=reference&expand=reference", "expand is given once.", None, None),
+    ],
+)
+def test_a_bad_expand_is_400(query, detail, value, allowed, switch_on, visitor_client):
+    assert refused(visitor_client, f"seeds=entity:1&{query}") == {
+        "detail": detail,
+        "errors": [problem("expand", value, allowed)],
     }
 
 
@@ -644,7 +666,7 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
     query = (
         "browser=Bad&releases=bad&max_edges=0&include_partner_edges=yes&taxon=1"
         "&context.tissue=&score=x&level=x&method=x&effect=x&evidence_basis=x"
-        "&outcome=x&direction=x&layers=x&seeds=bad&foo=1"
+        "&outcome=x&direction=x&expand=x&layers=x&seeds=bad&foo=1"
     )
     assert [
         entry["parameter"] for entry in refused(visitor_client, query)["errors"]
@@ -652,6 +674,7 @@ def test_every_problem_is_listed_in_the_routes_order(registry, visitor_client):
         "foo",
         "seeds",
         "layers",
+        "expand",
         "direction",
         "outcome",
         "evidence_basis",
@@ -688,6 +711,7 @@ def test_a_bad_request_reads_only_the_vocabularies_it_names(
 def test_the_echo_is_the_request_as_read(registry, visitor_client):
     query = {
         "layers": f"{TR},family:physical,{TR}",
+        "expand": "reference",
         "direction": "out",
         "outcome": "tested_absent,supported,tested_absent",
         "evidence_basis": "experimental",
@@ -709,6 +733,7 @@ def test_the_echo_is_the_request_as_read(registry, visitor_client):
     assert body["query"] == {
         "seeds": ["entity:1", "entity:2"],
         "layers": [TR, "family:physical"],
+        "expand": "reference",
         "direction": "out",
         "outcome": ["tested_absent", "supported"],
         "evidence_basis": ["experimental"],
@@ -749,6 +774,7 @@ def test_with_nothing_given_the_query_is_null(switch_on, visitor_client):
     assert body["query"] == {
         "seeds": ["entity:1"],
         "layers": None,
+        "expand": None,
         "direction": None,
         "outcome": None,
         "evidence_basis": None,
@@ -1279,6 +1305,7 @@ def test_the_envelope_and_its_exact_keys(registry, visitor_client):
         "status",
         "primary_identifier",
         "is_seed",
+        "derived_from",
     ]
     [listed] = body["edges"]
     fields = list(EdgeSerializer().fields)

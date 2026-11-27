@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 const ROOT = ts.sys.getCurrentDirectory() // frontend/, where vitest runs, as the strict test finds it
-const FOLDERS = ['src/features/graph/panels', 'src/features/graph/tables', 'src/features/browsers', 'src/features/graph/pages', 'src/features/graph/badge', 'src/features/graph/words', 'src/features/graph/workspace']
+const FOLDERS = ['src/features/graph/panels', 'src/features/graph/tables', 'src/features/browsers', 'src/features/graph/pages', 'src/features/graph/badge', 'src/features/graph/words', 'src/features/graph/workspace', 'src/features/graph/filters', 'src/features/graph/search', 'src/features/explore', 'src/features/entities']
 // The files that render source text; the scan asserts no file count, so merging two modules fails nothing.
 const RENDERING = [
   'src/features/graph/panels/RelationshipPanel.tsx',
@@ -30,6 +30,12 @@ const RENDERING = [
   'src/features/graph/pages/TypedFeatureGate.tsx',
   'src/features/graph/pages/TypedRouteStates.tsx',
   'src/features/graph/workspace/TypedNetworkWorkspace.tsx',
+  'src/features/graph/filters/FilterControls.tsx',
+  'src/features/graph/search/EntitySearch.tsx',
+  'src/features/explore/ExplorePage.tsx',
+  'src/features/explore/Explorer.tsx',
+  'src/features/entities/EntityPage.tsx',
+  'src/features/entities/EntityLookupPage.tsx',
 ]
 // Names through which a string reaches an HTML sink, or an element's props reach it unnamed.
 const SINK_NAMES = new Set([

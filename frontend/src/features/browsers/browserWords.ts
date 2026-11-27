@@ -188,6 +188,8 @@ export const BROWSER_ERROR = 'This browser could not be loaded.'
 export const BROWSER_TIMEOUT = 'This browser did not arrive in time.'
 /** Never "All browsers": the link keeps the last gallery search (J10), so the gallery it opens may be filtered. */
 export const BACK_LINK = 'Back to the gallery'
+/** X1's action (Q2): this browser's chosen entities in the unified network, under its default releases, not this browser's. */
+export const EXPLORE_ACTION = 'Explore in the unified network'
 export const HEADER_HEADINGS = {
   description: 'Description',
   methods: 'Methods',

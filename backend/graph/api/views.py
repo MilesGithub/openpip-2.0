@@ -34,12 +34,13 @@ from ..models import (
     IdentifierRole,
     Outcome,
     Relationship,
+    RelationshipFamily,
     RelationshipType,
     ScoreType,
     SourceRecord,
     Taxon,
 )
-from ..neighbourhood import DIRECTIONS, neighbourhood, timed
+from ..neighbourhood import DIRECTIONS, EXPANSIONS, neighbourhood, timed
 from ..preconditions import storable, typed_graph_enabled
 from ..registry import REGISTRY_VERSION, registry_state
 from ..resolution import resolve_many
@@ -67,6 +68,7 @@ from .limits import (
     EVIDENCE_PAGE_SIZE,
     MAX_CONTEXT_FACETS,
     MAX_EDGES,
+    MAX_EXPANDED_SEEDS,
     MAX_LAYERS,
     MAX_NODES,
     MAX_RELEASES,
@@ -194,6 +196,7 @@ class StatusView(TypedGraphView):
                 "max_edges": MAX_EDGES,
                 "candidates_per_seed": CANDIDATES_PER_SEED,
                 "max_nodes": MAX_NODES,
+                "max_expanded_seeds": MAX_EXPANDED_SEEDS,
                 "evidence_page_size": EVIDENCE_PAGE_SIZE,
                 "evidence_max_page_size": EVIDENCE_MAX_PAGE_SIZE,
                 "evidence_page_raw_chars": EVIDENCE_PAGE_RAW_CHARS,
@@ -770,13 +773,31 @@ class EvidenceFilters:
         }
 
 
+def _derived_from(derivations) -> dict:
+    """{entity id: its derived_from list}: each path that made the entity a
+    derived seed, as {seed, via} refs, by seed id and then by path."""
+    found = {}
+    for path in sorted(derivations, key=lambda path: (path.seed_id, path.steps)):
+        found.setdefault(path.entity_id, []).append(
+            {
+                "seed": ref("entity", path.seed_id),
+                "via": [ref("relationship", pk) for pk in path.steps],
+            }
+        )
+    return found
+
+
 def _network_page(found, max_edges) -> dict:
-    """What was cut: `candidates` counts the lookups the pre-limit cut (one per
-    truncated seed, one for the partners), `edges` the ranked candidates a cap
-    refused; `hidden` the relationships of the seeds, per outcome, whose
-    evidence passes every other filter and none of the requested outcomes,
-    exact over every candidate of the request."""
+    """What was cut: `derived_seeds` counts the derived seeds the reference
+    closure found and did not look up, one more for each of its statements
+    the row bound cut; `candidates` counts the lookups the pre-limit cut (one
+    per truncated seed, one for the partners), `edges` the ranked candidates
+    a cap refused; `hidden` the relationships of the looked-up seeds, per
+    outcome, whose evidence passes every other filter and none of the
+    requested outcomes, exact over every candidate of the request."""
     omitted = {}
+    if found.dropped_derived_seeds:
+        omitted["derived_seeds"] = found.dropped_derived_seeds
     candidates = len(found.truncated_seeds)
     if found.partner_candidates_truncated:
         candidates += 1
@@ -793,16 +814,30 @@ def _network_page(found, max_edges) -> dict:
 
 
 def _network_warnings(found, max_edges) -> list[dict]:
-    """In order: each truncated seed, the partner lookup, the edge cap, the
-    node cap, then each outcome that hidden relationships have. The two caps'
-    counts sum to page.omitted.edges."""
+    """In order: the derived seeds the closure dropped, each truncated seed,
+    the partner lookup, the edge cap, the node cap, then each outcome that
+    hidden relationships have. The two caps' counts sum to
+    page.omitted.edges."""
     ranked = f"the {CANDIDATES_PER_SEED} most covered were ranked."
-    warnings = [
+    warnings = []
+    if found.dropped_derived_seeds:
+        warnings.append(
+            {
+                "code": "derived_seeds_truncated",
+                "detail": (
+                    f"{found.dropped_derived_seeds} derived seeds omitted: a "
+                    f"network looks up at most {MAX_EXPANDED_SEEDS} seeds, named "
+                    "and derived together, or a step of the closure reached its "
+                    "row bound."
+                ),
+            }
+        )
+    warnings += [
         {
             "code": "seed_truncated",
             "detail": (
-                f"{ref('entity', pk)}: more than {CANDIDATES_PER_SEED} relationships "
-                f"have covered evidence; {ranked}"
+                f"{ref('entity', pk)}: more than {CANDIDATES_PER_SEED} "
+                f"relationships have covered evidence; {ranked}"
             ),
         }
         for pk in found.truncated_seeds
@@ -865,6 +900,14 @@ class NetworkView(EvidenceFilters, TypedGraphView):
     a word, as a release ref is, so a hidden seed reads like one that names
     nothing.
 
+    With expand=reference the service first follows the visible seeds'
+    reference links along the typed paths (graph.reference_closure): the
+    derived seeds it keeps are looked up as the seeds are, each node lists
+    the paths that made it one, and the reference edges on those paths
+    follow the ranked edges, summarized under the default filter, outside
+    max_edges. A layer naming a reference type is refused with it, so the
+    two lists never share an edge.
+
     The site-wide budget is spent by the handler after validation, so a
     malformed request, which reads no data, spends none, and a request that
     reaches the computation spends it whether it answers 200 or 503. Every
@@ -875,6 +918,7 @@ class NetworkView(EvidenceFilters, TypedGraphView):
     allowed_params = (
         "seeds",
         "layers",
+        "expand",
         "direction",
         *FILTER_PARAMS,
         "taxon",
@@ -916,6 +960,21 @@ class NetworkView(EvidenceFilters, TypedGraphView):
                 found.add(piece)
         return frozenset(found)
 
+    def _reference_layer(self, pieces) -> str | None:
+        """The first of the pieces, in order, that names a reference type: a
+        reference type's slug, or family:reference; None when none does. It
+        reads _layer_types, which validating layers has read, so it costs no
+        query."""
+        types = self._layer_types()
+        for piece in pieces:
+            if piece.startswith("family:"):
+                family = piece.removeprefix("family:")
+            else:
+                family = types.get(piece)
+            if family == RelationshipFamily.REFERENCE:
+                return piece
+        return None
+
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -937,6 +996,16 @@ class NetworkView(EvidenceFilters, TypedGraphView):
                     "The relationship types to walk, as comma-separated type slugs "
                     f"or family:<name>; repeatable. At most {MAX_LAYERS}; every "
                     "non-reference type unless given."
+                ),
+            ),
+            OpenApiParameter(
+                "expand",
+                str,
+                description=(
+                    "reference follows the seeds' reference links along the typed "
+                    "paths and looks up the entities they reach as derived seeds, "
+                    f"at most {MAX_EXPANDED_SEEDS} seeds in all. Not with a layer "
+                    "that names a reference type."
                 ),
             ),
             OpenApiParameter(
@@ -975,6 +1044,20 @@ class NetworkView(EvidenceFilters, TypedGraphView):
         layers = params.choices(
             "layers", self._layer_names, what="layer", limit=MAX_LAYERS
         )
+        expand = params.choice("expand", lambda: list(EXPANSIONS))
+        if expand is not None and layers:
+            refused = self._reference_layer(layers)
+            if refused is not None:
+                params.add(
+                    Problem(
+                        "layers",
+                        refused,
+                        detail=(
+                            "layers names a reference type; expand follows "
+                            "reference links itself."
+                        ),
+                    )
+                )
         direction = params.choice("direction", lambda: list(DIRECTIONS))
         values = self._filter_values()
         taxon = params.taxon(self._taxids)
@@ -997,16 +1080,20 @@ class NetworkView(EvidenceFilters, TypedGraphView):
             taxon=taxon,
             include_partner_edges=bool(include_partner_edges),
             max_edges=cap,
+            expand=expand,
         )
         nodes = entity_nodes(Entity.objects.filter(pk__in=sorted(found.nodes)), labels)
+        edges = (*found.edges, *found.joins)
         entries = release_entries(
-            set().union(*(summary.release_ids for summary in found.edges)), releases
+            set().union(*(summary.release_ids for summary in edges)), releases
         )
+        derived = _derived_from(found.derivations)
         data = {
             "api_version": API_VERSION,
             "query": {
                 "seeds": [ref("entity", pk) for pk in sorted(seeds)],
                 "layers": _listed(layers),
+                "expand": expand,
                 "direction": direction,
                 **self._filter_echo(values),
                 "taxon": taxon,
@@ -1016,10 +1103,14 @@ class NetworkView(EvidenceFilters, TypedGraphView):
                 "browser": self.browser,
             },
             "nodes": [
-                {**nodes[pk], "is_seed": pk in found.seeds}
+                {
+                    **nodes[pk],
+                    "is_seed": pk in found.seeds,
+                    "derived_from": derived.get(pk, []),
+                }
                 for pk in sorted(found.nodes)
             ],
-            "edges": [edge(summary, entries) for summary in found.edges],
+            "edges": [edge(summary, entries) for summary in edges],
             "releases": entries,
             "page": _network_page(found, cap),
             "warnings": _network_warnings(found, cap),

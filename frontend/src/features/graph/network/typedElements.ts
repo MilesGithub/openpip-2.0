@@ -1,6 +1,7 @@
 import type { ElementDefinition } from 'cytoscape'
 import type { GraphEdge, GraphPresentation, GraphVocabularies } from '../types'
 import { edgeClasses, nodeClasses } from './channels'
+import { derivedCanvasLabel, derivedPaths } from './derivedWords'
 import type { TypedGraph, TypedGraphNode } from './graph'
 import { nodeLabel } from './presentation'
 import { visibleGraph } from './visibility'
@@ -42,7 +43,12 @@ export function buildElements(kept: TypedGraph, options: BuildOptions): BuiltEle
   for (const node of kept.nodes) {
     nodes.set(node.id, node)
     elements.push({
-      data: { id: node.id, label: nodeLabel(node, options.presentation), type: node.type },
+      // A derived seed's label gains a second line naming the links that reached it (X1, Q32).
+      data: {
+        id: node.id,
+        label: derivedCanvasLabel(nodeLabel(node, options.presentation), derivedPaths(node, kept, options.vocabularies)),
+        type: node.type,
+      },
       classes: classes(node.id, nodeClasses(node)),
     })
   }

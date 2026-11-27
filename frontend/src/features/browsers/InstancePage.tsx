@@ -5,6 +5,7 @@ import { useGraphBrowser } from '../../api/graph/browsers'
 import { isGraphPathSegment } from '../../api/graph/params'
 import { graphFeatureState, useGraphStatus } from '../../api/graph/status'
 import { useGraphVocabularies } from '../../api/graph/vocabularies'
+import { exploreBackState } from '../explore/exploreModel'
 import { SyntheticBadge } from '../graph/badge/SyntheticBadge'
 import { SYNTHETIC_EXPLAINED } from '../graph/badge/badgeWords'
 import { own } from '../graph/network/graph'
@@ -17,17 +18,18 @@ import { PageHeading, TypedRouteStatus } from '../graph/pages/TypedRouteStates'
 import { endName, uniqueNames } from '../graph/panels/panelWords'
 import { DETAIL_STYLE, LINK_STYLE, SOURCE_TEXT_STYLE, TERM_STYLE, clipText } from '../graph/panels/text'
 import type { GraphEntityRef, GraphInstance, GraphNode, GraphVocabularies } from '../graph/types'
+import { exploreHref, exploreSeedsView } from '../graph/viewState'
 import { singleTaxon } from '../graph/words/taxa'
 import { TypedNetworkWorkspace } from '../graph/workspace/TypedNetworkWorkspace'
 import { useTypedNetworkWorkspace } from '../graph/workspace/useTypedNetworkWorkspace'
 import {
-  BACK_LINK, BROWSER_ERROR, BROWSER_NOT_AVAILABLE, BROWSER_TIMEOUT, HEADER_HEADINGS, LOADING_BROWSER, NO_RELEASE,
+  BACK_LINK, BROWSER_ERROR, BROWSER_NOT_AVAILABLE, BROWSER_TIMEOUT, EXPLORE_ACTION, HEADER_HEADINGS, LOADING_BROWSER, NO_RELEASE,
 } from './browserWords'
 import { searchString } from './galleryAddress'
 import { instanceHeaderView, isInstanceBody } from './headerView'
 import type { InstanceHeaderView } from './headerView'
 import { InstanceActionLine } from './InstanceCard'
-import { SEED_LIMIT_FALLBACK, galleryBackTo, seedsFromSearch, withSeeds } from './instanceAddress'
+import { SEED_LIMIT_FALLBACK, galleryBackTo, instanceHref, seedsFromSearch, withSeeds } from './instanceAddress'
 import { SeedSearch } from './SeedSearch'
 import {
   CHOSEN_LABEL, NETWORK_HEADING, NO_SEED_PROMPT, REMOVE_ALL, SEEDS_ADDRESS_ERROR, SEEDS_REMOVAL, SEED_SECTION_HEADING, removeText,
@@ -204,10 +206,17 @@ function InstanceExplore({ instance, vocabularies }: { instance: GraphInstance; 
   }
   const remove = (ref: GraphEntityRef) => { searchBox.current?.focus(); write(address.seeds.filter((seed) => seed !== ref)) }
   const clear = () => { searchBox.current?.focus(); write([]) }
+  // X1's action (Q2): the chosen entities, or none, in the unified network, with this page's way back in router state.
+  const explorePath = exploreHref(exploreSeedsView(address.seeds))
+  const exploreState = exploreBackState({
+    pathname: instanceHref(instance.slug), search: location.search, title: instance.title === '' ? instance.slug : instance.title,
+    state: location.state,
+  })
   if (!explore) return null
   // Remove, "Remove all" and the removal link each take away their own control, so each moves focus first.
   return (
     <>
+      <p><Link to={explorePath} state={exploreState} style={LINK_STYLE}>{EXPLORE_ACTION}</Link></p>
       <section aria-labelledby={headingId}>
         <h2 id={headingId} ref={sectionHeading} tabIndex={-1} style={SECTION_HEADING_STYLE}>{SEED_SECTION_HEADING}</h2>
         {address.invalid ? (

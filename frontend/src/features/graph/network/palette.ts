@@ -20,6 +20,8 @@ export const NODE_FILL = '#7C8798'
 export const SELECTION = '#AA3377'         // Paul Tol's bright purple
 export const LABEL_TEXT = '#F8FAFC'        // also the seed ring's outer rim
 export const LABEL_OUTLINE = '#1F2937'     // also the seed ring's border
+/** A derived seed's ring: Cytoscape dashes an outline [4, 2] whatever a border's pattern, so the border takes the same. */
+export const DERIVED_RING_DASH: readonly [number, number] = [4, 2]
 export const TESTED_ABSENT_OPACITY = 0.85
 export const COLOUR_NAMES: Readonly<Record<string, string>> = { '#0072B2': 'Blue', '#009E73': 'Bluish green', '#6B7280': 'Grey' }
 

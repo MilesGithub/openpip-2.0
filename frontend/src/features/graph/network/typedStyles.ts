@@ -1,6 +1,6 @@
 import type { StylesheetJson } from 'cytoscape'
 import {
-  FAMILY_COLOURS, LABEL_OUTLINE, LABEL_TEXT, NEUTRAL, NODE_FILL, SELECTION, TESTED_ABSENT_OPACITY,
+  DERIVED_RING_DASH, FAMILY_COLOURS, LABEL_OUTLINE, LABEL_TEXT, NEUTRAL, NODE_FILL, SELECTION, TESTED_ABSENT_OPACITY,
 } from './palette'
 
 // The last matching block wins (cytoscape's src/style/apply.mjs), so the order is the rule: base,
@@ -48,6 +48,22 @@ export const TYPED_STYLESHEET: StylesheetJson = [
       'outline-width': 2,
       'outline-color': LABEL_TEXT,
       'outline-offset': 0,
+    },
+  },
+  {
+    // X1's derived seed (Q32): the seed ring's colours and widths, dashed; its label's second line names the links that
+    // reached it (typedElements.ts), so its label wraps at that line break.
+    selector: 'node.derived',
+    style: {
+      'border-width': 3,
+      'border-style': 'dashed',
+      'border-dash-pattern': [...DERIVED_RING_DASH],
+      'border-color': LABEL_OUTLINE,
+      'outline-width': 2,
+      'outline-style': 'dashed',
+      'outline-color': LABEL_TEXT,
+      'outline-offset': 0,
+      'text-wrap': 'wrap',
     },
   },
   {

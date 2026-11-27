@@ -3,7 +3,10 @@
 A browser instance is one entry of the portal's gallery, at `/browsers`, and
 has its own page at `/browsers/<slug>`; the portal's pages show a Browsers
 link in the navigation bar while `TYPED_GRAPH_ENABLED` is on, though these
-documentation pages do not. An admin creates and edits
+documentation pages do not. A typed instance's page, while the instance is
+live, also offers "Explore in the unified network", which opens the entities
+chosen there in the unified explorer at `/explore`, over the portal's default
+releases rather than the instance's. An admin creates and edits
 instances in the Django admin (**Browser instances**), and the typed graph's
 API serves them
 ([Browser instances](../developer/api/typed-graph.md#browser-instances)).

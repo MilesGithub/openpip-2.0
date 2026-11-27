@@ -40,6 +40,8 @@ afterEach(() => {
 
 // Words copied from the spec's section 3.1 (BROWSERS_NAV_LABEL), never from the module under test.
 const LABEL = 'Browsers'
+// X1's words, copied from its spec's section 11.4 (EXPLORE_NAV_LABEL), never from the module under test.
+const EXPLORE = 'Explore'
 // main's Navbar with the switch off, logged out, written by hand (Navbar.tsx and the nav text group's defaults).
 const NAV_1 = [
   'Home /', 'Search /search', 'Proteins /proteins', 'Downloads /download', 'API /developer', 'About /about', 'FAQ /faq', 'Contact /contact',
@@ -108,12 +110,13 @@ describe("the Navbar's Browsers link", () => {
     expect(typedAsked()).toEqual([STATUS])
   }, 20_000)
 
-  it('NAV-3: with the switch on, Browsers follows Contact, the other links keep their order, and it is current on an instance', async () => {
+  it('NAV-3: with the switch on, Browsers follows Contact and Explore follows Browsers, the other links keep their order, and Browsers is current on an instance', async () => {
     renderNavbar(false)
     expect(await screen.findByRole('link', { name: LABEL }, { timeout: 10_000 })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toBeInTheDocument()
     const shown = links()
-    // The first nine and the last two, so that the typed links X1 and C1 add after Browsers keep the row passing.
-    expect(shown.slice(0, 9)).toEqual([...NAV_1.slice(0, 8), 'Browsers /browsers'])
+    // The first ten and the last two, so that the typed link C1 adds after Explore keeps the row passing.
+    expect(shown.slice(0, 10)).toEqual([...NAV_1.slice(0, 8), 'Browsers /browsers', 'Explore /explore'])
     expect(shown.slice(-2)).toEqual(['Login /login', 'Register /register'])
     cleanup()
     renderNavbar(false, '/browsers/synthetic-regulation')
@@ -122,13 +125,23 @@ describe("the Navbar's Browsers link", () => {
     expect(typedAsked()).toEqual([STATUS, STATUS])
   }, 20_000)
 
-  it('NAV-3b: with resolve, entities, network and relationships on, browsers off shows no Browsers link', async () => {
+  it('NAV-3b: with resolve, entities, network and relationships on, browsers off shows Explore and no Browsers link', async () => {
     const body = recorded<GraphStatus>('status-on').body
     server.use(http.get(STATUS, () => HttpResponse.json({ ...body, features: { ...body.features, browsers: false } })))
-    const client = renderNavbar(false)
-    await settled(client)
+    renderNavbar(false)
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toHaveAttribute('href', '/explore')
     expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
-    expect(links()).toEqual(NAV_1)
+    expect(links()).toEqual([...NAV_1.slice(0, 8), 'Explore /explore', 'Login /login', 'Register /register'])
+    expect(typedAsked()).toEqual([STATUS])
+  }, 20_000)
+
+  it('NAV-3c: with resolve, entities, browsers and relationships on, network off shows Browsers and no Explore link', async () => {
+    const body = recorded<GraphStatus>('status-on').body
+    server.use(http.get(STATUS, () => HttpResponse.json({ ...body, features: { ...body.features, network: false } })))
+    renderNavbar(false)
+    expect(await screen.findByRole('link', { name: LABEL }, { timeout: 10_000 })).toHaveAttribute('href', '/browsers')
+    expect(screen.queryByRole('link', { name: EXPLORE })).toBeNull()
+    expect(links()).toEqual([...NAV_1.slice(0, 8), 'Browsers /browsers', 'Login /login', 'Register /register'])
     expect(typedAsked()).toEqual([STATUS])
   }, 20_000)
 
@@ -158,6 +171,56 @@ describe("the Navbar's Browsers link", () => {
     release()
     await settled(client)
     expect(screen.queryByRole('link', { name: LABEL })).toBeNull()
+    expect(typedAsked()).toEqual([STATUS])
+  }, 20_000)
+})
+
+describe("the Navbar's Explore link", () => {
+  it('XA-1: no Explore link while status loads, nor once it says off', async () => {
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(http.get(STATUS, async () => {
+      await held
+      return HttpResponse.json(recorded<JsonBodyType>('status-off').body)
+    }))
+    const client = renderNavbar(false)
+    await waitFor(() => expect(requests.urls.map((url) => url.pathname)).toContain(STATUS), { timeout: 10_000 })
+    expect(client.getQueryState(graphStatusOptions().queryKey)?.status).toBe('pending')
+    expect(screen.queryByRole('link', { name: EXPLORE })).toBeNull()
+    release()
+    await settled(client)
+    expect(screen.queryByRole('link', { name: EXPLORE })).toBeNull()
+    expect(links()).toEqual(NAV_1)
+    expect(typedAsked()).toEqual([STATUS])
+  }, 20_000)
+
+  it('XA-2: Explore is current on the explorer without regard to case, and no link is current on an entity page', async () => {
+    renderNavbar(false, '/explore?v=1&seeds=entity%3A7')
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: LABEL })).not.toHaveAttribute('aria-current')
+    cleanup()
+    renderNavbar(false, '/Explore')
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toHaveAttribute('aria-current', 'page')
+    cleanup()
+    renderNavbar(false, '/entities/entity:7')
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toBeInTheDocument()
+    expect(screen.getAllByRole('link').filter((link) => link.hasAttribute('aria-current'))).toEqual([])
+    // One read per load: each render has a client of its own.
+    expect(typedAsked()).toEqual([STATUS, STATUS, STATUS])
+  }, 20_000)
+
+  it('XA-3: under a basename the Explore link carries it', async () => {
+    render(
+      <QueryClientProvider client={newGraphClient()}>
+        <MemoryRouter basename="/openpip" initialEntries={['/openpip/']}>
+          <Navbar isLoggedIn={false} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByRole('link', { name: EXPLORE }, { timeout: 10_000 })).toHaveAttribute('href', '/openpip/explore')
+    expect(screen.getByRole('link', { name: LABEL })).toHaveAttribute('href', '/openpip/browsers')
     expect(typedAsked()).toEqual([STATUS])
   }, 20_000)
 })

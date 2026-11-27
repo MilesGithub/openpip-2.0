@@ -125,6 +125,56 @@ describe('the recorded entries', () => {
   })
 })
 
+/** The explorer's recordings: each sends expand and none other does. */
+const EXPANDED = [
+  'network-tf1-expand',
+  'network-tf1-expand-outcome-all',
+  'network-tf1-expand-v1',
+  'network-p1-expand',
+  'network-p1-isoform-expand',
+  'network-p2-expand',
+  'network-tf1-expand-visitor',
+]
+
+describe('the expanded recordings', () => {
+  const networks = recordedEntries.filter((entry) => entry.path === '/api/graph/v1/network' && entry.status === 200)
+
+  it('RX-1: a derived seed names only listed edges and seeds the caller named', () => {
+    const bad: string[] = []
+    for (const entry of networks) {
+      const body = entry.body as GraphNetworkResponse
+      const edges = new Set(body.edges.map((edge) => edge.id))
+      const named = new Set(body.nodes.filter((node) => node.is_seed).map((node) => node.id))
+      for (const node of body.nodes) {
+        if (node.is_seed && node.derived_from.length > 0) bad.push(`${entry.name}: ${node.id} is named and derived`)
+        for (const path of node.derived_from) {
+          if (!named.has(path.seed)) bad.push(`${entry.name}: ${node.id} from ${path.seed}`)
+          for (const ref of path.via) if (!edges.has(ref)) bad.push(`${entry.name}: ${node.id} via ${ref}`)
+        }
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('RX-2: the expanded recordings send expand, and every other one holds its empty values', () => {
+    expect(EXPANDED.filter((name) => !networks.some((entry) => entry.name === name))).toEqual([])
+    for (const entry of networks) {
+      const body = entry.body as GraphNetworkResponse
+      const sent = entry.query.some(([name, value]) => name === 'expand' && value === 'reference')
+      expect(sent, entry.name).toBe(EXPANDED.includes(entry.name))
+      expect(body.query.expand, entry.name).toBe(sent ? 'reference' : null)
+      if (!sent) expect(body.nodes.flatMap((node) => node.derived_from), entry.name).toEqual([])
+    }
+    const derived = (name: string) =>
+      recorded<GraphNetworkResponse>(name).body.nodes.filter((node) => node.derived_from.length > 0).map((node) => node.id)
+    expect(derived('network-tf1-expand')).toEqual([demoRefs.p1, demoRefs.p1Isoform])
+    expect(derived('network-p1-expand')).toEqual([demoRefs.tf1, demoRefs.p1Isoform])
+    expect(derived('network-p1-isoform-expand')).toEqual([demoRefs.tf1, demoRefs.p1])
+    expect(derived('network-p2-expand')).toEqual([])
+    expect(recorded<GraphNetworkResponse>('network-tf1-expand-visitor').body.nodes).toEqual([])
+  })
+})
+
 interface ReadmeCase {
   row: string
   entries: string[]

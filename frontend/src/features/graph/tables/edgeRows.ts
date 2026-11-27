@@ -6,7 +6,7 @@ import { visibleGraph } from '../network/visibility'
 import { edgeDescription, typeLabel } from '../network/words'
 import { relationshipName, tableStatusSentence, uniqueNames } from '../panels/panelWords'
 import { clipText } from '../panels/text'
-import { TABLE_TEXT, countCell, directionCell, effectCell, endCell, levelCell, outcomeCell } from './tableWords'
+import { countCell, directionCell, effectCell, endCell, entitySuffix, levelCell, outcomeCell } from './tableWords'
 
 export type EdgeSortKey = 'first' | 'second' | 'type' | 'evidence' | 'assertions' | 'publications'
 export interface EdgeSort { key: EdgeSortKey; direction: 'ascending' | 'descending' }
@@ -130,7 +130,7 @@ export function nextSort(current: EdgeSort | null, key: EdgeSortKey): EdgeSort |
 /**
  * Every entity in view, so a keyboard user opens any entity panel as a tap on its node does, with
  * one request that spends none of the network's allowance. A seed's name says so in words, as the
- * canvas's two-tone ring does.
+ * canvas's two-tone ring does, and a derived seed's names the links that reached it.
  */
 export function entityRows(graph: TypedGraph | null, options: {
   showNonSupporting: boolean
@@ -143,7 +143,7 @@ export function entityRows(graph: TypedGraph | null, options: {
   const withStatus = tableStatusSentence(visible.nodes.map((node) => node.status)) === null
   const names = uniqueNames(visible.nodes.map((node) => ({
     id: node.id,
-    name: endCell(node, node.id, withStatus, presentation, vocabularies) + (node.is_seed === true ? TABLE_TEXT.seed : ''),
+    name: endCell(node, node.id, withStatus, presentation, vocabularies) + entitySuffix(node, kept, vocabularies),
   })))
   return visible.nodes.map((node, index) => ({ id: node.id, node, name: names[index] }))
 }
