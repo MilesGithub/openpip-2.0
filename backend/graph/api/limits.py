@@ -9,6 +9,7 @@ from ..neighbourhood import (
     CANDIDATES_PER_SEED,
     DEFAULT_MAX_EDGES,
     MAX_EDGES,
+    MAX_EXPANDED_SEEDS,
     MAX_NODES,
     STATEMENT_TIMEOUT_MS,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "MAX_CONTEXT_CHARS",
     "MAX_CONTEXT_FACETS",
     "MAX_EDGES",
+    "MAX_EXPANDED_SEEDS",
     "MAX_LAYERS",
     "MAX_NODES",
     "MAX_RELEASES",

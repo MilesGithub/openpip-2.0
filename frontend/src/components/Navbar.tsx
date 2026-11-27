@@ -9,6 +9,8 @@ import { NotificationBell } from './NotificationBell'
 import { useQuery } from '@tanstack/react-query'
 import { graphFeatureState, graphStatusOptions } from '../api/graph/status'
 import { BROWSERS_NAV_LABEL } from '../features/graph/pages/pageWords'
+// Typed graph (X1): the Explore link, shown only while status says the network is on.
+import { EXPLORE_NAV_LABEL } from '../features/graph/pages/pageWords'
 
 interface NavbarProps {
   isLoggedIn: boolean
@@ -50,6 +52,8 @@ export function Navbar({ isLoggedIn }: NavbarProps) {
   const open = openOn === location.pathname
   // Typed graph (F4): status read when the page loads and never polled; the typed pages' gate polls.
   const browsers = graphFeatureState(useQuery({ ...graphStatusOptions(), refetchInterval: false }), 'browsers')
+  // Typed graph (X1): a second observer of the same status query, which sends no request of its own.
+  const explore = graphFeatureState(useQuery({ ...graphStatusOptions(), refetchInterval: false }), 'network')
 
   return (
     <nav
@@ -88,6 +92,12 @@ export function Navbar({ isLoggedIn }: NavbarProps) {
         {browsers === 'on' && (
           <NavLink to="/browsers" style={linkStyle}>
             {BROWSERS_NAV_LABEL}
+          </NavLink>
+        )}
+        {/* Typed graph (X1): shown only while status reports the network on. */}
+        {explore === 'on' && (
+          <NavLink to="/explore" style={linkStyle}>
+            {EXPLORE_NAV_LABEL}
           </NavLink>
         )}
       </div>

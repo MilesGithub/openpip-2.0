@@ -1174,14 +1174,14 @@ shows a visible toggle labelled "follow gene-to-protein links".
    protein entry can be encoded by many genes (histone H4, for example), so
    an undirected walk would turn a single-gene search into a search for all
    of them. Other genes that encode a reached entry may be drawn as labelled
-   nodes, never as derived seeds. The closure has its own cap, initially 25
-   entities per seed, and reports anything it drops.
+   nodes, never as derived seeds. The closure has its own cap, 26 seeds a
+   request, named and derived together, and reports anything it drops.
 2. **Derived seeds.** The entities found are added as derived seeds. Each is
    marked with the path that reached it, for example "protein, via
    `encodes` from the gene you searched for, stated by mapping release X",
    or "isoform, via `isoform_of`, stated by UniProt release Y".
-3. **One neighbourhood query.** Seeds and derived seeds go through the
-   normal depth-1 query for the requested layers, under the usual edge caps.
+3. **One lookup per seed.** Seeds and derived seeds go through the normal
+   depth-1 query for the requested layers, under the usual edge caps.
 4. **Labelled joins.** The reference edges themselves are always drawn,
    labelled with their type ("encodes", "isoform of") and the release that
    states them. A user can therefore see how each protein interaction
@@ -1197,8 +1197,8 @@ shows a visible toggle labelled "follow gene-to-protein links".
    mapping release keeps its join, flagged as superseded; a withdrawn one
    adds nothing.
 
-The cost is one indexed lookup over reference relationships per seed and
-hop, and an entity has few reference links. The real-data milestone (IMPLEMENTATION_PLAN.md §2) demonstrates exactly this
+The closure costs one or two statements, whatever the number of seeds, and
+its cap bounds the lookups it adds. The real-data milestone (IMPLEMENTATION_PLAN.md §2) demonstrates exactly this
 path. A transcription factor's gene, from a regulation release, reaches its
 protein through an approved gene-to-protein mapping release, and from there
 the protein's partners in a separate physical-interaction release.
@@ -1879,7 +1879,7 @@ repeats the species-branch mistake.
   `/datasets/:slug/releases/:version`, `/entities/:id` and
   `/entities/:namespace/:value`. The last resolves through candidates. A
   `resolved` result redirects. Anything else lists the candidates for
-  confirmation, including a single candidate matched by alias or label, or
+  confirmation, including a single candidate matched by alias or symbol, or
   differing in case or version: with only Delta loaded, `flybase_symbol/dl`
   must not redirect to `Dl`.
 - Admin routes: `/admin/browsers` and `/admin/releases`. Paths starting with
@@ -2239,10 +2239,8 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
 - `layers`: relationship type slugs or `family:<name>`, at most 20; every
   non-reference type unless given, so reference types are walked only when
   named;
-- `releases` or (from B1) `browser`. Without either, the default release set
-  excludes superseded releases (section 3.7);
 - `expand`: `reference` adds each seed's reference closure as marked,
-  derived seeds (section 4.6; delivered with X1, and a 400 until then);
+  derived seeds (section 4.6), and is refused beside a reference layer;
 - `direction`: `out`, `in` or `both` (the default);
 - `outcome`: a comma-separated list of `supported` (the default),
   `tested_absent`, `inconclusive` and `not_significant`, or `all`, which
@@ -2259,7 +2257,9 @@ set when neither is given (section 3.7). `releases` arrives with the endpoint
   written;
 - `taxon`, the partners' taxon: the seed is never dropped for its own;
 - `include_partner_edges` (default `false`) and `max_edges` (default 250, at
-  most 1,000).
+  most 1,000);
+- `releases` or (from B1) `browser`. Without either, the default release set
+  excludes superseded releases (section 3.7).
 
 `GET /api/graph/v1/network?seeds=entity:7` on the synthetic demonstration,
 the network around SYN-TF1 in the default set (v2), as the API answers it:
@@ -2270,6 +2270,7 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
   "query": {
     "seeds": ["entity:7"],
     "layers": null,
+    "expand": null,
     "direction": null,
     "outcome": null,
     "evidence_basis": null,
@@ -2281,7 +2282,8 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
     "taxon": null,
     "include_partner_edges": null,
     "max_edges": null,
-    "releases": null
+    "releases": null,
+    "browser": null
   },
   "nodes": [
     {
@@ -2291,7 +2293,8 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
       "taxon": 32630,
       "status": "provisional",
       "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G1"},
-      "is_seed": false
+      "is_seed": false,
+      "derived_from": []
     },
     {
       "id": "entity:4",
@@ -2300,7 +2303,8 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
       "taxon": 32630,
       "status": "provisional",
       "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G4"},
-      "is_seed": false
+      "is_seed": false,
+      "derived_from": []
     },
     {
       "id": "entity:7",
@@ -2312,7 +2316,8 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
         "namespace": "synthetic_gene",
         "value": "SYN-TF1"
       },
-      "is_seed": true
+      "is_seed": true,
+      "derived_from": []
     }
   ],
   "edges": [
@@ -2518,7 +2523,7 @@ the network around SYN-TF1 in the default set (v2), as the API answers it:
   with "contributing dataset unknown" (D11).
 - The query count is bounded by the number of seeds and independent of
   fan-out, and tested with `django_assert_max_num_queries`: one candidate
-  statement per visible seed, the rest fixed.
+  statement per looked-up seed (at most 26 with `expand`), the rest fixed.
 - Every edge carries the summary's figures (`shown`, `outcome_counts` with
   its four keys, `independent_outcome_counts`, `level_assigned`,
   `tested_levels`, `outside_filters` and `outside_outcome_counts`), so
@@ -2966,8 +2971,8 @@ needs it:
 
 - `App.tsx`: the lazy routes.
 - `Navbar.tsx`: one link per page, added by the issue that delivers the page
-  (Browsers in F4, Explore in X1, Datasets in C1), and shown only when
-  `status` reports the feature on (`frontend/src/components/Navbar.tsx:13-22`).
+  (Browsers in F4, Explore in X1, Datasets in C1), shown only when `status`
+  reports the feature on (`frontend/src/components/Navbar.tsx:53-56, 91-102`).
 - `text/registry.ts`, `mocks/handlers/index.ts` and `lib/navPages.ts`.
 - `features/admin/adminNav.ts`: two items, shown only when enabled (AD1).
 - `features/home/HomePage.tsx`: the hub section (H1).
@@ -3047,8 +3052,11 @@ page. In the MVP, view state lives in the URL
 (`?v=1&seeds=…&layers=…&releases=…`).
 
 **Saved views (S1).** `SavedView.state` gains
-`{kind: "explore", v: 1, seeds, terms, layers, releases, browser, filters,
-layout}`, with releases pinned.
+`{kind: "explore", v: 1, seeds, terms, follow, layers, releases, browser,
+filters, layout}`, with releases pinned; `follow` is section 4.6's flag.
+X1's `ExploreView` (`frontend/src/features/graph/viewState.ts`) holds all
+but `kind`, `terms` and `layout` as flat fields, the filters among them,
+with `releases` or `browser`, never both, and S1 adds those three.
 
 - `SavedView.query` is a required text field (`backend/sharing/models.py:18`).
   For a typed view it holds a display string of the terms and is never sent
@@ -4284,6 +4292,288 @@ as "with the network section, before its first response" (J28).
 
 What X1, S1, C1, AD1, E1, H1, RF1b, P1, N1, N2, N3, R1, R2 and SEC1 take over
 from F4 is in their rows of IMPLEMENTATION_PLAN.md.
+
+**X1's specification** took these decisions, Q1 to Q11 and Q13 to Q44;
+Q12, that milestone RD is not started, is its PR's statement of scope.
+Those marked ★ are flagged to the owner, and a question left unanswered takes
+its default (OPEN_QUESTIONS.md, A15, A18, A20, A22, A49, A58, B5 and E11,
+settled or corrected in place, A74 and A77, and A85 to A94):
+
+- Q1 ★: the closure's bound is per request: one network request looks up at
+  most 26 seeds, the visible named seeds and the derived seeds together
+  (`MAX_EXPANDED_SEEDS` in `graph/neighbourhood.py`, re-exported by
+  `graph/api/limits.py` and published as `status.limits.max_expanded_seeds`),
+  so it derives at most 25 seeds from one named seed and 16 from ten, in
+  place of §4.6's 25 entities per seed, and it stays above `max_seeds`, 10,
+  since the named seeds are always looked up; each looked-up seed keeps its
+  own candidate statement through `_candidate_rows`, and no union is built,
+  since a union planned every arm again and held about 15 MB of planner
+  memory per arm, while 26 lookups took about 1.1 s at the explorer's own
+  maximum filter and 35 at the API's maximum answered 503 (A22, corrected in
+  place, and A85);
+- Q2 ★: the instance page's action: "Explore in the unified network", the
+  plan's words, not the brief's, a router link inside F4's `InstanceExplore`,
+  so only on a typed, `live` instance while `resolve` and `network` are on,
+  to `/explore?v=1` with the instance address's seeds, written by
+  `exploreHref`, and no `browser`, so the explorer opens on the default
+  release set, where the joins can appear; it carries the way back to the
+  instance in router state, and the explorer links back only while that
+  state is there; `/explore` also reads `browser=<slug>`, which nothing in
+  X1 writes (A86);
+- Q3 ★: the nav link: the constant "Explore" in `pageWords.ts`, a `NavLink`
+  to `/explore` right after Browsers with the Navbar's `linkStyle`, shown
+  only while `network` reads `on`, with no text-registry key and no
+  `NAV_PAGES` row; the edit is one import line, one hook line, which is a
+  second observer of the cached `status` and sends no request, and the gated
+  link, each marked `Typed graph (X1)`; C1's Datasets then follows Explore
+  (A77);
+- Q4 ★: the row's nine filters and two toggles, nothing more: release; type,
+  the relationship type, within the layer toggles; direction; effect;
+  outcome, which is the tested-absent toggle; basis; method; score type; the
+  partners' taxon; and the follow toggle; entity type and organism only on
+  the search, as `resolve`'s `entity_type` and `taxon`; no `level`,
+  `context.*`, `include_partner_edges` or `max_edges` control, no partner
+  entity-type parameter on `network`, and none of them in the address (A87);
+- Q5 ★: no release-listing route: the release filter offers the releases
+  that the current answer's `releases` and the address name, a URL may pin
+  any other, and C1's catalogue may extend the list (A88);
+- Q6 ★: the demonstration stays as G6 left it, with no v3: the backend's
+  acceptance cases are factory worlds, and the frontend uses recordings of
+  the demonstration and hand-written shapes in `extras.ts` (A89);
+- Q7 ★: releases are named by their dataset's title and version, with
+  " (superseded)" when flagged, in the derived-seed words, the join labels
+  and the legend, never by a kind, which no release entry carries, so no word
+  says "mapping release" or "UniProt release"; F2's legend sentence naming
+  the stating releases stays (A90);
+- Q8 ★: the search keeps F1's limits: the 4,094-byte request guard and the
+  chunker through `useQueries`; a label holding a comma, a tab or a new line,
+  or shaped like a prefix, cannot be searched, and the page says to use an
+  identifier; `browser=` scopes releases only, so the search sends `taxon`
+  only when the user picks an organism (A18, A20, A49 and A58, settled in
+  place);
+- Q9 ★: `/entities/:id` accepts A74: F3's `EntityPanel` mounts its body
+  300 ms late and sends a 404, 429 or JSON 500 already stored by then again
+  on mount, while a failure that lands later is shared; a 404 rechecks
+  `status` once per failure, and the request tests assert the repeat
+  one-sidedly (A74);
+- Q10 ★: what X1 does not build: no automatic protein-to-gene projection,
+  and shareable addresses with no saved views; no tooltips, page titles,
+  real-browser check, documentation-bar link, serving change, instance
+  presentation keys in an explorer view, bulk confirmation of single
+  candidates or change to W6's cache keys, each keeping its earlier
+  milestone's decision; the serving probe covers X1's three address forms,
+  and the PR lists what jsdom cannot prove and says that X1 builds no
+  catalogue, admin metadata, export, enrichment, depth 2, `pg_trgm`, cache,
+  index, genetic-sign filter, method subtree, reference adapter, legacy
+  federation, merge or real data (B5 and E11, settled in place, and A91 and
+  A92);
+- Q11 ★: an expanded request spends one unit of the site-wide network
+  budget, as any other does; at the cap of 26 lookups, expanded requests at
+  the explorer's own maximum filter took 0.9 to 1.9 s on a development host,
+  about 1.1 s in the median, near the 1.5 s average that the budget's 120 a
+  minute assumes (A15, settled in place);
+- Q13 ★: the closure: a new `graph/reference_closure.py`, which imports
+  nothing from `graph.api`, `graph.resolution` or `graph.neighbourhood`,
+  takes its deadline check as a callable and sends its statements through
+  `_closure_rows`; it follows §4.6's six typed paths, kept as data in
+  `REFERENCE_PATHS` as rows of one or two steps, so N2 adds rows, never
+  branches, from the visible named seeds only, reads no entity type, and
+  reads each link through `visible_reference_q`, one predicate in
+  `graph/entity_visibility.py` that `visible_reference_relationships` also
+  calls, so RF1a switches both by replacing its body; it reads the request's
+  release set under the default filter, whatever its evidence filters,
+  `outcome`, `direction`, `taxon` or `layers`, with no release-kind gate, in
+  one or two statements whatever the number of seeds, inside the service's
+  `timed()` block (A93);
+- Q14: the kept derived seeds: a named seed is never a derived seed, and an
+  entity reached by several seeds or paths is one derived seed with each
+  derivation; one-step entities come before two-step ones, then by the
+  lowest named seed that reaches them, then by id; each closure statement is
+  ordered and keeps at most `CLOSURE_ROW_LIMIT`, 1,000 rows; a dropped seed
+  is not looked up or marked, and counts in `page.omitted.derived_seeds`,
+  with one more for each statement cut at its bound, so the explorer words
+  the count as a lower bound, and in one `derived_seeds_truncated` warning,
+  first in the list, whose detail names both bounds;
+- Q15: the joins: the reference relationships on the kept derivations and
+  on paths between two named seeds, summarized under the default filter
+  before the lookups, a path whose link that summary does not show being
+  discarded, so every mark names a listed edge; they follow the ranked edges
+  in `edges`, by id, outside `max_edges` and `page.omitted.edges`, with their
+  releases in `releases`, a join whose release is withdrawn after the
+  summaries being listed with `releases: []`, as a ranked edge is; from a
+  gene, the other genes that encode its entry are not drawn;
+- Q16 ★: derived seeds in the lookup: each kept one gets its own candidate
+  statement under the request's layers, direction, filters, outcome and
+  taxon and the 200 pre-limit, a cut one getting a `seed_truncated` warning;
+  they are nodes from the start, join the hidden aggregate, are never
+  partners and are never dropped for their own taxon; one global ranking;
+  `is_seed`, `Neighbourhood.seeds` and the echoed `seeds` stay the named
+  seeds'; `Neighbourhood` gains trailing fields with defaults (A94);
+- Q17: with `expand`, a `layers` value naming a reference type or
+  `family:reference` is a 400 on `layers`, so the joins and the ranked edges
+  never share a relationship; without `expand`, `layers` is as before;
+- Q18: the wire: `expand` right after `layers` in `allowed_params` and in
+  the `query` echo, read against `reference` alone; each node's
+  `derived_from`, a list of `{seed, via}`, `[]` on every other node;
+  `page.omitted.derived_seeds`, the warning `derived_seeds_truncated` and
+  `status.limits.max_expanded_seeds`; F1's network parameters and MSW's list
+  take `expand` in the view's order;
+- Q19: statement counts: without `expand`, A2's exactly; with it, at most 37
+  statements at the service beside the transaction's own, pinned on the
+  demonstration and on factory worlds; a count test that sends an
+  EXISTS-backed filter raises the statement timeout, and no test asserts a
+  time;
+- Q20: the benchmark: perf's design run once on the final code through a
+  throwaway probe, its figures in the PR and in P1's row, never in CI;
+- Q21: gates: `/explore` on `network`, its search while `resolve` reads
+  `on`; `/entities/:id` on `entities`; `/entities/:namespace/:value` on
+  `resolve`; each route has a test that turns only its own key off;
+- Q22: routes: three objects appended to F4's `TYPED_ROUTES`, whose
+  components, in two components-only route modules that import only F4's
+  first-load set, put a gate and a keyed `Suspense` around a lazy page, one
+  lazy module serving both entity pages; `App.tsx` unedited;
+- Q23: modules: `features/graph/viewState.ts`, which imports types only,
+  holds the view, its address codec, `exploreHref` and the one builder of
+  the network request; `features/graph/filters/` the filter registry, its
+  words and controls; `features/graph/search/` the many-term search;
+  `features/explore/` the route, the address binding `ExplorePage` and the
+  controlled `Explorer`; `features/entities/` the entity pages and their ref
+  grammar; `features/graph/network/derivedWords.ts` the derived-seed words,
+  which import `words/isolateText.ts`, the first import of F2's `network/`
+  and `legend/` from `words/`; no per-page store;
+- Q24: words: the nav label, the titles and the off sentences in
+  `pageWords.ts`, every other word a constant or word function in a lazy
+  strict module of its folder; an entity label or name, a release or paper
+  title or a typed search term placed inside fixed words is cut, then
+  isolated between U+2068 and U+2069; British spelling;
+- Q25: the explorer's page: one `h1`, the link back to an instance while
+  router state names one, the synthetic badge when the drawn releases are
+  synthetic, the search, which shows the badge over its own results while
+  the page shows none, the chosen entities with their Remove buttons, the
+  controls, then F4's workspace; with no seed, the search and one sentence,
+  and no network request;
+- Q26: the address, version 1: `v`, `seeds`, `follow`, `outcome`, `layers`,
+  `direction`, `effect`, `evidence_basis`, `method`, `score_types`, `taxon`,
+  `releases` or `browser`, and `selected`; an address with no `v` reads as
+  F4's seeds-only form, and any other `v` sends nothing: one plain number
+  above 1 reads as a later version, and any other `v`, a repeated one among
+  them, as unreadable; `follow=off` and `outcome=all` are the only values;
+  no terms, derived seeds or positions; F4's rules for malformed, repeated
+  and unknown names, one write per event;
+- Q27: the search: one text area split on commas, tabs and new lines, at
+  most `limits.resolve_max_terms` terms, sent in F1's chunks; a `resolved`
+  term with one candidate adds its entity, in typed order up to
+  `limits.max_seeds` and once a submit, and one with more is a choice;
+  `candidate` and `ambiguous` terms list "Add" buttons with type, organism
+  and match kind, never picked automatically; the status line says what
+  became of the terms; partial failures are worded, with one retry where a
+  repeat can change the answer;
+- Q28: layers with counts: one box per non-reference family, "{n} shown"
+  from the current answer or "off", and within a family of several types one
+  per type; `layers` is sent only when not every type is on; no reference
+  layer box, since the follow toggle covers reference links;
+- Q29: the filters' controls: release checkboxes sent as `releases=`, never
+  with `browser`; direction; the four effect values; basis; a typed PSI-MI
+  box, "Detection method", checked before sending; score types; the
+  partners' organism; every valid address value always offered, and an
+  invalid one named with a link without it; one "Clear filters" that moves
+  focus before it goes, as an unchecked box that may then go does;
+- Q30: the toggles: "Follow gene-to-protein links", on by default, sends
+  `expand=reference`, and off writes `follow=off` and sends the plain
+  request; "Show tested-absent results", off by default, sends `outcome=all`,
+  inconclusive and not-significant results included;
+- Q31: truncation lines: F2's notice, mounted before the first answer,
+  gains a first line for `page.omitted.derived_seeds`, read as a lower
+  bound and worded from `status.limits.max_expanded_seeds`, which the
+  explorer passes to it, in a constant outside `LEGEND_TEXT`; resolve's own
+  cut stays in the search's status line;
+- Q32: derived-seed marks: a dashed two-tone outline apart from the seed's,
+  a second label line naming the types followed ("via Encodes"), a legend
+  entry in its own constant, and `visibleGraph` keeping derived seeds as it
+  keeps seeds; a table suffix and an entity-panel sentence naming the path,
+  its seed and the stating releases; the join labels stay F2's;
+- Q33: the workspace: `useTypedNetworkWorkspace(params, options?)` gains an
+  optional `initial` and a controlled `showNonSupporting`, and
+  `TypedNetworkWorkspace` an optional `maxExpandedSeeds` for the notice, so
+  the instance page's call is unchanged;
+- Q34: the selection: read from the address through `initial`, applied
+  through `select` when the whole address changes, on Back and Forward
+  among them, written with replace; a hidden edge is restored only while
+  the tested-absent toggle is on, a restored selection the answer neither
+  draws nor hides reopens with no filter, and any is cleared once no seed
+  is left; F4's `useArrivalScroll` gains an optional `enabled`, so an
+  arrival that restores a panel leaves its focused heading in view;
+- Q35: a shared address reproduces the view: the same requests and element
+  ids for the same caller on the same portal, never the same positions;
+- Q36: a join's panel takes the selection's releases and no evidence
+  filter, and no panel sends `expand`;
+- Q37: `/entities/:id`: the ref checked against F4's grammar before anything
+  is sent; F3's `EntityPanel` at heading level 1 with no Close; a
+  relationship panel below for a reference link; the synthetic badge and
+  "Explore this entity in the unified network"; a merged entity's 301
+  followed; two additive props, `headingStyle` and `arrival`, give the panel
+  F4's page heading and its arrival-only focus;
+- Q38: `/entities/:namespace/:value`: a value holding a comma, a tab, a new
+  line or a control character, or too long, refused before sending;
+  `resolve` with `namespace`; a replace redirect only on one `resolved`
+  result holding one candidate; candidates listed as "Open" links, under
+  the synthetic badge when theirs is synthetic; an unknown namespace's 400
+  worded from its parameter;
+- Q39: backend tests: service tests in `test_reference_expansion.py` and
+  route tests in `test_api_network_expand.py`, on factory worlds with
+  synthetic mapping and UniProt-style releases of kind `reference` that RF1a
+  can reuse; the visibility walk gains `expand` samples;
+- Q40: frontend tests: F4's conventions; of F4's rows only NAV-3, NAV-3b,
+  IP-2, IP-16 and VW-12 change, where X1's deliverables contradict them, and
+  four new rows join `navbar.test.tsx`; rows over labels and titles that
+  hold addresses check every link of the three pages;
+- Q41: recordings: 19 more, all on the demonstration, the staff's
+  `graph_network` requests kept at 55 or fewer, no throttled answer written,
+  and a JSON review that strips X1's additive keys from every earlier body;
+- Q42: documents: its status sentence and From X1 clauses, this record, the
+  open questions, the test plan, the README, the changelog and four
+  published pages;
+- Q43: own checks: the build against an in-run control, its CSS compared
+  by selector, the candidate scan listing every utility the changed files
+  add, the serving probe with X1's three address forms, the legacy check of
+  the working tree, untracked files included, and the benchmark; the PR
+  lists what jsdom cannot prove;
+- Q44: rollback is one revert, of X1's merge commit, with no migration,
+  setting or data change, and the switch off hides all of X1.
+
+X1 amends five texts in place: §4.6's cap, "initially 25 entities per
+seed", now 26 seeds looked up per request, its item 3's heading and its cost
+sentence, since the closure costs one or two statements and the lookups it
+adds are what the cap bounds (Q1); D15's label case, since a namespace
+searches no labels (Q38); §7.3's `expand` line, its parameter order, its
+example and its count bullet (Q18, Q19); §9's Navbar citation; and §9's
+saved state, which gains the flag that §4.6 item 6 names and says which of
+its fields X1's view holds (Q42). It departs from four texts that stay.
+§4.6's examples "stated by mapping release X" and "stated by UniProt
+release Y" and §9's legend sentence (ARCH:1179-1182, 3011-3014): releases
+are named by title and version, since no release entry carries a kind
+(Q7). §9's per-page store (ARCH:2963, 3048-3050): the view comes from the
+address on every render and the rest is React state, as F2 to F4 did
+(Q23). D15's "legacy pages load no new code" (ARCH:1877-1878): the Explore
+link and the two route modules add a little code to the first JavaScript
+of every page and no request; the PR states the figure (Q3, Q22). §9's
+text groups and `lib/navPages.ts` (ARCH:2966, 2976): every X1 word is a
+constant, and the Explore link adds no `NAV_PAGES` row (Q3, Q24). X1 reads
+six clauses of its plan row: the From A2 clause's "caps derived seeds per
+request or batches the arms" as a cap, chosen after its benchmark (Q1,
+Q20); the From F4 clause's "an instance-scoped view X1 opens" as the
+`browser=` that `/explore` reads, while the instance page's action opens
+the unified network (Q2); the From F2 clause's toggle as one that sends
+`outcome=all` only while it is on, so tested-absent results stay hidden by
+default, never `showNonSupporting` toggled alone (Q30); the acceptance's "a
+gene search never reaches another gene" as other genes that encode a
+reached entry not drawn from a gene, which §4.6's "may be drawn" allows
+(Q15); "with the toggle off the result equals plain depth 1" as the plain
+request and its answer, X1's additive keys at their empty values; and "a
+shared URL reproduces the view" as Q35 says.
+
+What RF1a, R1, R2, S1, C1, AD1, E1, H1, N1, N2, N3, P1, P5, P8, V1, L2, RF1b
+and SEC1 take over from X1 is in their rows of IMPLEMENTATION_PLAN.md.
 
 ## 15. Owner decisions of 2026-10-29
 

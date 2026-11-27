@@ -1,5 +1,6 @@
 import type { GraphEdge } from '../types'
 import { isNonSupport } from './channels'
+import { isDerivedSeed } from './graph'
 import type { TypedGraph, TypedGraphNode } from './graph'
 
 /** A request for any outcome but `supported` is drawn as asked (Y32); the canvas, the legend and the notice all take this default. */
@@ -13,7 +14,7 @@ export interface VisibleGraph {
 
 /**
  * Takes a kept graph. Hidden elements keep their place in the layout, so hiding never moves
- * what stays; a seed is never hidden, and neither is a node with no edge at all.
+ * what stays; a seed or a derived seed is never hidden, and neither is a node with no edge at all.
  */
 export function visibleGraph(graph: TypedGraph, options: { showNonSupporting: boolean }): VisibleGraph {
   if (options.showNonSupporting) {
@@ -37,7 +38,9 @@ export function visibleGraph(graph: TypedGraph, options: { showNonSupporting: bo
   const nodes: TypedGraphNode[] = []
   const hiddenNodes: TypedGraphNode[] = []
   for (const node of graph.nodes) {
-    if (node.is_seed !== true && touched.has(node.id) && !reached.has(node.id)) hiddenNodes.push(node)
+    // Neither a seed nor a derived seed is hidden (Y32; X1, Q32).
+    const kept = node.is_seed === true || isDerivedSeed(node)
+    if (!kept && touched.has(node.id) && !reached.has(node.id)) hiddenNodes.push(node)
     else nodes.push(node)
   }
   return { nodes, edges, hiddenNodes, hiddenEdges }

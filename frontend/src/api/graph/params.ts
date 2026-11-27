@@ -48,6 +48,8 @@ export type GraphNetworkParams = GraphSelection &
   GraphEvidenceFilters & {
     seeds: GraphEntityRef[]
     layers?: string[]
+    /** Typed graph (X1): follow the seeds' reference links first. Absent, none is followed. */
+    expand?: 'reference'
     direction?: GraphDirection
     taxon?: number
     include_partner_edges?: boolean
@@ -136,6 +138,8 @@ export function normalizeNetworkParams(params: GraphNetworkParams): GraphNetwork
   return {
     seeds: cleanList(params.seeds) ?? [],
     layers: cleanList(params.layers),
+    // Typed graph (X1): a blank or null expand is no expand.
+    expand: cleanText(params.expand),
     direction: cleanText(params.direction),
     ...normalizeFilters(params),
     taxon: cleanNumber(params.taxon),
@@ -223,6 +227,8 @@ export function networkWire(params: GraphNetworkParams): GraphWireParams {
   return {
     seeds: joined(params.seeds),
     layers: joined(params.layers),
+    // Typed graph (X1): after layers, in the API's documented order.
+    expand: params.expand,
     direction: params.direction,
     ...filtersWire(params),
     taxon: params.taxon,

@@ -119,6 +119,8 @@ const TYPED_TITLE = 'Synthetic regulation example'
 const PORTAL_TITLE = 'Protein interactions on this portal'
 const MIT = 'https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE'
 const MIT_NAME = 'MIT License'
+// X1's words, copied from its spec's section 11.4 (EXPLORE_ACTION), never from the module under test.
+const EXPLORE_ACTION = 'Explore in the unified network'
 
 const STATUS = '/api/graph/v1/status'
 const INSTANCE = '/api/graph/v1/browsers/synthetic-regulation'
@@ -246,7 +248,7 @@ describe('the instance page', () => {
     ['retiredPortalInstance', retiredPortalInstance, "This portal's search · Retired", false],
     ['stagedInstance', stagedInstance, STAGED_STATE, true],
   ]
-  it.each(OTHERS)('IP-2: %s shows its state and badge, no seed search and no network, with seeds in the address', async (_name, instance, state, badge) => {
+  it.each(OTHERS)('IP-2: %s shows its state and badge, no seed search, no network and no Explore action, with seeds in the address', async (_name, instance, state, badge) => {
     serve(instance)
     const { router } = renderGraphRoute(`/browsers/${instance.slug}?seeds=entity%3A7`)
     expect(await title(instance.title)).toBeInTheDocument()
@@ -257,6 +259,7 @@ describe('the instance page', () => {
     expect(screen.queryByRole('search', { name: SEED_FORM_NAME })).toBeNull()
     expect(screen.queryByRole('heading', { name: SEED_SECTION_HEADING })).toBeNull()
     expect(screen.queryByRole('heading', { name: NETWORK_HEADING })).toBeNull()
+    expect(screen.queryByRole('link', { name: EXPLORE_ACTION })).toBeNull()
     expect(asked()).toEqual([STATUS, instancePath(instance)])
     expect(router.state.location.pathname).toBe(`/browsers/${instance.slug}`)
     expect(router.state.location.search).toBe('?seeds=entity%3A7')
@@ -276,7 +279,7 @@ describe('the instance page', () => {
     }
   }, 20_000)
 
-  it.each(['resolve', 'network'])('IP-2: with status saying %s is off, the typed header shows with no seed search and no network', async (key) => {
+  it.each(['resolve', 'network'])('IP-2: with status saying %s is off, the typed header shows with no seed search, no network and no Explore action', async (key) => {
     // Every hand-written instance is served beside the recorded one, so a stub that answered every slug would show here.
     for (const [, instance] of OTHERS) serve(instance)
     statusWith((body) => ({ ...body, features: { ...body.features, [key]: false } }))
@@ -287,6 +290,7 @@ describe('the instance page', () => {
     expect(screen.queryByRole('search', { name: SEED_FORM_NAME })).toBeNull()
     expect(screen.queryByRole('heading', { name: SEED_SECTION_HEADING })).toBeNull()
     expect(screen.queryByRole('heading', { name: NETWORK_HEADING })).toBeNull()
+    expect(screen.queryByRole('link', { name: EXPLORE_ACTION })).toBeNull()
     expect(asked()).toEqual([STATUS, INSTANCE])
   }, 20_000)
 
@@ -753,19 +757,29 @@ describe('the instance page', () => {
     }
   }, 20_000)
 
-  it('IP-16: outbound links carry the exact rel, no address escapes, no Explore, and a citation links its http(s) address', async () => {
-    const check = () => {
+  it('IP-16: outbound links carry the exact rel, no address escapes, one Explore action shows for a typed live instance only and carries its seeds, and a citation links its http(s) address', async () => {
+    // The action's href where it must show, or null where none may (X1 spec 12.11; Q2).
+    const check = (explore: string | null) => {
       for (const link of Array.from(page().querySelectorAll('a[target="_blank"]'))) expect(link.getAttribute('rel')).toBe('noopener noreferrer')
       expect(strayAddresses()).toEqual([])
       const hrefs = Array.from(page().querySelectorAll('a[href]'), (link) => link.getAttribute('href') ?? '')
-      expect(hrefs.filter((href) => href.startsWith('/explore') || href.startsWith('/entities'))).toEqual([])
-      expect(page().textContent ?? '').not.toContain('Explore')
+      expect(hrefs.filter((href) => href.startsWith('/explore'))).toEqual(explore === null ? [] : [explore])
+      expect(hrefs.filter((href) => href.startsWith('/entities'))).toEqual([])
+      expect((page().textContent ?? '').split('Explore')).toHaveLength(explore === null ? 1 : 2)
+      const action = screen.queryByRole('link', { name: EXPLORE_ACTION })
+      if (explore === null) expect(action).toBeNull()
+      else expect(action).toHaveAttribute('href', explore)
     }
     let view = renderGraphRoute('/browsers/synthetic-regulation?seeds=entity%3A7')
     expect(await title(TYPED_TITLE)).toBeInTheDocument()
     await screen.findByRole('button', { name: TF1_G1 }, GRAPH_WAIT)
     expect(page().querySelectorAll('a[target="_blank"]').length).toBeGreaterThan(0)
-    check()
+    check('/explore?v=1&seeds=entity%3A7')
+    // Outside the header and before the seed section (X1 spec 11.5; J23).
+    const action = screen.getByRole('link', { name: EXPLORE_ACTION })
+    expect(action.closest('[data-selectable]')).toBeNull()
+    expect(screen.getByRole('link', { name: BACK_LINK }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(action.compareDocumentPosition(screen.getByRole('heading', { level: 2, name: SEED_SECTION_HEADING })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(asked()).toEqual([STATUS, INSTANCE, NETWORK_TF1])
     view.unmount()
     serve(externalInstance)
@@ -773,7 +787,7 @@ describe('the instance page', () => {
     view = renderGraphRoute('/browsers/syn-external')
     expect(await title(externalInstance.title)).toBeInTheDocument()
     expect(page().querySelectorAll('a[target="_blank"]')).toHaveLength(1)
-    check()
+    check(null)
     expect(asked().slice(before)).toEqual([STATUS, instancePath(externalInstance)])
     view.unmount()
     server.resetHandlers()
@@ -781,7 +795,7 @@ describe('the instance page', () => {
     before = asked().length
     renderGraphRoute('/browsers/syn-papers')
     expect(await title(papersInstance.title)).toBeInTheDocument()
-    check()
+    check('/explore?v=1')
     const link = screen.getByRole('link', { name: 'https://example.org/paper-1' })
     expect(link).toHaveAttribute('href', 'https://example.org/paper-1')
     expect(link).toHaveAttribute('target', '_blank')

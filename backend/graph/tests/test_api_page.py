@@ -41,6 +41,7 @@ from graph.api.serializers import (
     MethodSerializer,
     NetworkNodeSerializer,
     NetworkQuerySerializer,
+    NodeDerivationSerializer,
     ParameterErrorSerializer,
     ParticipantSerializer,
     ProblemSerializer,
@@ -283,6 +284,11 @@ def test_each_routes_key_table_lists_its_keys(method, path, view):
         (f"### GET {STATUS}", ["`features` key", "Covers"], FeaturesSerializer),
         (f"### GET {STATUS}", ["`limits` key", "Contents"], LimitsSerializer),
         (f"### GET {NETWORK}", ["`nodes[]` key", "Contents"], NetworkNodeSerializer),
+        (
+            f"### GET {NETWORK}",
+            ["`derived_from[]` key", "Contents"],
+            NodeDerivationSerializer,
+        ),
     ),
 )
 def test_a_shared_shapes_table_lists_its_keys(heading, header, serializer):
@@ -463,6 +469,8 @@ def test_the_caps_are_the_limits():
         f"{limits.DEFAULT_MAX_EDGES} unless asked) and {limits.MAX_NODES} nodes",
         f"each seed's {limits.CANDIDATES_PER_SEED} most covered relationships "
         "are ranked",
+        "with `expand=reference` a network looks up at most "
+        f"{limits.MAX_EXPANDED_SEEDS} seeds",
         f"A `context.*` value is at most {limits.MAX_CONTEXT_CHARS} characters",
         f"an evidence page holds {limits.EVIDENCE_PAGE_SIZE} rows unless asked, "
         f"at most {limits.EVIDENCE_MAX_PAGE_SIZE}, and ends early when its raw "
@@ -560,12 +568,19 @@ def test_the_entity_example_is_the_response(demo):
     assert request in section(f"### GET {ENTITY}")
 
 
-def test_the_network_example_is_the_response(demo):
-    block = json.loads(guide.json_block("is_seed", page=PAGE))
-    response = demo.staff.get(network_url(demo.entity("SYN-TF1")))
-    assert up_to_ids(block) == up_to_ids(response.json())
-    [seed] = block["query"]["seeds"]
-    assert f"`GET {NETWORK}?seeds={seed}`" in section(f"### GET {NETWORK}")
+def test_the_network_examples_are_the_responses(demo):
+    # Today's request first, then the same seed with expand=reference: both
+    # blocks hold is_seed, so the section's examples are read in order.
+    plain, expanded = examples(f"### GET {NETWORK}")
+    tf1 = demo.entity("SYN-TF1")
+    assert up_to_ids(plain) == up_to_ids(demo.staff.get(network_url(tf1)).json())
+    response = demo.staff.get(network_url(tf1, expand="reference"))
+    assert up_to_ids(expanded) == up_to_ids(response.json())
+    [seed] = plain["query"]["seeds"]
+    assert expanded["query"]["seeds"] == [seed]
+    found = section(f"### GET {NETWORK}")
+    assert f"`GET {NETWORK}?seeds={seed}`" in found
+    assert f"`GET {NETWORK}?seeds={seed}&expand=reference`" in found
 
 
 def test_the_relationship_example_is_the_response(demo):

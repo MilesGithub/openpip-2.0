@@ -12,7 +12,9 @@ set, over one set of rows:
   would leak through Entity.label: S is visible, its text is not;
 - V, visible, whose edge to S the hidden release states too, with a hidden
   regulation assertion and a hidden encodes edge to H. Both kinds of edge are
-  built because only a reference type exercises reference_relationships.
+  built because only a reference type exercises reference_relationships, and
+  expand=reference follows only those: S is V's derived seed, and H is one
+  only where the caller sees the hidden release.
 
 An unapproved release is published, so its missing approval is the only thing
 hiding it. A draft is a separate kind, hidden by its status alone, and proves
@@ -272,6 +274,25 @@ def assert_seen(client, world, query):
         f"relationship:{world.hidden_edges[0].pk}",
     ]
     assert hidden in ids(layered["releases"])
+    # With expand both encodes edges are followed: S and H are V's derived
+    # seeds, H's path through the hidden release alone.
+    expanded = body_of(client, network_url(world.v, expand="reference", **query))
+    seed = f"entity:{world.v.pk}"
+    assert {node["id"]: node["derived_from"] for node in expanded["nodes"]} == {
+        f"entity:{world.h.pk}": [
+            {"seed": seed, "via": [f"relationship:{world.hidden_edges[0].pk}"]}
+        ],
+        f"entity:{world.s.pk}": [
+            {"seed": seed, "via": [f"relationship:{world.both_state.pk}"]}
+        ],
+        seed: [],
+    }
+    assert ids(expanded["edges"]) == [
+        f"relationship:{world.hidden_edges[1].pk}",
+        f"relationship:{world.both_state.pk}",
+        f"relationship:{world.hidden_edges[0].pk}",
+    ]
+    assert hidden in ids(expanded["releases"])
     page = body_of(client, relationship_url(world.hidden_edges[1], **query))
     assert ids(page["releases"]) == [hidden]
     listed = body_of(client, evidence_url(world.hidden_edges[1], **query))
@@ -337,6 +358,8 @@ def assert_hidden(client, world, query, *, reads_text, sees_pinned):
         for layers in ({}, {"layers": "encodes"}):
             network = body_of(client, network_url(world.v, **layers, **query))
             assert (network["nodes"], network["edges"]) == ([], [])
+        expanded = body_of(client, network_url(world.v, expand="reference", **query))
+        assert (expanded["nodes"], expanded["edges"]) == ([], [])
         for build in (relationship_url, evidence_url):
             assert client.get(build(world.both_state, **query)).json() == NOT_FOUND
         return
@@ -370,10 +393,31 @@ def assert_hidden(client, world, query, *, reads_text, sees_pinned):
     assert labels[f"entity:{world.s.pk}"] == (
         world.s.label if reads_text else world.s_primary
     )
+    # With expand, V's visible encodes edge makes S a derived seed through
+    # the public release alone; H's edge is hidden, so H is never reached.
+    expanded = body_of(client, network_url(world.v, expand="reference"))
+    assert ids(expanded["nodes"]) == [f"entity:{world.s.pk}", f"entity:{world.v.pk}"]
+    assert [node["derived_from"] for node in expanded["nodes"]] == [
+        [
+            {
+                "seed": f"entity:{world.v.pk}",
+                "via": [f"relationship:{world.both_state.pk}"],
+            }
+        ],
+        [],
+    ]
+    [join] = expanded["edges"]
+    assert (join["id"], join["releases"]) == (
+        f"relationship:{world.both_state.pk}",
+        [public],
+    )
+    assert ids(expanded["releases"]) == [public]
     # H is dropped without a word, so its network is empty under any layers.
     for layers in ({}, {"layers": "encodes"}):
         empty = body_of(client, network_url(world.h, **layers))
         assert (empty["nodes"], empty["edges"], empty["warnings"]) == ([], [], [])
+    empty = body_of(client, network_url(world.h, expand="reference"))
+    assert (empty["nodes"], empty["edges"], empty["warnings"]) == ([], [], [])
     # The page and the evidence of the edge both releases state show the
     # public release's part alone.
     page = body_of(client, relationship_url(world.both_state))
@@ -475,7 +519,7 @@ def test_nothing_from_a_hidden_release_appears(
     # the ref does.
     for query in ({}, pin(world.hidden), {"browser": world.instance.slug}):
         # Empty counters for each pass, as conftest.fresh_throttles gives
-        # each test: a visitor's passes send 35, 15 and 15 requests at
+        # each test: a visitor's passes send 46, 19 and 19 requests at
         # graph_network's rate of 60 a minute.
         cache.clear()
         pinned = bool(query)

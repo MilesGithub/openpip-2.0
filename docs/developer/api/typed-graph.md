@@ -305,6 +305,7 @@ With the typed graph on:
     "max_edges": 1000,
     "candidates_per_seed": 200,
     "max_nodes": 500,
+    "max_expanded_seeds": 26,
     "evidence_page_size": 50,
     "evidence_max_page_size": 200,
     "evidence_page_raw_chars": 2000000,
@@ -347,6 +348,7 @@ And off:
     "max_edges": 1000,
     "candidates_per_seed": 200,
     "max_nodes": 500,
+    "max_expanded_seeds": 26,
     "evidence_page_size": 50,
     "evidence_max_page_size": 200,
     "evidence_page_raw_chars": 2000000,
@@ -396,6 +398,7 @@ key is `false`.
 | `max_edges` | The most edges `max_edges` may ask for. |
 | `candidates_per_seed` | The most relationships ranked per seed: a seed with more has only its most covered ones ranked, and `warnings` say so. |
 | `max_nodes` | The most nodes a network holds. |
+| `max_expanded_seeds` | The most seeds one `network` request with `expand=reference` looks up, the seeds named and the derived seeds together. |
 | `evidence_page_size` | The rows an evidence page holds unless `page_size` asks for another number. |
 | `evidence_max_page_size` | The most rows `page_size` may ask for. |
 | `evidence_page_raw_chars` | The characters of readable `raw` records past which an evidence page ends early. |
@@ -879,13 +882,15 @@ relationship with SYN-G2, tested and not found, is not counted.
 The relationships around up to ten entities, as you may see them: each seed's
 relationships of the chosen layers, in the chosen direction, that evidence of
 the requested outcomes covers, ranked by how much evidence covers them and
-kept within the caps, with the nodes they touch. It answers 404 while the
-typed graph is off.
+kept within the caps, with the nodes they touch. With `expand=reference` it
+first follows the seeds' reference links, and looks up the entities they
+reach as derived seeds. It answers 404 while the typed graph is off.
 
 | Parameter | Notes |
 |---|---|
 | `seeds` | Required. The entities to start from, as comma-separated entity refs; repeatable. A ref you may not see is dropped without a word, so a hidden seed reads like one that names nothing. |
-| `layers` | The relationship types to walk, as comma-separated type slugs from `vocabularies` or `family:<name>` for every registered type of a family; repeatable. The distinct pieces are counted before a family expands. Reference types (`encodes`, `isoform_of`, or `family:reference`) are walked only when named. Unless given, every non-reference type. |
+| `layers` | The relationship types to walk, as comma-separated type slugs from `vocabularies` or `family:<name>` for every registered type of a family; repeatable. The distinct pieces are counted before a family expands. Reference types (`encodes`, `isoform_of`, or `family:reference`) are walked only when named, and never with `expand`. Unless given, every non-reference type. |
+| `expand` | `reference` follows each visible seed's reference links along the typed paths, as below, and looks up each entity they reach as a derived seed. Not with a layer that names a reference type. Unless given, no link is followed. |
 | `direction` | `out`, `in` or `both`, the default, from each seed. A directed or role-ordered relationship matches `out` from its subject and `in` from its object; a symmetric one matches from either end, whatever `direction` says. |
 | `outcome` | The outcomes whose evidence covers an edge, comma-separated: `supported`, the default, `tested_absent`, `inconclusive`, `not_significant`, or `all`, which stands alone. A relationship whose visible evidence passes the other filters but has none of these outcomes is hidden, and counted in `page.hidden`. |
 | `evidence_basis` | Evidence bases, comma-separated, from `vocabularies`. |
@@ -902,10 +907,12 @@ typed graph is off.
 
 `seeds` names at most 10 entities, `layers` at most 20 layers and `context.*`
 at most 4 facets; a network holds at most 1,000 edges (`max_edges`, 250 unless
-asked) and 500 nodes; each seed's 200 most covered relationships are ranked. A
-value over a cap gets 400 ([Errors](#errors)); the node cap and the per-seed
-limit cut instead, and say so in `page` and `warnings`. A `context.*` value is
-at most 200 characters and holds no control character.
+asked) and 500 nodes; each seed's 200 most covered relationships are ranked;
+and with `expand=reference` a network looks up at most 26 seeds, the seeds
+you named and may see and the derived seeds together. A value over a cap gets
+400 ([Errors](#errors)); the node cap, the per-seed limit and the cap on
+looked-up seeds cut instead, and say so in `page` and `warnings`. A
+`context.*` value is at most 200 characters and holds no control character.
 
 Each visible seed's candidates are the relationships of the layers that match
 the direction and whose visible evidence, under the other filters, has one of
@@ -939,6 +946,7 @@ reference layer was named:
   "query": {
     "seeds": ["entity:7"],
     "layers": null,
+    "expand": null,
     "direction": null,
     "outcome": null,
     "evidence_basis": null,
@@ -961,7 +969,8 @@ reference layer was named:
       "taxon": 32630,
       "status": "provisional",
       "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G1"},
-      "is_seed": false
+      "is_seed": false,
+      "derived_from": []
     },
     {
       "id": "entity:4",
@@ -970,7 +979,8 @@ reference layer was named:
       "taxon": 32630,
       "status": "provisional",
       "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G4"},
-      "is_seed": false
+      "is_seed": false,
+      "derived_from": []
     },
     {
       "id": "entity:7",
@@ -982,7 +992,8 @@ reference layer was named:
         "namespace": "synthetic_gene",
         "value": "SYN-TF1"
       },
-      "is_seed": true
+      "is_seed": true,
+      "derived_from": []
     }
   ],
   "edges": [
@@ -1175,14 +1186,14 @@ reference layer was named:
 | Key | Contents |
 |---|---|
 | `api_version` | `graph/v1`. |
-| `query` | The request as read, its keys in the order of the parameter table, never reduced to what you may see. `seeds`, the distinct refs named, sorted by id. `layers`, the distinct layers named, in order of first appearance, or `null`. `direction`, as given, or `null`. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `taxon`, an integer or `null`. `include_partner_edges`, a boolean or `null`. `max_edges`, an integer or `null`. `releases`, the distinct refs named, sorted by id, or `null`. `browser`, the slug as given, or `null`. |
-| `nodes` | One node per entity that is a seed you may see or an end of a listed edge, sorted by numeric id, each as below. `[]` when no seed is visible. |
-| `edges` | The kept edges in rank order, each in the shared [edge shape](#edges), every one with `shown` `true`. `[]` when none. |
+| `query` | The request as read, its keys in the order of the parameter table, never reduced to what you may see. `seeds`, the distinct refs named, sorted by id. `layers`, the distinct layers named, in order of first appearance, or `null`. `expand`, `reference` or `null`. `direction`, as given, or `null`. `outcome`, the distinct outcomes named, in order of first appearance, or `null`. `evidence_basis`, the distinct bases named, in order, or `null`. `effect`, the distinct effects named, in order, or `null`. `method`, the distinct methods named, in order, each as a normalized CURIE, or `null`. `level`, the distinct levels named, in order, or `null`. `score`, the values as given, in order, or `null`. `context`, `{facet: value}` of the facets given, `{}` when none. `taxon`, an integer or `null`. `include_partner_edges`, a boolean or `null`. `max_edges`, an integer or `null`. `releases`, the distinct refs named, sorted by id, or `null`. `browser`, the slug as given, or `null`. |
+| `nodes` | One node per entity that is a seed you may see, a derived seed or an end of a listed edge, sorted by numeric id, each as below. `[]` when no seed is visible. |
+| `edges` | The kept edges in rank order, then, with `expand`, the reference edges on the derived seeds' paths and between the seeds you named, by id; each in the shared [edge shape](#edges), every one with `shown` `true`. `[]` when none. |
 | `releases` | The [release entries](#release-entries) of every release an edge lists. |
-| `page` | `{truncated, max_edges, omitted, hidden}`. `max_edges` is the cap in force. `omitted` is `{}`, or holds `candidates`, how many lookups the per-seed limit cut (one per truncated seed, one for the partner lookup), and `edges`, how many ranked candidates a cap refused; `truncated` is `true` when `omitted` is not empty. `hidden`: how many relationships of the seeds, per outcome, have evidence passing the other filters but none of the requested outcomes; exact, not limited to the ranked candidates. Always the four outcome keys. |
-| `warnings` | Each `{code, detail}`, in this order: one `seed_truncated` per truncated seed, `partner_edges_truncated`, `edges_truncated` when `max_edges` refused edges, `nodes_truncated` when the node cap did, then one `<outcome>_hidden` per non-zero `page.hidden` key. The two caps' counts sum to `page.omitted.edges`. `[]` when nothing was cut or hidden. |
+| `page` | `{truncated, max_edges, omitted, hidden}`. `max_edges` is the cap in force. `omitted` is `{}`, or holds `derived_seeds`, how many derived seeds `expand` found and did not look up, plus one for each step of the closure its row bound cut, `candidates`, how many lookups the per-seed limit cut (one per truncated seed, a derived seed included, one for the partner lookup), and `edges`, how many ranked candidates a cap refused; `truncated` is `true` when `omitted` is not empty. `hidden`: how many relationships of the seeds and derived seeds, per outcome, have evidence passing the other filters but none of the requested outcomes; exact, not limited to the ranked candidates. Always the four outcome keys. |
+| `warnings` | Each `{code, detail}`, in this order: `derived_seeds_truncated` when `expand` dropped derived seeds, one `seed_truncated` per truncated seed, a derived seed included, `partner_edges_truncated`, `edges_truncated` when `max_edges` refused edges, `nodes_truncated` when the node cap did, then one `<outcome>_hidden` per non-zero `page.hidden` key. The two caps' counts sum to `page.omitted.edges`. `[]` when nothing was cut or hidden. |
 
-A network node is the [entity node](#entity-nodes) with one key added:
+A network node is the [entity node](#entity-nodes) with two keys added:
 
 | `nodes[]` key | Contents |
 |---|---|
@@ -1192,7 +1203,481 @@ A network node is the [entity node](#entity-nodes) with one key added:
 | `taxon` | The entity node's `taxon`, or `null`. |
 | `status` | The entity node's `status`, a string or `null`. |
 | `primary_identifier` | The entity node's `primary_identifier`, or `null`. |
-| `is_seed` | `true` for a seed you named and may see, `false` for a partner. |
+| `is_seed` | `true` for a seed you named and may see, `false` for a partner or a derived seed. |
+| `derived_from` | With `expand`, each path that made the node a derived seed, by seed and then by path, as below. `[]` on every other node, the seeds you named included, and on every node without `expand`. |
+
+| `derived_from[]` key | Contents |
+|---|---|
+| `seed` | The ref of the seed you named that the path starts from. |
+| `via` | The refs of the path's relationships, in order from that seed, each listed in `edges`. |
+
+With `expand=reference` the network first follows each visible seed's
+reference links, the `encodes` and `isoform_of` relationships the selected
+releases state, along the typed paths only: from a gene to the protein
+entries it encodes, then to their isoforms; from an entry to its isoforms and
+to the genes that encode it; from an isoform to its entry, then to the genes
+that encode that entry. It never steps from a gene through an entry to
+another gene, from an isoform to its siblings, past a path's end, or along a
+partner's links. A link is followed when supporting evidence of the selected
+releases states it, whatever `outcome`, `direction`, `taxon`, `layers` or the
+evidence filters say, since reference evidence states no basis, method,
+score or context. Each entity reached that you did not name is a derived
+seed: a node from the start, looked up as a seed is, under the request's
+layers, direction, filters and taxon, with `is_seed` `false` and the paths
+that reached it in `derived_from`. The reference edges on those paths, and
+on any path between two seeds you named, follow the ranked edges in
+`edges`, by id and outside `max_edges`, with the counts of their supporting
+evidence and no other filter, and their releases are listed in `releases`.
+Derived seeds reached in one step come before those reached in two, then by
+the lowest seed that reached them, then by id, and those past the cap on
+looked-up seeds are dropped: not looked up and not marked, counted in
+`page.omitted.derived_seeds` and named in `warnings` as
+`derived_seeds_truncated`; a dropped entity can still be drawn as an
+ordinary partner of a looked-up seed's edge, with an empty `derived_from`.
+Each step of the closure keeps at most 1,000 reference links, and a step
+cut there adds one to that count. In the
+default set a superseded or withdrawn release adds no link; a selection that
+pins a superseded release keeps its links, flagged in `releases`.
+
+`GET /api/graph/v1/network?seeds=entity:7&expand=reference` on the
+demonstration follows SYN-TF1's links: SYN-P1, the entry it encodes, and
+SYN-P1-1, an isoform of SYN-P1, are derived seeds, so SYN-P1's physical
+edge with SYN-P2 joins SYN-TF1's regulation edges, and the `encodes` and
+`isoform_of` edges that join the layers follow them. `seeds=entity:10` or
+`seeds=entity:11` gives the same nodes and edges, with other paths:
+
+```json
+{
+  "api_version": "graph/v1",
+  "query": {
+    "seeds": ["entity:7"],
+    "layers": null,
+    "expand": "reference",
+    "direction": null,
+    "outcome": null,
+    "evidence_basis": null,
+    "effect": null,
+    "method": null,
+    "level": null,
+    "score": null,
+    "context": {},
+    "taxon": null,
+    "include_partner_edges": null,
+    "max_edges": null,
+    "releases": null,
+    "browser": null
+  },
+  "nodes": [
+    {
+      "id": "entity:1",
+      "type": "gene",
+      "label": "SYN-G1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G1"},
+      "is_seed": false,
+      "derived_from": []
+    },
+    {
+      "id": "entity:4",
+      "type": "gene",
+      "label": "SYN-G4",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {"namespace": "synthetic_gene", "value": "SYN-G4"},
+      "is_seed": false,
+      "derived_from": []
+    },
+    {
+      "id": "entity:7",
+      "type": "gene",
+      "label": "SYN-TF1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_gene",
+        "value": "SYN-TF1"
+      },
+      "is_seed": true,
+      "derived_from": []
+    },
+    {
+      "id": "entity:10",
+      "type": "protein",
+      "label": "SYN-P1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_protein",
+        "value": "SYN-P1"
+      },
+      "is_seed": false,
+      "derived_from": [{"seed": "entity:7", "via": ["relationship:1"]}]
+    },
+    {
+      "id": "entity:11",
+      "type": "protein_isoform",
+      "label": "SYN-P1-1",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_protein",
+        "value": "SYN-P1-1"
+      },
+      "is_seed": false,
+      "derived_from": [
+        {"seed": "entity:7", "via": ["relationship:1", "relationship:2"]}
+      ]
+    },
+    {
+      "id": "entity:12",
+      "type": "protein",
+      "label": "SYN-P2",
+      "taxon": 32630,
+      "status": "provisional",
+      "primary_identifier": {
+        "namespace": "synthetic_protein",
+        "value": "SYN-P2"
+      },
+      "is_seed": false,
+      "derived_from": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "relationship:3",
+      "type": "physical_interaction",
+      "family": "physical",
+      "orientation": "symmetric",
+      "source": "entity:10",
+      "target": "entity:12",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "not_applicable",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 0,
+        "not_stated": 2
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 2},
+      "outcome_counts": {
+        "supported": 2,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 2,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 2},
+      "level": "direct_interaction",
+      "level_counts": {
+        "direct_interaction": 1,
+        "physical_association": 1,
+        "association": 0,
+        "not_stated": 0
+      },
+      "level_assigned": false,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:5",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:1",
+      "target": "entity:7",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:6",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:1",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "inhibiting",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 1,
+        "unknown": 0,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:8",
+      "type": "transcriptional_regulation",
+      "family": "regulation",
+      "orientation": "directed",
+      "source": "entity:7",
+      "target": "entity:4",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "unknown",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 1,
+        "not_stated": 0
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"experimental": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:1",
+      "type": "encodes",
+      "family": "reference",
+      "orientation": "role_ordered",
+      "source": "entity:7",
+      "target": "entity:10",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "not_applicable",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 0,
+        "not_stated": 1
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"unknown": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    {
+      "id": "relationship:2",
+      "type": "isoform_of",
+      "family": "reference",
+      "orientation": "role_ordered",
+      "source": "entity:11",
+      "target": "entity:10",
+      "releases": ["release:2"],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "not_applicable",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 0,
+        "not_stated": 1
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {"negative": 0, "positive": 0, "not_stated": 1},
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {"publications": 0, "releases": 1, "datasets": 1},
+      "by_basis": {"unknown": 1},
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    }
+  ],
+  "releases": [
+    {
+      "id": "release:2",
+      "dataset": {
+        "slug": "synthetic-regulation",
+        "title": "Synthetic regulation example"
+      },
+      "version": "v2",
+      "status": "published",
+      "superseded": false,
+      "is_synthetic": true,
+      "licence": {
+        "name": "MIT License",
+        "spdx_id": null,
+        "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+      },
+      "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+      "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+      "scopes": ["internal"]
+    }
+  ],
+  "page": {
+    "truncated": false,
+    "max_edges": 250,
+    "omitted": {},
+    "hidden": {
+      "supported": 0,
+      "tested_absent": 1,
+      "inconclusive": 0,
+      "not_significant": 0
+    }
+  },
+  "warnings": [
+    {
+      "code": "tested_absent_hidden",
+      "detail": "1 hidden relationships have tested-absent evidence; outcome=tested_absent or outcome=all shows them."
+    }
+  ]
+}
+```
 
 A visitor sees only edges whose evidence a release approved for public view
 states, so on the demonstration, whose approvals are internal, a visitor's
@@ -1200,7 +1685,7 @@ network is empty until an operator records `public_view`.
 
 | Status | Body |
 |---|---|
-| 400 | A missing or malformed `seeds`, more seeds, layers or context facets than the caps allow, an unknown layer, value or score type, a score type given twice, a `context.*` value over the cap or holding a control character, a bad `max_edges`, a parameter given twice that takes one value, an unknown parameter, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
+| 400 | A missing or malformed `seeds`, more seeds, layers or context facets than the caps allow, an unknown layer, value or score type, a layer that names a reference type given with `expand`, a score type given twice, a `context.*` value over the cap or holding a control character, a bad `max_edges`, a parameter given twice that takes one value, an unknown parameter, a bad `releases`, a `browser` that is malformed or given twice, or `browser` given with `releases`. See [Errors](#errors). |
 | 401 | An invalid or expired token. |
 | 404 | `{"detail": "Not found."}` while the typed graph is off. |
 | 406 | An `Accept` header the API cannot satisfy. |

@@ -5,11 +5,13 @@ import type {
   GraphReleaseCounts, GraphSignKey, GraphTermRef, GraphVocabularies,
 } from '../types'
 import { isNonSupport, nonSupportOutcome } from '../network/channels'
+import { derivationText, derivedPaths, pathViaText } from '../network/derivedWords'
 import { GRAPH_OUTCOMES, own } from '../network/graph'
+import type { TypedGraph } from '../network/graph'
 import { nodeLabel } from '../network/presentation'
 import {
   EFFECT_COUNT_WORDS, EFFECT_WORDS, LEVEL_ASSIGNED_WORDS, OUTCOME_LINE_WORDS, SIGN_WORDS, entityTypeLabel, levelWords, plural,
-  slugWords, typeLabel,
+  releaseWords, slugWords, typeLabel,
 } from '../network/words'
 import { clipText } from './text'
 
@@ -193,6 +195,27 @@ export function relationshipHeading(ref: GraphRelationshipRef, edge: GraphEdge |
 export function entityHeading(ref: GraphEntityRef, node: GraphNode | null, presentation?: GraphPresentation | null,
   vocabularies?: GraphVocabularies | null): string {
   return node === null ? `Entity ${ref}` : endName(node, presentation, vocabularies)
+}
+
+/**
+ * A derived seed's paths in the network its panel was opened from, one sentence each and each once (X1, Q32): the named
+ * seed by its name, the links' types, and the releases that state them by title and version (Q7), each cut first.
+ */
+export function derivationTexts(ref: GraphEntityRef, graph: TypedGraph | null, presentation?: GraphPresentation | null,
+  vocabularies?: GraphVocabularies | null): string[] {
+  if (graph === null) return []
+  const node = graph.nodes.find((candidate) => candidate.id === ref)
+  const texts: string[] = []
+  for (const path of derivedPaths(node, graph, vocabularies)) {
+    const seed = graph.nodes.find((candidate) => candidate.id === path.seed)
+    const text = derivationText(
+      seed === undefined ? clipText(path.seed) : endName(seed, presentation, vocabularies),
+      pathViaText(path.types),
+      path.releases.map((release) => clipText(releaseWords(release))),
+    )
+    if (!texts.includes(text)) texts.push(text)
+  }
+  return texts
 }
 
 export function mergedText(asked: GraphEntityRef): string {

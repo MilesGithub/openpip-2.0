@@ -1,18 +1,20 @@
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { GraphSelection } from '../../../api/graph/params'
 import { useGraphEntity } from '../../../api/graph/entities'
 import { classifyGraphError } from '../../../api/graph/errors'
 import type { GraphEntityRef, GraphPresentation, GraphVocabularies } from '../types'
-import type { TypedGraphNode } from '../network/graph'
+import type { TypedGraph, TypedGraphNode } from '../network/graph'
 import { entityTypeLabel, slugWords, typeLabel } from '../network/words'
 import { LEGEND_TEXT } from '../legend/legendText'
 import { isEntityBody } from './guards'
 import { PanelShell } from './PanelShell'
+import type { PanelArrival } from './PanelShell'
 import { PanelStatus } from './PanelStatus'
 import { panelParamsKey, selectionOf, usePanelDelay } from './panelParams'
 import {
   ENTITY_TERMS, NO_REFERENCE_RELATIONSHIPS, NO_RELATIONSHIP_COUNTS, PANEL_LABELS, PANEL_LOADING, PANEL_WAITING,
-  RELATIONSHIP_COUNTS_NOTE, endName, entityHeading, entityStatusSentence, mergedText, panelErrorFor, panelErrorText,
+  RELATIONSHIP_COUNTS_NOTE, derivationTexts, endName, entityHeading, entityStatusSentence, mergedText, panelErrorFor, panelErrorText,
   panelMayRetry, relationshipName, uniqueNames,
 } from './panelWords'
 import { ReleaseList } from './ReleaseList'
@@ -30,9 +32,12 @@ export interface EntityPanelProps {
   onSelect?: (selection: PanelSelection | null) => void   // a reference relationship opens its panel (U33)
   onClose?: () => void                         // none on X1's /entities/:id body: no Close, no Escape (12.1; M63)
   headingLevel?: HeadingLevel                  // default 2; X1's /entities/:id body passes 1
+  graph?: TypedGraph | null                    // the network's graph: a derived seed's paths are worded from it (X1); none on X1's /entities/:id body
+  headingStyle?: CSSProperties                 // X1's /entities/:id page passes F4's PAGE_HEADING_STYLE; F3's callers pass none
+  arrival?: PanelArrival                       // X1's /entities/:id page: its h1's arrival focus (J30); F3's callers pass none
 }
 
-type ContentProps = Omit<EntityPanelProps, 'node' | 'onClose'>
+type ContentProps = Omit<EntityPanelProps, 'node' | 'onClose' | 'graph' | 'headingStyle' | 'arrival'>
 type BodyProps = Omit<ContentProps, 'selection'> & { selection: GraphSelection }
 
 function usableText(value: unknown): string | null {
@@ -224,7 +229,11 @@ function EntityContent(props: ContentProps) {
 }
 
 export function EntityPanel(props: EntityPanelProps) {
-  const { entityRef, selection, node, vocabularies, presentation, onSelect, onClose, headingLevel = 2 } = props
+  const {
+    entityRef, selection, node, vocabularies, presentation, onSelect, onClose, headingLevel = 2, graph, headingStyle, arrival,
+  } = props
+  // With the heading, before the body's delay: the network states the paths, not the entity's page (Q32).
+  const paths = derivationTexts(entityRef, graph ?? null, presentation, vocabularies)
   return (
     <PanelShell
       heading={entityHeading(entityRef, node ?? null, presentation, vocabularies)}
@@ -232,7 +241,10 @@ export function EntityPanel(props: EntityPanelProps) {
       bodyKey={selection === null ? '' : panelParamsKey(selection)}
       headingLevel={headingLevel}
       onClose={onClose}
+      headingStyle={headingStyle}
+      arrival={arrival}
     >
+      {paths.map((text) => <p key={text}>{text}</p>)}
       <EntityContent
         entityRef={entityRef}
         selection={selection}

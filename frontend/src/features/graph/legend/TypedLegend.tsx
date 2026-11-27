@@ -3,7 +3,7 @@ import type { GraphVocabularies } from '../types'
 import type { EdgeMarker } from '../network/channels'
 import { own } from '../network/graph'
 import type { TypedGraph } from '../network/graph'
-import { LABEL_OUTLINE, LABEL_TEXT, NODE_FILL, TESTED_ABSENT_OPACITY } from '../network/palette'
+import { DERIVED_RING_DASH, LABEL_OUTLINE, LABEL_TEXT, NODE_FILL, TESTED_ABSENT_OPACITY } from '../network/palette'
 import { legendEntries, lineSwatchWidthPx } from './legendEntries'
 import type { LegendSwatch } from './legendEntries'
 import { LEGEND_HEADING } from './legendText'
@@ -61,7 +61,7 @@ function EdgeSwatch({ marker, line, colour, width }: Extract<LegendSwatch, { kin
   )
 }
 
-interface ShapePaint { fill: string; stroke: string; strokeWidth: number }
+interface ShapePaint { fill: string; stroke: string; strokeWidth: number; strokeDasharray?: string }
 
 // Rounded joins give the diamond and the triangle the rounded corners the canvas draws.
 function NodeShape({ shape, r, paint }: { shape: 'gene' | 'protein' | 'isoform' | 'other'; r: number; paint: ShapePaint }) {
@@ -85,14 +85,15 @@ function NodeShape({ shape, r, paint }: { shape: 'gene' | 'protein' | 'isoform' 
   }
 }
 
-function NodeSwatch({ shape, seed }: Extract<LegendSwatch, { kind: 'node' }>) {
-  if (!seed) return <NodeShape shape={shape} r={6} paint={{ fill: NODE_FILL, stroke: NODE_FILL, strokeWidth: 1.5 }} />
-  // The seed's two-tone ring: the light rim outside the dark border, so one of them
-  // stands out on either page background.
+function NodeSwatch({ shape, seed, derived }: Extract<LegendSwatch, { kind: 'node' }>) {
+  if (!seed && derived !== true) return <NodeShape shape={shape} r={6} paint={{ fill: NODE_FILL, stroke: NODE_FILL, strokeWidth: 1.5 }} />
+  // The two-tone ring: the light rim outside the dark border, so one of them stands out on either page background; dashed
+  // for a derived seed, as the canvas draws it.
+  const dash = derived === true ? DERIVED_RING_DASH.join(' ') : undefined
   return (
     <>
-      <NodeShape shape={shape} r={4.5} paint={{ fill: 'none', stroke: LABEL_TEXT, strokeWidth: 7 }} />
-      <NodeShape shape={shape} r={4.5} paint={{ fill: 'none', stroke: LABEL_OUTLINE, strokeWidth: 3 }} />
+      <NodeShape shape={shape} r={4.5} paint={{ fill: 'none', stroke: LABEL_TEXT, strokeWidth: 7, strokeDasharray: dash }} />
+      <NodeShape shape={shape} r={4.5} paint={{ fill: 'none', stroke: LABEL_OUTLINE, strokeWidth: 3, strokeDasharray: dash }} />
       <NodeShape shape={shape} r={4.5} paint={{ fill: NODE_FILL, stroke: 'none', strokeWidth: 0 }} />
     </>
   )

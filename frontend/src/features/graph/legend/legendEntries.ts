@@ -1,7 +1,8 @@
 import type { GraphEdge, GraphFamily, GraphOutcome, GraphVocabularies } from '../types'
 import { edgeClasses, edgeLine, edgeMarker, edgeWidthPx, isNonSupport, nodeShape, nonSupportOutcome } from '../network/channels'
 import type { EdgeLine, EdgeMarker } from '../network/channels'
-import { GRAPH_OUTCOMES, keptGraph, own } from '../network/graph'
+import { DERIVED_LEGEND } from '../network/derivedWords'
+import { GRAPH_OUTCOMES, isDerivedSeed, keptGraph, own } from '../network/graph'
 import type { TypedGraph } from '../network/graph'
 import { FAMILY_COLOURS, NEUTRAL, familyColour } from '../network/palette'
 import { defaultShowNonSupporting, visibleGraph } from '../network/visibility'
@@ -13,7 +14,7 @@ import { LEGEND_TEXT, circleText, familyText, levelText, nodeText, referenceText
 
 export type LegendSwatch =
   | { kind: 'edge'; marker: EdgeMarker; line: EdgeLine; colour: string; width?: number }
-  | { kind: 'node'; shape: 'gene' | 'protein' | 'isoform' | 'other'; seed: boolean }
+  | { kind: 'node'; shape: 'gene' | 'protein' | 'isoform' | 'other'; seed: boolean; derived?: boolean }
   | { kind: 'colour'; colour: string }
   | { kind: 'none' }
 export interface LegendEntry { key: string; swatch: LegendSwatch; text: string }
@@ -178,6 +179,9 @@ export function legendEntries(graph: TypedGraph | null, options?: { showNonSuppo
   }
   if (visible.nodes.some((node) => node.is_seed === true)) {
     entries.push({ key: 'seed', swatch: { kind: 'node', shape: 'protein', seed: true }, text: LEGEND_TEXT.seed })
+  }
+  if (visible.nodes.some((node) => isDerivedSeed(node))) {
+    entries.push({ key: 'derived', swatch: { kind: 'node', shape: 'protein', seed: false, derived: true }, text: DERIVED_LEGEND })
   }
   if (visible.edges.some((edge) => edge.is_synthetic) || kept.releases.some((release) => release.is_synthetic)) {
     entries.push({ key: 'synthetic', swatch: { kind: 'none' }, text: LEGEND_TEXT.synthetic })

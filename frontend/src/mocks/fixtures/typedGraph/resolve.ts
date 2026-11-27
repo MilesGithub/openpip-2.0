@@ -823,3 +823,1356 @@ export const resolveBrowserNope: RecordedEntry<GraphResolveResponse> =
   }
 }
 // >>> resolve-browser-nope
+
+export const resolveNsTf1: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-ns-tf1
+{
+  "name": "resolve-ns-tf1",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-TF1"
+    ],
+    [
+      "namespace",
+      "synthetic_gene"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-TF1"
+      ],
+      "namespace": "synthetic_gene",
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-TF1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-ns-tf1
+
+export const resolveNsTf1Case: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-ns-tf1-case
+{
+  "name": "resolve-ns-tf1-case",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "syn-tf1"
+    ],
+    [
+      "namespace",
+      "synthetic_gene"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "syn-tf1"
+      ],
+      "namespace": "synthetic_gene",
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "syn-tf1",
+        "status": "candidate",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": false,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-ns-tf1-case
+
+export const resolveNsAlpha: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-ns-alpha
+{
+  "name": "resolve-ns-alpha",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-ALPHA"
+    ],
+    [
+      "namespace",
+      "synthetic_gene"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-ALPHA"
+      ],
+      "namespace": "synthetic_gene",
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-ALPHA",
+        "status": "unmatched",
+        "truncated": false,
+        "candidates": []
+      }
+    ],
+    "releases": [],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-ns-alpha
+
+export const resolveNsIsoform: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-ns-isoform
+{
+  "name": "resolve-ns-isoform",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-P1-1"
+    ],
+    [
+      "namespace",
+      "synthetic_protein"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-P1-1"
+      ],
+      "namespace": "synthetic_protein",
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-P1-1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:11",
+              "type": "protein_isoform",
+              "label": "SYN-P1-1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1-1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1-1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-ns-isoform
+
+export const resolveNsUnknown: RecordedEntry<GraphParameterError> =
+// <<< resolve-ns-unknown
+{
+  "name": "resolve-ns-unknown",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-TF1"
+    ],
+    [
+      "namespace",
+      "no_such_namespace"
+    ]
+  ],
+  "status": 400,
+  "body": {
+    "detail": "Unknown namespace 'no_such_namespace'. Allowed: ensembl_gene, hgnc, ncbigene, synthetic_gene, synthetic_protein, uniprotkb.",
+    "errors": [
+      {
+        "parameter": "namespace",
+        "value": "no_such_namespace",
+        "allowed": [
+          "ensembl_gene",
+          "hgnc",
+          "ncbigene",
+          "synthetic_gene",
+          "synthetic_protein",
+          "uniprotkb"
+        ],
+        "limit": null
+      }
+    ]
+  }
+}
+// >>> resolve-ns-unknown
+
+export const resolveTf1: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-tf1
+{
+  "name": "resolve-tf1",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-TF1"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-TF1"
+      ],
+      "namespace": null,
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-TF1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-tf1
+
+export const resolveShared: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-shared
+{
+  "name": "resolve-shared",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-SHARED"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-SHARED"
+      ],
+      "namespace": null,
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-SHARED",
+        "status": "ambiguous",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:6",
+              "type": "gene",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G6"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          },
+          {
+            "entity": {
+              "id": "entity:13",
+              "type": "protein",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P3"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-shared
+
+export const resolveMany: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-many
+{
+  "name": "resolve-many",
+  "caller": "staff",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-G1,SYN-G2,SYN-G3,SYN-G4,SYN-G5,SYN-G6,SYN-TF1,SYN-TF2,SYN-TF3,SYN-P1,SYN-P1-1,SYN-P2,SYN-P3,SYN-ALPHA,SYN-SHARED,syn-tf1,SYN-NOPE"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-G1",
+        "SYN-G2",
+        "SYN-G3",
+        "SYN-G4",
+        "SYN-G5",
+        "SYN-G6",
+        "SYN-TF1",
+        "SYN-TF2",
+        "SYN-TF3",
+        "SYN-P1",
+        "SYN-P1-1",
+        "SYN-P2",
+        "SYN-P3",
+        "SYN-ALPHA",
+        "SYN-SHARED",
+        "syn-tf1",
+        "SYN-NOPE"
+      ],
+      "namespace": null,
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-G1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:1",
+              "type": "gene",
+              "label": "SYN-G1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-G1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-G2",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:2",
+              "type": "gene",
+              "label": "SYN-G2",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G2"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G2",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-G2",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-G3",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:3",
+              "type": "gene",
+              "label": "SYN-ALPHA",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G3"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G3",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-G4",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:4",
+              "type": "gene",
+              "label": "SYN-G4",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G4"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G4",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-G4",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-G5",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:5",
+              "type": "gene",
+              "label": "SYN-G5",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G5"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G5",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-G5",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-G6",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:6",
+              "type": "gene",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G6"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-G6",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-TF1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-TF2",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:8",
+              "type": "gene",
+              "label": "SYN-TF2",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF2"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF2",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF2",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-TF3",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:9",
+              "type": "gene",
+              "label": "SYN-TF3",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF3"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF3",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF3",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-P1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:10",
+              "type": "protein",
+              "label": "SYN-P1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-P1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-P1-1",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:11",
+              "type": "protein_isoform",
+              "label": "SYN-P1-1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1-1"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_protein",
+                "value": "SYN-P1-1",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-P1-1",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-P2",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:12",
+              "type": "protein",
+              "label": "SYN-P2",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P2"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_protein",
+                "value": "SYN-P2",
+                "case_exact": true,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-P2",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-P3",
+        "status": "resolved",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:13",
+              "type": "protein",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P3"
+              }
+            },
+            "exact_primary": true,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_protein",
+                "value": "SYN-P3",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-ALPHA",
+        "status": "candidate",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:3",
+              "type": "gene",
+              "label": "SYN-ALPHA",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G3"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-ALPHA",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-SHARED",
+        "status": "ambiguous",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:6",
+              "type": "gene",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-G6"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          },
+          {
+            "entity": {
+              "id": "entity:13",
+              "type": "protein",
+              "label": "SYN-SHARED",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_protein",
+                "value": "SYN-P3"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-SHARED",
+                "case_exact": true,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "syn-tf1",
+        "status": "candidate",
+        "truncated": false,
+        "candidates": [
+          {
+            "entity": {
+              "id": "entity:7",
+              "type": "gene",
+              "label": "SYN-TF1",
+              "taxon": 32630,
+              "status": "provisional",
+              "primary_identifier": {
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1"
+              }
+            },
+            "exact_primary": false,
+            "matches": [
+              {
+                "kind": "primary",
+                "namespace": "synthetic_gene",
+                "value": "SYN-TF1",
+                "case_exact": false,
+                "version_mismatch": false
+              },
+              {
+                "kind": "label",
+                "namespace": null,
+                "value": "SYN-TF1",
+                "case_exact": false,
+                "version_mismatch": false
+              }
+            ],
+            "releases": [
+              "release:2"
+            ]
+          }
+        ]
+      },
+      {
+        "term": "SYN-NOPE",
+        "status": "unmatched",
+        "truncated": false,
+        "candidates": []
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-many
+
+export const resolveTf1Visitor: RecordedEntry<GraphResolveResponse> =
+// <<< resolve-tf1-visitor
+{
+  "name": "resolve-tf1-visitor",
+  "caller": "visitor",
+  "path": "/api/graph/v1/resolve",
+  "query": [
+    [
+      "q",
+      "SYN-TF1"
+    ]
+  ],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "q": [
+        "SYN-TF1"
+      ],
+      "namespace": null,
+      "taxon": null,
+      "entity_type": null,
+      "releases": null,
+      "browser": null
+    },
+    "results": [
+      {
+        "term": "SYN-TF1",
+        "status": "unmatched",
+        "truncated": false,
+        "candidates": []
+      }
+    ],
+    "releases": [],
+    "page": {
+      "truncated": false,
+      "max_candidates": 20,
+      "omitted": {}
+    },
+    "warnings": []
+  }
+}
+// >>> resolve-tf1-visitor

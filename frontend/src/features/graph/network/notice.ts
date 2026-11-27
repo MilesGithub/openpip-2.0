@@ -2,6 +2,7 @@ import type { GraphOutcome } from '../types'
 import { GRAPH_OUTCOMES, keptGraph, own } from './graph'
 import type { TypedGraph } from './graph'
 import { defaultShowNonSupporting, visibleGraph } from './visibility'
+import { derivedSeedsLeftText } from './derivedWords'
 import { plural } from './words'
 
 const HIDDEN_WORDS: Readonly<Record<GraphOutcome, string>> = {
@@ -24,7 +25,7 @@ function limitWords(codes: ReadonlySet<string>): string {
  * the canvas's own, never summed across outcomes, and never read from a warning's detail: a
  * warning names a limit by its code alone.
  */
-export function noticeLines(graph: TypedGraph | null, options?: { showNonSupporting?: boolean }): string[] {
+export function noticeLines(graph: TypedGraph | null, options?: { showNonSupporting?: boolean; maxExpandedSeeds?: number | null }): string[] {
   if (graph === null || graph === undefined) return []
   const { graph: kept, dropped } = keptGraph(graph)
   const show = options?.showNonSupporting ?? defaultShowNonSupporting(graph)
@@ -33,6 +34,9 @@ export function noticeLines(graph: TypedGraph | null, options?: { showNonSupport
   const lines: string[] = []
   const page = kept.page
   if (page !== null) {
+    // First, as the reference closure runs first and its warning leads (Q14); the cap is status's, never a copy (Q31).
+    const derived = page.omitted?.derived_seeds ?? 0
+    if (derived > 0) lines.push(derivedSeedsLeftText(derived, options?.maxExpandedSeeds ?? null))
     const omittedEdges = page.omitted?.edges ?? 0
     if (omittedEdges > 0) {
       const shown = plural(visible.edges.length, '1 relationship shown', '{n} relationships shown')

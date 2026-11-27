@@ -56,6 +56,7 @@ class LimitsSerializer(serializers.Serializer):
     max_edges = serializers.IntegerField()
     candidates_per_seed = serializers.IntegerField()
     max_nodes = serializers.IntegerField()
+    max_expanded_seeds = serializers.IntegerField()
     evidence_page_size = serializers.IntegerField()
     evidence_max_page_size = serializers.IntegerField()
     evidence_page_raw_chars = serializers.IntegerField()
@@ -347,13 +348,24 @@ class EntitySerializer(serializers.Serializer):
 # ── Network ─────────────────────────────────────────────────────────────────
 
 
+class NodeDerivationSerializer(serializers.Serializer):
+    """One path that made a network node a derived seed: the named seed it
+    starts from, and its relationships in order from that seed."""
+
+    seed = serializers.CharField()
+    via = serializers.ListField(child=serializers.CharField())
+
+
 class NetworkNodeSerializer(EntityNodeSerializer):
     is_seed = serializers.BooleanField()
+    # [] on every node that no path made a derived seed.
+    derived_from = NodeDerivationSerializer(many=True)
 
 
 class NetworkQuerySerializer(serializers.Serializer):
     seeds = serializers.ListField(child=serializers.CharField())
     layers = serializers.ListField(child=serializers.CharField(), allow_null=True)
+    expand = serializers.CharField(allow_null=True)
     direction = serializers.CharField(allow_null=True)
     outcome = serializers.ListField(child=serializers.CharField(), allow_null=True)
     evidence_basis = serializers.ListField(

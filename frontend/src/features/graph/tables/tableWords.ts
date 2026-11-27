@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphOutcome, GraphPresentation, GraphVocabularies } from '../types'
+import { derivedPaths, derivedRowSuffix } from '../network/derivedWords'
 import { GRAPH_OUTCOMES, own } from '../network/graph'
 import type { TypedGraph, TypedGraphNode } from '../network/graph'
 import { EFFECT_WORDS, edgeLabel, roleLabels, slugWords } from '../network/words'
@@ -36,6 +37,12 @@ export function endCell(node: TypedGraphNode | undefined, ref: string, withStatu
   const name = endName(node, presentation, vocabularies)
   const word = withStatus ? tableStatusWord(node.status) : null
   return word === null ? name : `${name}, ${word}`
+}
+
+/** After a name in "Entities in view": a seed's word, as the canvas's ring says it, or the links a derived seed was reached through (X1, Q32). */
+export function entitySuffix(node: TypedGraphNode, graph: TypedGraph, vocabularies?: GraphVocabularies | null): string {
+  if (node.is_seed === true) return TABLE_TEXT.seed
+  return derivedRowSuffix(derivedPaths(node, graph, vocabularies))
 }
 
 export function directionCell(edge: GraphEdge, vocabularies?: GraphVocabularies | null): string {

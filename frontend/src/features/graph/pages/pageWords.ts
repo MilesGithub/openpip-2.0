@@ -17,3 +17,12 @@ export function throttledText(retryAfter: number | null): string {
 export const BROWSERS_NAV_LABEL = 'Browsers'
 export const BROWSERS_TITLE = 'Browsers'
 export const BROWSERS_NOT_ENABLED = 'Browsers are not enabled on this portal.'
+
+// X1 (Q3, Q24): the Explore link's label, then each page's title and the sentence its gate shows while it is off.
+export const EXPLORE_NAV_LABEL = 'Explore'
+export const EXPLORE_TITLE = 'Explore the unified network'
+export const EXPLORE_NOT_ENABLED = 'The unified network is not enabled on this portal.'
+export const ENTITY_TITLE = 'Entity'
+export const ENTITY_NOT_ENABLED = 'Entity pages are not enabled on this portal.'
+export const ENTITY_LOOKUP_TITLE = 'Find an entity by its identifier'
+export const ENTITY_LOOKUP_NOT_ENABLED = 'Finding an entity by its identifier is not enabled on this portal.'

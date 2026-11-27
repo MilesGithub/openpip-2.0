@@ -752,7 +752,7 @@ describe('the view modules (12.2)', () => {
     }
   })
 
-  it('VW-12: no word says not enabled but the off sentence, and none says what 3.8 forbids', () => {
+  it('VW-12: no word says not enabled but the four off sentences, and none says what 3.8 forbids', () => {
     const strings = [pageWords, browserWords, seedWords, badgeWords, workspaceWords].flatMap((module) =>
       Object.entries(module).flatMap(([name, value]): [string, string][] => {
         if (typeof value === 'string') return [[name, value]]
@@ -794,7 +794,14 @@ describe('the view modules (12.2)', () => {
       pageWords.throttledText(1), pageWords.throttledText(7), pageWords.throttledText(null),
     ]
     const all: [string, string][] = [...strings, ...called.map((value, index): [string, string] => [`call ${index}`, value])]
-    expect(all.filter(([name, value]) => name !== 'BROWSERS_NOT_ENABLED' && value.includes('not enabled'))).toEqual([])
+    // X1's three off sentences join F4's (X1 spec 12.11; Q24): each is a gate's notEnabled, the only words that say it.
+    const offSentences = ['BROWSERS_NOT_ENABLED', 'EXPLORE_NOT_ENABLED', 'ENTITY_NOT_ENABLED', 'ENTITY_LOOKUP_NOT_ENABLED']
+    const exported: Record<string, unknown> = Object.fromEntries(Object.entries(pageWords))
+    expect(offSentences.map((name) => exported[name])).toEqual([
+      'Browsers are not enabled on this portal.', 'The unified network is not enabled on this portal.',
+      'Entity pages are not enabled on this portal.', 'Finding an entity by its identifier is not enabled on this portal.',
+    ])
+    expect(all.filter(([name, value]) => !offSentences.includes(name) && value.includes('not enabled'))).toEqual([])
     expect(all.filter(([, value]) => /does not exist|not found|undefined|HTTP|No page uses|\b[Nn]one\b/.test(value))).toEqual([])
     expect(browserWords.stateWords('typed', 'metadata_only')).not.toContain('Citation card')
   })

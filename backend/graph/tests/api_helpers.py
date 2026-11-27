@@ -6,6 +6,7 @@ import copy
 import datetime
 import itertools
 import re
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 from django.db import connection
@@ -19,6 +20,7 @@ from browsers.models import (
 )
 from browsers.rules import validate_facets, validate_selection
 from graph.models import (
+    SYNTHETIC_TAXON,
     ApprovalScope,
     AssertionMethod,
     AssertionParticipant,
@@ -26,10 +28,12 @@ from graph.models import (
     EntityType,
     EvidenceAssertion,
     EvidenceBasis,
+    InteractionLevel,
     Outcome,
     ParticipantSide,
     Relationship,
     RelationshipType,
+    ReleaseKind,
     ResolutionBasis,
     SourceRecord,
 )
@@ -39,14 +43,19 @@ from graph.tests.factories import (
     FAILED_CRITERION,
     AssertionParticipantFactory,
     EvidenceAssertionFactory,
+    EvidenceContextFactory,
+    EvidenceMethodFactory,
+    EvidenceScoreFactory,
     RelationshipFactory,
+    ReleaseLicenceFactory,
     SourceRecordFactory,
     approvable_release,
     approve,
+    entity_of,
     evidence_release,
     mapped_record,
 )
-from graph.tests.test_provenance import PUBLISHED, STAGED, advance
+from graph.tests.test_provenance import PUBLISHED, STAGED, SUPERSEDED, advance
 
 BASE = "/api/graph/v1/"
 STATUS = f"{BASE}status"
@@ -141,6 +150,16 @@ SAMPLES = {
         lambda world: network_url(world.h, layers="family:reference"),
         lambda world: network_url(
             world.h, world.s, world.v, outcome="all", include_partner_edges="true"
+        ),
+        lambda world: network_url(world.v, expand="reference"),
+        lambda world: network_url(world.h, expand="reference"),
+        lambda world: network_url(
+            world.h,
+            world.s,
+            world.v,
+            expand="reference",
+            outcome="all",
+            include_partner_edges="true",
         ),
     ],
     RELATIONSHIP: [
@@ -445,6 +464,194 @@ def public_release(*entities):
         state(ev, RelationshipFactory(subject=subject, object=object_))
     advance(ev.release, PUBLISHED)
     return ev.release
+
+
+# ── Reference releases and X1's worlds ──────────────────────────────────────
+# A synthetic release of its own for each kind of link, so a test states
+# encodes and isoform_of apart from the evidence, as RF1a's mapping and
+# UniProt releases will (IMPLEMENTATION_PLAN.md, X1 and RF1a). A synthetic
+# release states synthetic constructs only (graph.models, synthetic
+# separation), so every entity of these worlds is of SYNTHETIC_TAXON.
+
+# The scopes of a release that staff and visitors both see.
+OPEN_SCOPES = (ApprovalScope.INTERNAL, ApprovalScope.PUBLIC_VIEW)
+# The isoforms of capped_world's entry: more than MAX_EXPANDED_SEEDS reach it.
+CAPPED_ISOFORMS = 30
+
+
+def synthetic_release(*scopes, release_kind=ReleaseKind.EVIDENCE, **fields):
+    """A synthetic draft of this kind, ready for the evidence a test states
+    with state(). With scopes, an open-terms snapshot, then an active
+    approval of each, recorded after its file: evidence_release(synthetic=True)
+    records none, and a synthetic release needs one to be seen; only its due
+    diligence is waived (graph.approvals). Other fields go to the release."""
+    ev = evidence_release(records=0, synthetic=True, kind=release_kind, **fields)
+    if scopes:
+        ReleaseLicenceFactory(release=ev.release, open_terms=True)
+        approve(ev.release, *scopes)
+    return ev
+
+
+def _reference_release(kind):
+    """A synthetic draft of kind reference: approved for OPEN_SCOPES, or made
+    as hidden_evidence makes one of HIDDEN_KINDS, for hide() to hide once its
+    evidence is stated."""
+    if kind == "unapproved":
+        return synthetic_release(release_kind=ReleaseKind.REFERENCE)
+    fields = {}
+    if kind == "embargoed":
+        fields["embargo_until"] = timezone.now() + datetime.timedelta(days=30)
+    return synthetic_release(*OPEN_SCOPES, release_kind=ReleaseKind.REFERENCE, **fields)
+
+
+def mapping_release(kind="approved"):
+    """A synthetic gene-to-protein mapping release, of kind reference, for the
+    encodes links a test states: approved for OPEN_SCOPES, or a draft of one
+    of HIDDEN_KINDS for hide(). RF1a's route-level tests reuse it."""
+    return _reference_release(kind)
+
+
+def uniprot_release(kind="approved"):
+    """A synthetic UniProt-style release, of kind reference, for the
+    isoform_of links a test states, as mapping_release is."""
+    return _reference_release(kind)
+
+
+def reference_world(mapping="approved", *, staff=None, filtered=False):
+    """X1's factory world (architecture §4.6). Mapping release M states that
+    genes g1, g2 and g3 encode the protein entry e, and gene gp the protein p;
+    UniProt-style release U that isoform i is an isoform of e; evidence
+    release R that e and p interact, that g1 regulates t and g2 regulates t2.
+    M and U state basis unknown, as reference evidence does. Each entity is a
+    synthetic construct created by M (the genes), U (e, i and p) or R (t and
+    t2), labelled as the factory labels it, and made in that order, so ids
+    rise from g1 to t2; the relationships are made in the order of the
+    namespace returned. `mapping` is M's state: approved, published;
+    superseded, published and then superseded, so the default set leaves it
+    out; or one of HIDDEN_KINDS, which hide() reaches with `staff`, the
+    account that withdraws or discards. U and R are published. With
+    `filtered`, each assertion R states also names the detection method
+    MI:0018, a stats:test_value score of 0.7 and the tissue liver, which the
+    EXISTS-backed filters match."""
+    if mapping not in ("approved", "superseded", *HIDDEN_KINDS):
+        raise ValueError(
+            f"mapping is approved, superseded or a hidden kind, not {mapping!r}."
+        )
+    hidden = mapping in HIDDEN_KINDS
+    m = mapping_release(mapping if hidden else "approved")
+    u, r = uniprot_release(), synthetic_release(*OPEN_SCOPES)
+    g1, g2, g3, gp = (
+        entity_of("gene", SYNTHETIC_TAXON, created_by_release=m.release)
+        for _ in range(4)
+    )
+    e, i, p = (
+        entity_of(type_slug, SYNTHETIC_TAXON, created_by_release=u.release)
+        for type_slug in ("protein", "protein_isoform", "protein")
+    )
+    t, t2 = (
+        entity_of("gene", SYNTHETIC_TAXON, created_by_release=r.release)
+        for _ in range(2)
+    )
+    enc1, enc2, enc3, encp = (
+        link("encodes", gene, entry)
+        for gene, entry in ((g1, e), (g2, e), (g3, e), (gp, p))
+    )
+    iso = link("isoform_of", i, e)
+    phys = link("physical_interaction", e, p)
+    reg1 = link("transcriptional_regulation", g1, t)
+    reg2 = link("transcriptional_regulation", g2, t2)
+    for edge in (enc1, enc2, enc3, encp):
+        state(m, edge, evidence_basis=EvidenceBasis.UNKNOWN)
+    state(u, iso, evidence_basis=EvidenceBasis.UNKNOWN)
+    stated = [
+        state(r, phys, interaction_level=InteractionLevel.NOT_STATED),
+        state(r, reg1),
+        state(r, reg2),
+    ]
+    if filtered:
+        for made in stated:
+            EvidenceMethodFactory(assertion=made)
+            EvidenceScoreFactory(assertion=made, raw_value="0.7", value=0.7)
+            EvidenceContextFactory(assertion=made, raw_value="liver")
+    for ev in (u, r):
+        advance(ev.release, PUBLISHED)
+    if hidden:
+        hide(m, mapping, staff)
+    else:
+        advance(m.release, SUPERSEDED if mapping == "superseded" else PUBLISHED)
+    for ev in (m, u, r):
+        ev.release.refresh_from_db()
+    return SimpleNamespace(
+        mapping=m.release,
+        uniprot=u.release,
+        evidence=r.release,
+        g1=g1,
+        g2=g2,
+        g3=g3,
+        gp=gp,
+        e=e,
+        i=i,
+        p=p,
+        t=t,
+        t2=t2,
+        enc1=enc1,
+        enc2=enc2,
+        enc3=enc3,
+        encp=encp,
+        iso=iso,
+        phys=phys,
+        reg1=reg1,
+        reg2=reg2,
+    )
+
+
+def capped_world():
+    """A world past MAX_EXPANDED_SEEDS. Mapping release M states that gene g
+    encodes the entry e; UniProt-style release U that e has CAPPED_ISOFORMS
+    isoforms; evidence release R that e interacts with p and that g regulates
+    each of nine targets. From e the closure finds g and every isoform in one
+    step; from g, e in one step and the isoforms in two. Ids rise from g to
+    e, the isoforms in order, p and the targets; the relationships are made
+    in the order of the namespace returned."""
+    m, u = mapping_release(), uniprot_release()
+    r = synthetic_release(*OPEN_SCOPES)
+    g = entity_of("gene", SYNTHETIC_TAXON, created_by_release=m.release)
+    e = entity_of("protein", SYNTHETIC_TAXON, created_by_release=u.release)
+    isoforms = [
+        entity_of("protein_isoform", SYNTHETIC_TAXON, created_by_release=u.release)
+        for _ in range(CAPPED_ISOFORMS)
+    ]
+    p = entity_of("protein", SYNTHETIC_TAXON, created_by_release=u.release)
+    targets = [
+        entity_of("gene", SYNTHETIC_TAXON, created_by_release=r.release)
+        for _ in range(9)
+    ]
+    enc = link("encodes", g, e)
+    isoform_of = [link("isoform_of", isoform, e) for isoform in isoforms]
+    phys = link("physical_interaction", e, p)
+    regulation = [link("transcriptional_regulation", g, target) for target in targets]
+    state(m, enc, evidence_basis=EvidenceBasis.UNKNOWN)
+    for edge in isoform_of:
+        state(u, edge, evidence_basis=EvidenceBasis.UNKNOWN)
+    state(r, phys, interaction_level=InteractionLevel.NOT_STATED)
+    for edge in regulation:
+        state(r, edge)
+    for ev in (m, u, r):
+        advance(ev.release, PUBLISHED)
+    return SimpleNamespace(
+        mapping=m.release,
+        uniprot=u.release,
+        evidence=r.release,
+        g=g,
+        e=e,
+        isoforms=isoforms,
+        p=p,
+        targets=targets,
+        enc=enc,
+        isoform_of=isoform_of,
+        phys=phys,
+        regulation=regulation,
+    )
 
 
 def with_stats(release):

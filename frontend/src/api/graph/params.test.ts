@@ -84,6 +84,7 @@ const filterNames = ['outcome', 'evidence_basis', 'effect', 'method', 'level', '
 const networkLists = ['layers', ...filterLists]
 const networkOptional = [
   'layers',
+  'expand',
   'direction',
   ...filterNames,
   'taxon',
@@ -111,8 +112,16 @@ describe('the network wire', () => {
     expectExact(networkUri({ seeds: [tf2, tf1] }), `/api/graph/v1/network?seeds=${tf1},${tf2}`)
   })
 
+  it('writes expand after layers and before direction, as the API documents them', () => {
+    expectExact(
+      networkUri({ ...seeded, layers: ['a'], expand: 'reference', direction: 'out' }),
+      `${NETWORK_URI}&layers=a&expand=reference&direction=out`,
+    )
+  })
+
   it.each<[string, Partial<GraphNetworkParams>, string]>([
     ['layers', { layers: ['b', 'a'] }, 'layers=a,b'],
+    ['expand', { expand: 'reference' }, 'expand=reference'],
     ['releases', { releases: [v2, v1, v1] }, `releases=${v1},${v2}`],
     ['outcome all', { outcome: 'all' }, 'outcome=all'],
     ['outcome list', { outcome: ['tested_absent', 'supported'] }, 'outcome=supported,tested_absent'],
@@ -318,6 +327,7 @@ describe('distinct keys', () => {
     ...filterValues,
     ['seeds', [tf2]],
     ['layers', ['x']],
+    ['expand', 'reference'],
     ['direction', 'out'],
     ['taxon', 1],
     ['include_partner_edges', true],
@@ -489,6 +499,12 @@ describe('enabled', () => {
 describe('what is never sent', () => {
   it('a blank direction', () => {
     const params = { ...seeded, direction: '' as never }
+    expectExact(networkUri(params), NETWORK_URI)
+    expect(networkHash(params)).toBe(networkHash(seeded))
+  })
+
+  it('a blank expand', () => {
+    const params = { ...seeded, expand: '' as never }
     expectExact(networkUri(params), NETWORK_URI)
     expect(networkHash(params)).toBe(networkHash(seeded))
   })

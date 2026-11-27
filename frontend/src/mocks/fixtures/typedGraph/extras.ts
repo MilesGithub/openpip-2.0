@@ -2,6 +2,7 @@ import type {
   GraphAvailability,
   GraphBrowserResponse,
   GraphBrowsersResponse,
+  GraphCandidate,
   GraphEdge,
   GraphEdgeEffect,
   GraphEntityResponse,
@@ -16,15 +17,19 @@ import type {
   GraphInstanceStatus,
   GraphInstanceVisibility,
   GraphLevel,
+  GraphMatch,
   GraphNetworkNode,
   GraphNetworkResponse,
   GraphNode,
+  GraphNodeDerivation,
   GraphOrientation,
   GraphPresentation,
   GraphPublication,
   GraphRelationshipResponse,
   GraphRelationshipTypeEntry,
   GraphRelease,
+  GraphResolveResponse,
+  GraphResolveResult,
   GraphScoreTypeEntry,
   GraphSelectionRole,
 } from '../../../features/graph/types'
@@ -171,6 +176,7 @@ export function makeNetworkNode(overrides: Partial<GraphNetworkNode> = {}): Grap
     status: 'provisional',
     primary_identifier: { namespace: 'synthetic_gene', value: 'SYN-N901' },
     is_seed: false,
+    derived_from: [],
     ...overrides,
   }
 }
@@ -182,6 +188,7 @@ export function makeNetworkResponse(overrides: Partial<GraphNetworkResponse> = {
     query: {
       seeds: ['entity:901'],
       layers: null,
+      expand: null,
       direction: null,
       outcome: null,
       evidence_basis: null,
@@ -1007,3 +1014,300 @@ export const unknownCodesInstance = makeInstance({
   tags: ['syn_tag'],
   selection: [{ release: 'release:901', role: 'syn_role' as string as GraphSelectionRole }],
 })
+
+// X1: networks and searches of the unified explorer that the demonstration cannot produce. Networks
+// take refs from 980 and searches refs from 910 and from 1001, none of them an earlier shape's.
+
+/** The release that states sharedEntryNetwork's encodes links; the words name it by title and version. */
+export const mappingRelease: GraphRelease = makeGraphRelease({
+  id: 'release:908',
+  dataset: { slug: 'synthetic-extras-mapping', title: 'Synthetic extras mapping' },
+})
+/** The release that states sharedEntryNetwork's isoform_of link. */
+export const isoformRelease: GraphRelease = makeGraphRelease({
+  id: 'release:909',
+  dataset: { slug: 'synthetic-extras-isoforms', title: 'Synthetic extras isoforms' },
+})
+
+/** A network node with these keys: a gene names a synthetic_gene identifier, any other type a synthetic_protein one. */
+function expandedNode(
+  id: string,
+  type: string,
+  label: string,
+  derivedFrom: GraphNodeDerivation[] = [],
+  isSeed = false,
+): GraphNetworkNode {
+  const namespace = type === 'gene' ? 'synthetic_gene' : 'synthetic_protein'
+  return makeNetworkNode({
+    id, type, label, primary_identifier: { namespace, value: label }, is_seed: isSeed, derived_from: derivedFrom,
+  })
+}
+
+/** A reference link that `release` states, as a network with `expand` lists it: summarised under the default filter. */
+function referenceLink(
+  id: string,
+  type: 'encodes' | 'isoform_of',
+  source: string,
+  target: string,
+  release = 'release:901',
+): GraphEdge {
+  return makeGraphEdge({
+    ...noEffectPolarity(),
+    id,
+    type,
+    family: 'reference',
+    orientation: 'role_ordered',
+    source,
+    target,
+    releases: [release],
+    distinct: { publications: 0, releases: 1, datasets: 1 },
+    by_basis: { unknown: 1 },
+  })
+}
+
+/**
+ * Gene entity:980 named: the entry it encodes (entity:981) and that entry's isoform (entity:982) are
+ * derived seeds, each listing its path; the entry's physical partner (entity:983) and the gene's
+ * target (entity:984) are partners; the two reference links follow the ranked edges, by id.
+ */
+export const derivedSeedNetwork: GraphNetworkResponse = makeNetworkResponse({
+  query: { ...makeNetworkResponse().query, seeds: ['entity:980'], expand: 'reference' },
+  nodes: [
+    expandedNode('entity:980', 'gene', 'SYN-N980', [], true),
+    expandedNode('entity:981', 'protein', 'SYN-N981', [{ seed: 'entity:980', via: ['relationship:980'] }]),
+    expandedNode('entity:982', 'protein_isoform', 'SYN-N981-1', [
+      { seed: 'entity:980', via: ['relationship:980', 'relationship:981'] },
+    ]),
+    expandedNode('entity:983', 'protein', 'SYN-N983'),
+    expandedNode('entity:984', 'gene', 'SYN-N984'),
+  ],
+  edges: [
+    makeGraphEdge({
+      ...physical(),
+      id: 'relationship:982',
+      source: 'entity:981',
+      target: 'entity:983',
+      level: 'not_stated',
+      level_counts: { direct_interaction: 0, physical_association: 0, association: 0, not_stated: 1 },
+      level_assigned: false,
+    }),
+    makeGraphEdge({ id: 'relationship:983', source: 'entity:980', target: 'entity:984' }),
+    referenceLink('relationship:980', 'encodes', 'entity:980', 'entity:981'),
+    referenceLink('relationship:981', 'isoform_of', 'entity:982', 'entity:981'),
+  ],
+})
+
+/**
+ * derivedSeedNetwork with derived_seeds 6 and its warning: a stand-in for the notice's line only. As the
+ * warning says, the API omits derived seeds because a network looks up at most 26 seeds, named and derived
+ * together, or because a step of the closure reached its row bound: an entry with thirty isoforms keeps 25
+ * and drops 6, a cut step adds one, and at the shipped bounds a cut comes only past a full cap, so no
+ * answer pairs these two nodes with this count.
+ */
+export const closureDropNetwork: GraphNetworkResponse = makeNetworkResponse({
+  ...derivedSeedNetwork,
+  page: {
+    truncated: true,
+    max_edges: 250,
+    omitted: { derived_seeds: 6 },
+    hidden: { supported: 0, tested_absent: 0, inconclusive: 0, not_significant: 0 },
+  },
+  warnings: [
+    {
+      code: 'derived_seeds_truncated',
+      detail: '6 derived seeds omitted: a network looks up at most 26 seeds, named and derived together, or a step of the closure reached its row bound.',
+    },
+  ],
+})
+
+/**
+ * Entry entity:985 named, encoded by three genes (entity:986 to entity:988), the case of one entry and
+ * several genes (PLAN:152's histone): each gene is a derived seed, and so is the isoform entity:989.
+ * mappingRelease states the encodes links and isoformRelease the isoform_of link, so each link's
+ * label names its own release.
+ */
+export const sharedEntryNetwork: GraphNetworkResponse = makeNetworkResponse({
+  query: { ...makeNetworkResponse().query, seeds: ['entity:985'], expand: 'reference' },
+  nodes: [
+    expandedNode('entity:985', 'protein', 'SYN-N985', [], true),
+    expandedNode('entity:986', 'gene', 'SYN-N986', [{ seed: 'entity:985', via: ['relationship:984'] }]),
+    expandedNode('entity:987', 'gene', 'SYN-N987', [{ seed: 'entity:985', via: ['relationship:985'] }]),
+    expandedNode('entity:988', 'gene', 'SYN-N988', [{ seed: 'entity:985', via: ['relationship:986'] }]),
+    expandedNode('entity:989', 'protein_isoform', 'SYN-N985-1', [{ seed: 'entity:985', via: ['relationship:987'] }]),
+  ],
+  edges: [
+    referenceLink('relationship:984', 'encodes', 'entity:986', 'entity:985', 'release:908'),
+    referenceLink('relationship:985', 'encodes', 'entity:987', 'entity:985', 'release:908'),
+    referenceLink('relationship:986', 'encodes', 'entity:988', 'entity:985', 'release:908'),
+    referenceLink('relationship:987', 'isoform_of', 'entity:989', 'entity:985', 'release:909'),
+  ],
+  releases: [mappingRelease, isoformRelease],
+})
+
+/**
+ * derivedSeedNetwork under `method=MI:0018`: the physical edge, whose evidence names that detection
+ * method, is ranked, and the reference links stay, since the closure reads no request filter; the
+ * regulation edge, whose evidence names no method, and its target are gone.
+ */
+export const methodFilterNetwork: GraphNetworkResponse = makeNetworkResponse({
+  ...derivedSeedNetwork,
+  query: { ...derivedSeedNetwork.query, method: ['MI:0018'] },
+  nodes: derivedSeedNetwork.nodes.filter((node) => node.id !== 'entity:984'),
+  edges: derivedSeedNetwork.edges.filter((edge) => edge.id !== 'relationship:983'),
+})
+
+function extrasGene(id: string, label: string, value = label): GraphNode {
+  return makeGraphNode({ id, label, primary_identifier: { namespace: 'synthetic_gene', value } })
+}
+
+function primaryMatch(value: string): GraphMatch {
+  return { kind: 'primary', namespace: 'synthetic_gene', value, case_exact: true, version_mismatch: false }
+}
+
+function aliasMatch(value: string): GraphMatch {
+  return { kind: 'alias', namespace: 'synthetic_gene', value, case_exact: true, version_mismatch: false }
+}
+
+function labelMatch(value: string): GraphMatch {
+  return { kind: 'label', namespace: null, value, case_exact: true, version_mismatch: false }
+}
+
+/** entity:901 as a candidate of a term, matched by its primary identifier, unless told otherwise. */
+export function makeResolveCandidate(overrides: Partial<GraphCandidate> = {}): GraphCandidate {
+  return {
+    entity: extrasGene('entity:901', 'SYN-N901'),
+    exact_primary: true,
+    matches: [primaryMatch('SYN-N901')],
+    releases: ['release:901'],
+    ...overrides,
+  }
+}
+
+function unmatchedResult(): Omit<GraphResolveResult, 'term'> {
+  return { status: 'unmatched', truncated: false, candidates: [] }
+}
+
+/** resolve's answer for these terms, in order: each term's result from `results`, unmatched otherwise. */
+export function makeResolveResponse(
+  terms: readonly string[],
+  results: Readonly<Record<string, Omit<GraphResolveResult, 'term'>>> = {},
+  overrides: Partial<GraphResolveResponse> = {},
+): GraphResolveResponse {
+  const found = terms.map((term): GraphResolveResult => ({ term, ...(results[term] ?? unmatchedResult()) }))
+  return {
+    api_version: 'graph/v1',
+    query: { q: [...terms], namespace: null, taxon: null, entity_type: null, releases: null, browser: null },
+    results: found,
+    releases: found.some((result) => result.candidates.length > 0) ? [makeGraphRelease()] : [],
+    page: { truncated: false, max_candidates: 20, omitted: {} },
+    warnings: [],
+    ...overrides,
+  }
+}
+
+function namespaceQuery(term: string): GraphResolveResponse['query'] {
+  return { q: [term], namespace: 'synthetic_gene', taxon: null, entity_type: null, releases: null, browser: null }
+}
+
+/** Under `namespace=synthetic_gene`, one entity's alias: a candidate to confirm, never resolved. */
+export const namespaceAliasResolve: GraphResolveResponse = makeResolveResponse(
+  ['SYN-N944-ALIAS'],
+  {
+    'SYN-N944-ALIAS': {
+      status: 'candidate',
+      truncated: false,
+      candidates: [
+        makeResolveCandidate({
+          entity: extrasGene('entity:944', 'SYN-N944'), exact_primary: false, matches: [aliasMatch('SYN-N944-ALIAS')],
+        }),
+      ],
+    },
+  },
+  { query: namespaceQuery('SYN-N944-ALIAS') },
+)
+
+/** Under `namespace=synthetic_gene`, an alias two entities share: ambiguous, both listed. */
+export const namespaceAmbiguousResolve: GraphResolveResponse = makeResolveResponse(
+  ['SYN-N-SHARED-ALIAS'],
+  {
+    'SYN-N-SHARED-ALIAS': {
+      status: 'ambiguous',
+      truncated: false,
+      candidates: ['entity:945', 'entity:946'].map((id) =>
+        makeResolveCandidate({
+          entity: extrasGene(id, `SYN-N${id.slice('entity:'.length)}`),
+          exact_primary: false,
+          matches: [aliasMatch('SYN-N-SHARED-ALIAS')],
+        }),
+      ),
+    },
+  },
+  { query: namespaceQuery('SYN-N-SHARED-ALIAS') },
+)
+
+/** Twenty-five terms, resolve's cap on one request: SYN-M01 to SYN-M25. */
+export const MANY_SEARCH_TERMS: readonly string[] = Array.from(
+  { length: 25 },
+  (_, index) => `SYN-M${String(index + 1).padStart(2, '0')}`,
+)
+
+function manyResults(): Record<string, Omit<GraphResolveResult, 'term'>> {
+  const results: Record<string, Omit<GraphResolveResult, 'term'>> = {}
+  MANY_SEARCH_TERMS.slice(0, 11).forEach((term, index) => {
+    results[term] = {
+      status: 'resolved',
+      truncated: false,
+      candidates: [makeResolveCandidate({ entity: extrasGene(`entity:${910 + index}`, term), matches: [primaryMatch(term)] })],
+    }
+  })
+  results['SYN-M12'] = {
+    status: 'candidate',
+    truncated: false,
+    candidates: [
+      makeResolveCandidate({
+        entity: extrasGene('entity:921', 'SYN-M12', 'SYN-G921'), exact_primary: false, matches: [labelMatch('SYN-M12')],
+      }),
+    ],
+  }
+  results['SYN-M13'] = {
+    status: 'ambiguous',
+    truncated: false,
+    candidates: ['entity:922', 'entity:923'].map((id) =>
+      makeResolveCandidate({
+        entity: extrasGene(id, 'SYN-M13', `SYN-G${id.slice('entity:'.length)}`),
+        exact_primary: false,
+        matches: [labelMatch('SYN-M13')],
+      }),
+    ),
+  }
+  return results
+}
+
+/**
+ * Their answer: SYN-M01 to SYN-M11 resolved (entity:910 to entity:920), one more than max_seeds
+ * allows; SYN-M12 a candidate by its label (entity:921); SYN-M13 ambiguous, a label two genes share
+ * (entity:922 and entity:923); the other twelve unmatched.
+ */
+export const manyTermResolve: GraphResolveResponse = makeResolveResponse(MANY_SEARCH_TERMS, manyResults())
+
+/** One label more than twenty entities share: twenty are listed, and the page says one term was cut. */
+export const cutResolve: GraphResolveResponse = makeResolveResponse(
+  ['SYN-CUT'],
+  {
+    'SYN-CUT': {
+      status: 'ambiguous',
+      truncated: true,
+      candidates: Array.from({ length: 20 }, (_, index) =>
+        makeResolveCandidate({
+          entity: extrasGene(`entity:${1001 + index}`, 'SYN-CUT', `SYN-C${1001 + index}`),
+          exact_primary: false,
+          matches: [labelMatch('SYN-CUT')],
+        }),
+      ),
+    },
+  },
+  {
+    page: { truncated: true, max_candidates: 20, omitted: { terms: 1 } },
+    warnings: [{ code: 'candidates_truncated', detail: 'SYN-CUT: more than 20 entities match, 20 shown.' }],
+  },
+)

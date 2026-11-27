@@ -4608,3 +4608,268 @@ export const relationship6EvidenceBrowser: RecordedEntry<GraphEvidenceResponse> 
   }
 }
 // >>> relationship-6-evidence-browser
+
+export const relationshipIsoform: RecordedEntry<GraphRelationshipResponse> =
+// <<< relationship-isoform
+{
+  "name": "relationship-isoform",
+  "caller": "staff",
+  "path": "/api/graph/v1/relationships/relationship:2",
+  "query": [],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "relationship_ref": "relationship:2",
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "releases": null,
+      "browser": null
+    },
+    "edge": {
+      "id": "relationship:2",
+      "type": "isoform_of",
+      "family": "reference",
+      "orientation": "role_ordered",
+      "source": "entity:11",
+      "target": "entity:10",
+      "releases": [
+        "release:2"
+      ],
+      "is_synthetic": true,
+      "qualifiers": {},
+      "shown": true,
+      "effect": "not_applicable",
+      "effect_counts": {
+        "activating": 0,
+        "inhibiting": 0,
+        "unknown": 0,
+        "not_stated": 1
+      },
+      "genetic_sign": "not_applicable",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 0,
+        "not_stated": 1
+      },
+      "outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "independent_outcome_counts": {
+        "supported": 1,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      },
+      "assertion_count": 1,
+      "evidence_count": 1,
+      "distinct": {
+        "publications": 0,
+        "releases": 1,
+        "datasets": 1
+      },
+      "by_basis": {
+        "unknown": 1
+      },
+      "level": null,
+      "level_counts": {},
+      "level_assigned": null,
+      "tested_levels": {},
+      "outside_filters": 0,
+      "outside_outcome_counts": {
+        "supported": 0,
+        "tested_absent": 0,
+        "inconclusive": 0,
+        "not_significant": 0
+      }
+    },
+    "definition": "A reference link: the protein isoform is an isoform of the protein entry, as an approved UniProt reference release states it. The isoform stays an entity of its own; the link is never a merge, and is never inferred from accession prefixes.",
+    "nodes": [
+      {
+        "id": "entity:10",
+        "type": "protein",
+        "label": "SYN-P1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1"
+        }
+      },
+      {
+        "id": "entity:11",
+        "type": "protein_isoform",
+        "label": "SYN-P1-1",
+        "taxon": 32630,
+        "status": "provisional",
+        "primary_identifier": {
+          "namespace": "synthetic_protein",
+          "value": "SYN-P1-1"
+        }
+      }
+    ],
+    "by_release": [
+      {
+        "release": "release:2",
+        "outcome_counts": {
+          "supported": 1,
+          "tested_absent": 0,
+          "inconclusive": 0,
+          "not_significant": 0
+        }
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ]
+  }
+}
+// >>> relationship-isoform
+
+export const evidenceIsoform: RecordedEntry<GraphEvidenceResponse> =
+// <<< evidence-isoform
+{
+  "name": "evidence-isoform",
+  "caller": "staff",
+  "path": "/api/graph/v1/relationships/relationship:2/evidence",
+  "query": [],
+  "status": 200,
+  "body": {
+    "api_version": "graph/v1",
+    "query": {
+      "relationship_ref": "relationship:2",
+      "outcome": null,
+      "evidence_basis": null,
+      "effect": null,
+      "method": null,
+      "level": null,
+      "score": null,
+      "context": {},
+      "after": null,
+      "page_size": null,
+      "releases": null,
+      "browser": null
+    },
+    "evidence": [
+      {
+        "id": "evidence:31",
+        "release": "release:2",
+        "record": {
+          "key": "syn-13",
+          "line_number": 14,
+          "raw": {
+            "effect": "",
+            "outcome": "supported",
+            "directed": "",
+            "object_id": "SYN-P1",
+            "record_id": "syn-13",
+            "subject_id": "SYN-P1-1",
+            "object_type": "protein",
+            "object_label": "SYN-P1",
+            "object_taxon": "32630",
+            "publications": "",
+            "subject_type": "protein_isoform",
+            "subject_label": "SYN-P1-1",
+            "subject_taxon": "32630",
+            "evidence_basis": "unknown",
+            "assertion_method": "manual_assertion",
+            "interaction_type": "",
+            "object_namespace": "synthetic_protein",
+            "relationship_type": "isoform_of",
+            "subject_namespace": "synthetic_protein",
+            "score:synthetic:rank": "",
+            "score:synthetic:confidence": ""
+          }
+        },
+        "outcome": "supported",
+        "evidence_basis": "unknown",
+        "assertion_method": "manual_assertion",
+        "eco_term": null,
+        "effect": null,
+        "effect_as_stated": "",
+        "genetic_sign": null,
+        "interaction_type": null,
+        "interaction_level": null,
+        "relationship_as_stated": "",
+        "methods": [],
+        "scores": [],
+        "contexts": [],
+        "participants": [
+          {
+            "side": "subject",
+            "entity": "entity:11",
+            "stated_entity": null,
+            "identifier_as_stated": "SYN-P1-1",
+            "resolution_basis": "primary"
+          },
+          {
+            "side": "object",
+            "entity": "entity:10",
+            "stated_entity": null,
+            "identifier_as_stated": "SYN-P1",
+            "resolution_basis": "primary"
+          }
+        ],
+        "qualifiers": {},
+        "evidence_group": "",
+        "publications": []
+      }
+    ],
+    "releases": [
+      {
+        "id": "release:2",
+        "dataset": {
+          "slug": "synthetic-regulation",
+          "title": "Synthetic regulation example"
+        },
+        "version": "v2",
+        "status": "published",
+        "superseded": false,
+        "is_synthetic": true,
+        "licence": {
+          "name": "MIT License",
+          "spdx_id": null,
+          "url": "https://github.com/Helmy-Lab/openpip-2.0/blob/main/LICENSE"
+        },
+        "attribution": "Copyright (c) 2016-2026 The openPIP authors",
+        "changes_note": "Identifiers are normalized by their namespace's rules and resolved to typed entities; an identifier may be mapped by a reviewed resolution file (basis curated); a row that cites several papers becomes one assertion per paper. No value is inferred, merged or corrected.",
+        "scopes": [
+          "internal"
+        ]
+      }
+    ],
+    "page": {
+      "page_size": 50,
+      "next": null
+    }
+  }
+}
+// >>> evidence-isoform
